@@ -387,6 +387,7 @@ export async function extractTarGzip(
     directoryCount: 0,
   };
   const collisionKeys = new Set<string>();
+  const pathSpellings = new Map<string, string>();
   const inflatedLimit =
     limits.extractedBytes +
     limits.entries * TAR_BLOCK_BYTES * 2 +
@@ -473,6 +474,16 @@ export async function extractTarGzip(
       pendingPax = null;
       const directory = header.type === "5";
       const safePath = safeRelativePath(rawName, directory, limits);
+      const segments = safePath.value.split("/");
+      for (let index = 1; index <= segments.length; index += 1) {
+        const spelling = segments.slice(0, index).join("/");
+        const key = spelling.toLocaleLowerCase("en-US");
+        const existing = pathSpellings.get(key);
+        if (existing !== undefined && existing !== spelling) {
+          throw new ArchiveError("ARCHIVE_UNSAFE");
+        }
+        pathSpellings.set(key, spelling);
+      }
       if (collisionKeys.has(safePath.collisionKey)) {
         throw new ArchiveError("ARCHIVE_UNSAFE");
       }

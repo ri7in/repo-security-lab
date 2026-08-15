@@ -62,7 +62,7 @@ function boundedBody(
         }
         received += result.value.byteLength;
         if (received > MAX_COMPRESSED_ARCHIVE_BYTES) {
-          void reader.cancel().catch(() => undefined);
+          await reader.cancel().catch(() => undefined);
           controller.error(new GithubClientError("ARCHIVE_LIMIT"));
           return;
         }
@@ -151,6 +151,7 @@ export class GithubArchiveClient {
       let response = first;
       let requestCount: 1 | 2 = 1;
       if (first.status >= 300 && first.status < 400) {
+        await first.body?.cancel().catch(() => undefined);
         const location = first.headers.get("location");
         if (location === null) throw new GithubClientError("ARCHIVE_INVALID");
         const redirect = this.#validatedRedirect(
@@ -166,12 +167,22 @@ export class GithubArchiveClient {
         requestCount = 2;
       }
 
+      if (!response.ok) {
+        await response.body?.cancel().catch(() => undefined);
+      }
       this.#assertSuccessful(response);
-      const contentLength = this.#contentLength(response.headers);
+      let contentLength: number | null;
+      try {
+        contentLength = this.#contentLength(response.headers);
+      } catch (error) {
+        await response.body?.cancel().catch(() => undefined);
+        throw error;
+      }
       if (
         contentLength !== null &&
         contentLength > MAX_COMPRESSED_ARCHIVE_BYTES
       ) {
+        await response.body?.cancel().catch(() => undefined);
         throw new GithubClientError("ARCHIVE_LIMIT");
       }
       if (response.body === null) {

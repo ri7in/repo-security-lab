@@ -142,9 +142,9 @@ export interface ExhaustedLeaseRef {
   readonly generation: number;
 }
 
-export interface RequeueExpiredResult {
-  /** Exact stale-generation scratch roots to remove after rows are requeued. */
-  readonly requeued: readonly ExhaustedLeaseRef[];
+export interface ExpiredLeaseResult {
+  /** Exact stale generations parked until cleanup permits a retry. */
+  readonly retryable: readonly ExhaustedLeaseRef[];
   /** Exact expired generations whose scratch roots require janitor proof. */
   readonly exhausted: readonly ExhaustedLeaseRef[];
 }
@@ -205,9 +205,13 @@ export interface Store {
   listFindings(input: FindingPageInput): Promise<FindingPageRecord>;
   claimNext(input: ClaimInput): Promise<RepositoryRecord | null>;
   heartbeat(input: HeartbeatInput): Promise<boolean>;
-  requeueExpiredLeases(nowMs: number): Promise<RequeueExpiredResult>;
+  /** Classifies expired rows without making any generation claimable. */
+  classifyExpiredLeases(nowMs: number): Promise<ExpiredLeaseResult>;
+  /** Requeues an exact expired generation only after its scratch root is gone. */
+  requeueCleaned(input: FinalizeExhaustedInput): Promise<boolean>;
   /** Called only after the janitor removed the exact generation's scratch root. */
   finalizeExhausted(input: FinalizeExhaustedInput): Promise<boolean>;
+  /** Voluntary pre-acquisition release; source-bearing states require cleanup. */
   release(input: ReleaseInput): Promise<boolean>;
   transition(input: TransitionInput): Promise<boolean>;
   publish(input: PublishInput): Promise<PublicationResult>;

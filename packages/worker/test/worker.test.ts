@@ -354,4 +354,36 @@ describe("leased repository worker", () => {
     await expect(readFile(path.join(exactRoot, "source"))).rejects.toThrow();
     store.close();
   });
+
+  it("keeps an expired retry unclaimable until stale cleanup is proven", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await store.claimNext({
+        workerId: "worker_00000009",
+        nowMs: 1_000,
+        leaseDurationMs: 60_000,
+      }),
+    ).not.toBeNull();
+    const repositoryWorker = worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive()),
+      scanner(),
+      { now: () => 61_000, removeScratch: async () => false },
+    );
+    expect(await repositoryWorker.reapExpired()).toEqual({
+      requeuedCleaned: 0,
+      exhaustedFinalized: 0,
+    });
+    expect(
+      await store.claimNext({
+        workerId: "worker_00000010",
+        nowMs: 61_001,
+        leaseDurationMs: 60_000,
+      }),
+    ).toBeNull();
+    store.close();
+  });
 });

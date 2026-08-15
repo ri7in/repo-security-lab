@@ -39,7 +39,7 @@ import {
   type PublicationResult,
   type PublishInput,
   type ReleaseInput,
-  type RequeueExpiredResult,
+  type ExpiredLeaseResult,
   type RepositoryPageInput,
   type RepositoryPageRecord,
   type RepositoryRecord,
@@ -609,10 +609,10 @@ export class SqliteStore implements Store {
     return result.changes === 1;
   }
 
-  async requeueExpiredLeases(nowMs: number): Promise<RequeueExpiredResult> {
+  async classifyExpiredLeases(nowMs: number): Promise<ExpiredLeaseResult> {
     assertTime(nowMs);
     const placeholders = LEASED_REPOSITORY_STATES.map(() => "?").join(",");
-    const requeue = this.#database.transaction((): RequeueExpiredResult => {
+    try {
       const rows = this.#database
         .prepare(
           `SELECT request_id, repository_id, attempt_count, lease_generation
@@ -628,55 +628,58 @@ export class SqliteStore implements Store {
         lease_generation: number;
       }>;
       const exhausted: ExhaustedLeaseRef[] = [];
-      const requeued: ExhaustedLeaseRef[] = [];
+      const retryable: ExhaustedLeaseRef[] = [];
       for (const row of rows) {
+        assertOpaqueId(row.request_id);
         if (row.attempt_count >= MAX_LEASE_ATTEMPTS) {
-          assertOpaqueId(row.request_id);
           exhausted.push({
             requestId: row.request_id,
             repositoryId: row.repository_id,
             generation: row.lease_generation,
           });
         } else {
-          const result = this.#database
-            .prepare(
-              `UPDATE repositories
-               SET state = 'waiting', reason = NULL, lease_owner = NULL,
-                   lease_expires_at_ms = NULL, updated_at_ms = ?
-               WHERE request_id = ? AND repository_id = ?
-                 AND lease_expires_at_ms IS NOT NULL
-                 AND lease_expires_at_ms <= ?`,
-            )
-            .run(nowMs, row.request_id, row.repository_id, nowMs);
-          if (result.changes === 1) {
-            assertOpaqueId(row.request_id);
-            requeued.push({
-              requestId: row.request_id,
-              repositoryId: row.repository_id,
-              generation: row.lease_generation,
-            });
-          }
+          retryable.push({
+            requestId: row.request_id,
+            repositoryId: row.repository_id,
+            generation: row.lease_generation,
+          });
         }
       }
-      return { requeued, exhausted };
-    });
-    try {
-      return requeue();
+      return { retryable, exhausted };
     } catch {
-      throw new Error("lease requeue failed");
+      throw new Error("expired lease classification failed");
     }
   }
 
+  async requeueCleaned(input: FinalizeExhaustedInput): Promise<boolean> {
+    this.#validateExpiredReference(input);
+    const placeholders = LEASED_REPOSITORY_STATES.map(() => "?").join(",");
+    const result = this.#database
+      .prepare(
+        `UPDATE repositories
+         SET state = 'waiting', reason = NULL, lease_owner = NULL,
+             lease_expires_at_ms = NULL, updated_at_ms = ?
+         WHERE request_id = ? AND repository_id = ?
+           AND lease_generation = ? AND attempt_count < ?
+           AND lease_expires_at_ms IS NOT NULL
+           AND lease_expires_at_ms <= ?
+           AND published_lease_generation IS NULL
+           AND state IN (${placeholders})`,
+      )
+      .run(
+        input.nowMs,
+        input.requestId,
+        input.repositoryId,
+        input.generation,
+        MAX_LEASE_ATTEMPTS,
+        input.nowMs,
+        ...LEASED_REPOSITORY_STATES,
+      );
+    return result.changes === 1;
+  }
+
   async finalizeExhausted(input: FinalizeExhaustedInput): Promise<boolean> {
-    assertOpaqueId(input.requestId);
-    assertTime(input.nowMs);
-    if (
-      !isSafeNonNegativeInteger(input.repositoryId) ||
-      !isSafeNonNegativeInteger(input.generation) ||
-      input.generation === 0
-    ) {
-      throw new Error("invalid exhausted lease reference");
-    }
+    this.#validateExpiredReference(input);
     const placeholders = LEASED_REPOSITORY_STATES.map(() => "?").join(",");
     const finalize = this.#database.transaction((): boolean => {
       const result = this.#database
@@ -730,6 +733,7 @@ export class SqliteStore implements Store {
         .prepare(
           `SELECT attempt_count FROM repositories
            WHERE request_id = ? AND repository_id = ?
+             AND state = 'leased'
              AND lease_owner = ? AND lease_generation = ?
              AND lease_expires_at_ms > ?`,
         )
@@ -755,6 +759,7 @@ export class SqliteStore implements Store {
              SET state = 'waiting', reason = NULL, lease_owner = NULL,
                  lease_expires_at_ms = NULL, updated_at_ms = ?
              WHERE request_id = ? AND repository_id = ?
+               AND state = 'leased'
                AND lease_owner = ? AND lease_generation = ?
                AND lease_expires_at_ms > ?`,
           )
@@ -1085,16 +1090,46 @@ export class SqliteStore implements Store {
     }
   }
 
+  #validateExpiredReference(input: FinalizeExhaustedInput): void {
+    assertOpaqueId(input.requestId);
+    assertTime(input.nowMs);
+    if (
+      !isSafeNonNegativeInteger(input.repositoryId) ||
+      !isSafeNonNegativeInteger(input.generation) ||
+      input.generation === 0
+    ) {
+      throw new Error("invalid expired lease reference");
+    }
+  }
+
   #validatePublishInput(input: PublishInput): void {
     this.#validateLeaseRef(input);
     assertTime(input.nowMs);
+    const coverageValues = SPECIALISTS.map(
+      (specialist) => input.coverage[specialist],
+    );
     if (
       !["complete", "partial", "failed", "cancelled"].includes(
         input.terminalState,
       ) ||
       (input.terminalState === "complete" && input.reason !== null) ||
       (input.terminalState !== "complete" && input.reason === null) ||
-      (input.reason !== null && !failureClassSchema.safeParse(input.reason).success)
+      (input.reason !== null && !failureClassSchema.safeParse(input.reason).success) ||
+      (input.terminalState === "complete" &&
+        coverageValues.some(
+          (outcome) => outcome === "partial" || outcome === "failed",
+        )) ||
+      (input.terminalState === "partial" &&
+        (input.reason !== "FINDING_LIMIT" ||
+          !coverageValues.includes("partial") ||
+          coverageValues.includes("failed"))) ||
+      (input.terminalState === "failed" &&
+        !coverageValues.includes("failed")) ||
+      (input.terminalState === "cancelled" &&
+        !["CANCELLED", "PRIVATE_SLICE_SCOPE"].includes(input.reason ?? "")) ||
+      ((input.terminalState === "failed" ||
+        input.terminalState === "cancelled") &&
+        input.findings.length > 0)
     ) {
       throw new Error("invalid publication metadata");
     }
@@ -1115,6 +1150,7 @@ export class SqliteStore implements Store {
         !parsed.success ||
         finding.request_id !== input.requestId ||
         finding.repository_id !== input.repositoryId ||
+        !["complete", "partial"].includes(input.coverage[finding.engine]) ||
         findingIds.has(finding.finding_id) ||
         engineRules.has(engineRule)
       ) {

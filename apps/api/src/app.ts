@@ -95,7 +95,7 @@ function decodeCursor(value: string | undefined): number | null | undefined {
 }
 
 function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+  return host === "127.0.0.1" || host === "::1";
 }
 
 export function createApi(options: ApiOptions): Hono {

@@ -25,11 +25,12 @@ current stable majors instead: `zod ^4`, `vitest ^4` (+ matching
 `@vitest/coverage-v8`), `typescript ^5.9`, `eslint ^9` with
 `typescript-eslint ^8`, `@types/node ^24` (matching the Node 24 CI target).
 Schemas use the Zod 4 API (`z.strictObject`, exhaustive enum records,
-`z.iso.datetime`). Runtime dependencies remain Zod only.
+`z.iso.datetime`). External runtime dependencies remain limited to Zod,
+Hono plus its Node adapter, and better-sqlite3.
 
 ## ADR-003: internal packages resolve TypeScript source; no build artifact yet
 
-**Status:** accepted (2026-08-16), revisit when the first app lands
+**Status:** accepted (2026-08-16), revisit on measurable build/typecheck cost
 
 Workspace packages are private and never published; their `exports` point at
 `src/index.ts`. TypeScript typechecks everything through one strict root
@@ -95,9 +96,11 @@ generations conflict. At the three-attempt ceiling an expired row remains
 nonterminal and returns the exact generation requiring cleanup.
 `finalizeExhausted` uses a generation/expiry/attempt CAS and only then reports
 fixed `LEASE_RETRY_EXHAUSTED`; wrong-generation finalization is tested and
-rejected. The worker slice must key scratch roots by the same tuple and invoke
-finalization only after removal; filesystem enforcement is not claimed by the
-store alone.
+rejected. Every expired generation, not only the final attempt, remains parked
+and unclaimable until a janitor proves removal of its tuple-keyed scratch root.
+Only then may an exact generation CAS requeue it or finalize exhaustion. This
+prevents a new generation from publishing while stale source from an earlier
+attempt remains on disk.
 
 ## ADR-007: guarded streaming archives and cleanup-before-publication
 

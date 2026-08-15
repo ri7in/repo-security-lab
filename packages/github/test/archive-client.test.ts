@@ -47,11 +47,16 @@ describe("immutable GitHub archive client", () => {
 
   it("requests the exact commit and strips authorization before codeload", async () => {
     const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+    let redirectBodyCancelled = false;
     const fetchImpl: typeof fetch = async (input, init) => {
       const url = requestUrl(input);
       calls.push({ url, init });
       if (url.startsWith("https://api.github.test/")) {
-        return new Response(null, {
+        return new Response(new ReadableStream({
+          cancel() {
+            redirectBodyCancelled = true;
+          },
+        }), {
           status: 302,
           headers: {
             location: `https://codeload.github.com/ri7in/tool/legacy.tar.gz/${SHA}`,
@@ -77,6 +82,7 @@ describe("immutable GitHub archive client", () => {
       "Bearer synthetic-token",
     );
     expect(new Headers(calls[1]?.init?.headers).has("authorization")).toBe(false);
+    expect(redirectBodyCancelled).toBe(true);
     expect(result).toMatchObject({ contentLength: 3, requestCount: 2 });
     expect(await consume(result.body)).toBe(3);
   });
@@ -97,8 +103,13 @@ describe("immutable GitHub archive client", () => {
   });
 
   it("rejects an oversized declared body before exposing its stream", async () => {
+    let bodyCancelled = false;
     const fetchImpl: typeof fetch = async () =>
-      new Response(new Uint8Array(), {
+      new Response(new ReadableStream({
+        cancel() {
+          bodyCancelled = true;
+        },
+      }), {
         headers: {
           "content-length": String(MAX_COMPRESSED_ARCHIVE_BYTES + 1),
         },
@@ -110,6 +121,27 @@ describe("immutable GitHub archive client", () => {
         commitSha: SHA,
       }),
     ).rejects.toMatchObject({ code: "ARCHIVE_LIMIT" });
+    expect(bodyCancelled).toBe(true);
+  });
+
+  it("cancels a body carrying an invalid content length", async () => {
+    let bodyCancelled = false;
+    const fetchImpl: typeof fetch = async () =>
+      new Response(new ReadableStream({
+        cancel() {
+          bodyCancelled = true;
+        },
+      }), {
+        headers: { "content-length": "not-a-number" },
+      });
+    await expect(
+      new GithubArchiveClient({ fetchImpl, minimumIntervalMs: 0 }).fetchArchive({
+        owner: "ri7in",
+        repository: "tool",
+        commitSha: SHA,
+      }),
+    ).rejects.toMatchObject({ code: "ARCHIVE_INVALID" });
+    expect(bodyCancelled).toBe(true);
   });
 
   it("enforces the compressed limit while streaming without content-length", async () => {

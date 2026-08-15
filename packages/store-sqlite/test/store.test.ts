@@ -525,8 +525,8 @@ describe("SQLite store leases", () => {
         leaseDurationMs: 100,
       }),
     ).toBe(false);
-    expect(await store.requeueExpiredLeases(1_200)).toEqual({
-      requeued: [
+    expect(await store.classifyExpiredLeases(1_200)).toEqual({
+      retryable: [
         {
           requestId: first.requestId,
           repositoryId: first.repositoryId,
@@ -535,9 +535,32 @@ describe("SQLite store leases", () => {
       ],
       exhausted: [],
     });
+    expect(
+      await store.claimNext({
+        workerId: "worker_00000002",
+        nowMs: 1_201,
+        leaseDurationMs: 500,
+      }),
+    ).toBeNull();
+    expect(
+      await store.requeueCleaned({
+        requestId: first.requestId,
+        repositoryId: first.repositoryId,
+        generation: first.leaseGeneration + 1,
+        nowMs: 1_201,
+      }),
+    ).toBe(false);
+    expect(
+      await store.requeueCleaned({
+        requestId: first.requestId,
+        repositoryId: first.repositoryId,
+        generation: first.leaseGeneration,
+        nowMs: 1_201,
+      }),
+    ).toBe(true);
     const second = await store.claimNext({
       workerId: "worker_00000002",
-      nowMs: 1_201,
+      nowMs: 1_202,
       leaseDurationMs: 500,
     });
     expect(second?.lease?.generation).toBe(2);
@@ -547,7 +570,7 @@ describe("SQLite store leases", () => {
         ...leaseRef(first),
         expectedState: "leased",
         nextState: "acquiring",
-        nowMs: 1_202,
+        nowMs: 1_203,
       }),
     ).toBe(false);
     expect(
@@ -556,7 +579,7 @@ describe("SQLite store leases", () => {
         workerId: "worker_00000003",
         expectedState: "leased",
         nextState: "acquiring",
-        nowMs: 1_202,
+        nowMs: 1_203,
       }),
     ).toBe(false);
     expect(
@@ -564,7 +587,7 @@ describe("SQLite store leases", () => {
         ...leaseRef(second),
         expectedState: "leased",
         nextState: "acquiring",
-        nowMs: 1_202,
+        nowMs: 1_203,
       }),
     ).toBe(true);
     store.close();
@@ -599,6 +622,27 @@ describe("SQLite store leases", () => {
     expect(second?.lease?.generation).toBe(2);
     if (second === null) throw new Error("test expected claim");
     expect(await store.release({ ...leaseRef(first), nowMs: 1_202 })).toBe(false);
+    store.close();
+  });
+
+  it("does not directly release a source-bearing pipeline state", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const claim = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 500,
+    });
+    if (claim === null) throw new Error("test expected claim");
+    expect(
+      await store.transition({
+        ...leaseRef(claim),
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_101,
+      }),
+    ).toBe(true);
+    expect(await store.release({ ...leaseRef(claim), nowMs: 1_102 })).toBe(false);
     store.close();
   });
 
@@ -645,12 +689,12 @@ describe("SQLite store leases", () => {
       });
       if (claim === null) throw new Error("test expected claim");
       expect(claim.leaseGeneration).toBe(attempt);
-      const result = await store.requeueExpiredLeases(
+      const result = await store.classifyExpiredLeases(
         1_000 + attempt * 100 + 50,
       );
       if (attempt < 3) {
         expect(result).toEqual({
-          requeued: [
+          retryable: [
             {
               requestId: claim.requestId,
               repositoryId: claim.repositoryId,
@@ -659,8 +703,16 @@ describe("SQLite store leases", () => {
           ],
           exhausted: [],
         });
+        expect(
+          await store.requeueCleaned({
+            requestId: claim.requestId,
+            repositoryId: claim.repositoryId,
+            generation: claim.leaseGeneration,
+            nowMs: 1_000 + attempt * 100 + 50,
+          }),
+        ).toBe(true);
       } else {
-        expect(result.requeued).toEqual([]);
+        expect(result.retryable).toEqual([]);
         expect(result.exhausted).toHaveLength(1);
         exhausted = result.exhausted[0];
       }
@@ -715,6 +767,29 @@ describe("SQLite store leases", () => {
 });
 
 describe("SQLite store publication", () => {
+  it("rejects terminal metadata that contradicts coverage or findings", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const claimed = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 1_000,
+    });
+    if (claimed === null) throw new Error("test expected claim");
+    const lease = await advanceToWaitingToPublish(store, claimed, 1_200);
+    await expect(
+      store.publish({
+        ...publication(lease),
+        coverage: { ...outcomes(), gitleaks: "partial" },
+      }),
+    ).rejects.toThrow("invalid publication metadata");
+    await expect(
+      store.publish(publication(lease, "failed", "SCANNER_INTERNAL")),
+    ).rejects.toThrow("invalid publication metadata");
+    expect(await store.publish(publication(lease))).toBe("published");
+    store.close();
+  });
+
   it("publishes exactly once and compares same-key payloads", async () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     await createLedger(store, [1]);
@@ -750,7 +825,7 @@ describe("SQLite store publication", () => {
     expect(
       await store.publish({
         ...input,
-        coverage: { ...input.coverage, gitleaks: "partial" },
+        coverage: { ...input.coverage, osv: "unsupported" },
       }),
     ).toBe("idempotency_conflict");
     expect(

@@ -45,9 +45,9 @@ export type SpecialistCoverageOutcome = z.infer<
 >;
 
 /**
- * Progressive display state for the anonymous status API only. `waiting`
- * means "this specialist has not run yet"; it is NOT a coverage outcome and
- * may never be presented, persisted, or counted as a scanned result.
+ * Progressive durable/API state. `waiting` means "this specialist has not run
+ * yet"; it is NOT a coverage outcome and may never be presented or counted as
+ * a completed scan result.
  */
 export const SPECIALIST_PROGRESS_STATES = [
   "waiting",

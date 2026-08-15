@@ -207,11 +207,17 @@ export class RepositoryWorker {
   }
 
   async reapExpired(): Promise<{ requeuedCleaned: number; exhaustedFinalized: number }> {
-    const result = await this.#store.requeueExpiredLeases(this.#now());
+    const result = await this.#store.classifyExpiredLeases(this.#now());
     let requeuedCleaned = 0;
     let exhaustedFinalized = 0;
-    for (const reference of result.requeued) {
-      if (await this.#removeScratch(scratchPathFor(this.#scratchBase, reference))) {
+    for (const reference of result.retryable) {
+      if (
+        (await this.#removeScratch(scratchPathFor(this.#scratchBase, reference))) &&
+        (await this.#store.requeueCleaned({
+          ...reference,
+          nowMs: this.#now(),
+        }))
+      ) {
         requeuedCleaned += 1;
       }
     }

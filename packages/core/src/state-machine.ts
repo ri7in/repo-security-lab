@@ -46,10 +46,11 @@ export function canTransition(
 
 /**
  * Lease expiry is recovery, not an ordinary worker transition. Any active
- * leased pipeline state can be requeued, while unleased discovery/waiting
- * rows and terminal rows cannot. At the attempt ceiling the row parks in its
- * expired active state until a janitor cleans the generation-specific scratch
- * root; only then may Store.finalizeExhausted make it terminal.
+ * leased pipeline state can be retried, while unleased discovery/waiting rows
+ * and terminal rows cannot. Every expired row remains parked in its active
+ * state until a janitor cleans the generation-specific scratch root; only
+ * then may Store.requeueCleaned make it claimable or Store.finalizeExhausted
+ * make an attempt-exhausted row terminal.
  */
 export function canRequeueExpiredLease(state: RepositoryState): boolean {
   return (LEASED_REPOSITORY_STATES as readonly RepositoryState[]).includes(

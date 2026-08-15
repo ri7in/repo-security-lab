@@ -34,13 +34,14 @@ To rename the product:
   for local development; any 25-only behavior difference must be caught before
   it reaches CI assumptions.
 - **pnpm:** pinned via the `packageManager` field in the root `package.json`.
-- **Dependencies:** lean by policy. Runtime dependencies are Zod in contracts
-  and better-sqlite3 inside the local-store package only; everything else is
-  dev tooling. better-sqlite3 13.0.3 ships the supported platform prebuilds,
-  so pnpm's blocked lifecycle scripts are not approved or required. Dependency majors track
-  the current stable release compatible with Node 24; version adjustments
-  against the original implementation plan are recorded in
-  `docs/decisions.md`.
+- **Dependencies:** lean by policy. External runtime dependencies are Zod for
+  strict contracts, Hono plus its Node adapter for the private API, and
+  better-sqlite3 inside the local-store package. Everything else is dev
+  tooling. better-sqlite3 13.0.3 embeds the supported platform prebuilds in
+  the integrity-locked npm artifact, so pnpm's blocked lifecycle scripts are
+  not approved or required. Dependency majors track the current stable
+  release compatible with Node 24; version adjustments against the original
+  implementation plan are recorded in `docs/decisions.md`.
 
 ## Verification commands
 

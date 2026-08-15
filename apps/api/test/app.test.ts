@@ -239,16 +239,18 @@ describe("anonymous-safe control-plane API", () => {
 
   it("allows operator findings only on an explicit loopback-bound app", async () => {
     const database = await store();
-    expect(() =>
-      createApi({
-        store: database,
-        discovery: discovery(),
-        allowedRequestedLogins: new Set(["ri7in"]),
-        allowedGithubAccountIds: new Set([123]),
-        operatorMode: true,
-        bindHost: "0.0.0.0",
-      }),
-    ).toThrow("operator mode requires loopback binding");
+    for (const bindHost of ["0.0.0.0", "localhost"]) {
+      expect(() =>
+        createApi({
+          store: database,
+          discovery: discovery(),
+          allowedRequestedLogins: new Set(["ri7in"]),
+          allowedGithubAccountIds: new Set([123]),
+          operatorMode: true,
+          bindHost,
+        }),
+      ).toThrow("operator mode requires loopback binding");
+    }
     const publicApp = createApi({
       store: database,
       discovery: discovery(),

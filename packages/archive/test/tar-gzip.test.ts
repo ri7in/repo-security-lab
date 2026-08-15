@@ -124,6 +124,20 @@ describe("streaming tar.gz guard and extractor", () => {
     }
   });
 
+  it("rejects case collisions in implicit parent directories", async () => {
+    await expect(
+      extractTarGzip(
+        compressed(
+          tar([
+            entry("root/Source/one.ts", Buffer.from("one")),
+            entry("root/source/two.ts", Buffer.from("two")),
+          ]),
+        ),
+        await destination(),
+      ),
+    ).rejects.toMatchObject({ code: "ARCHIVE_UNSAFE" });
+  });
+
   it("accepts bounded PAX global metadata and a safe path override", async () => {
     const target = await destination();
     const global = paxRecord("comment", "immutable-commit");
