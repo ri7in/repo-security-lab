@@ -31,8 +31,9 @@ remain gated on Linux isolation and an approved deployment identity.
    publish findings with durable lease identity.
 9. The anonymous API exposes exhaustive status and coverage, never findings.
    A local operator endpoint is available only when explicitly enabled and
-   bound to loopback. The composed runtime also validates the literal `Host`
-   header to reject DNS-rebinding access.
+   bound to loopback. Operator mode automatically validates the literal `Host`
+   header to reject DNS-rebinding access; the composed runtime also enables
+   that guard for every route.
 
 ## Trust boundaries
 

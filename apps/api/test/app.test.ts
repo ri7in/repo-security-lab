@@ -268,9 +268,12 @@ describe("anonymous-safe control-plane API", () => {
       allowedGithubAccountIds: new Set([123]),
       operatorMode: true,
       bindHost: "127.0.0.1",
+      enforceHostHeader: false,
     });
     expect(
-      (await operatorApp.request("/api/operator/requests/req_missing0001/findings"))
+      (await operatorApp.request("/api/operator/requests/req_missing0001/findings", {
+        headers: { host: "127.0.0.1" },
+      }))
         .status,
     ).toBe(404);
     await database.createRequest({
@@ -280,6 +283,7 @@ describe("anonymous-safe control-plane API", () => {
     });
     const operatorPage = await operatorApp.request(
       "/api/operator/requests/req_operator001/findings",
+      { headers: { host: "127.0.0.1" } },
     );
     expect(operatorPage.status).toBe(200);
     expect(operatorFindingPageSchema.parse(await operatorPage.json())).toEqual({
@@ -290,6 +294,15 @@ describe("anonymous-safe control-plane API", () => {
       (
         await operatorApp.request(
           "/api/operator/requests/req_operator001/findings?cursor=bad%20cursor",
+          { headers: { host: "127.0.0.1" } },
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (
+        await operatorApp.request(
+          "/api/operator/requests/req_operator001/findings",
+          { headers: { host: "attacker.example" } },
         )
       ).status,
     ).toBe(404);

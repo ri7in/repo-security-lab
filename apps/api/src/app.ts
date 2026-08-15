@@ -124,7 +124,10 @@ export function createApi(options: ApiOptions): Hono {
     });
   const operatorMode = options.operatorMode ?? false;
   const bindHost = options.bindHost ?? "127.0.0.1";
-  const enforceHostHeader = options.enforceHostHeader ?? false;
+  // Operator detail is sensitive even though it is source-blind. Make the
+  // DNS-rebinding guard an invariant of operator mode rather than a caller
+  // option that another runtime composition could accidentally omit.
+  const enforceHostHeader = operatorMode || (options.enforceHostHeader ?? false);
   if (operatorMode && !isLoopback(bindHost)) {
     throw new Error("operator mode requires loopback binding");
   }

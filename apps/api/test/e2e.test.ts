@@ -138,7 +138,10 @@ test.skipIf(!enabled || binaryPath === undefined || binaryHash === undefined)(
 
     const accepted = await app.request("/api/scan-requests", {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        host: "127.0.0.1",
+        "content-type": "application/json",
+      },
       body: JSON.stringify({ username: "ri7in" }),
     });
     capturedResponses.push(await accepted.text());
@@ -207,7 +210,9 @@ test.skipIf(!enabled || binaryPath === undefined || binaryHash === undefined)(
       "/api/scan-requests/req_e2e00000001/repositories",
       "/api/operator/requests/req_e2e00000001/findings",
     ]) {
-      const response = await app.request(url);
+      const response = await app.request(url, {
+        headers: { host: "127.0.0.1" },
+      });
       expect(response.status).toBe(200);
       capturedResponses.push(await response.text());
     }

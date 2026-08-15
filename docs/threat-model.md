@@ -84,8 +84,9 @@ matches, scanner stderr, and secret values are absent from its schema.
 ### Report and AI lanes
 
 Anonymous DTOs expose exhaustive status and coverage but cannot express a
-finding. The source-blind finding route exists only in explicit operator mode;
-the composed runtime requires a literal loopback bind and matching Host header.
+finding. The source-blind finding route exists only in explicit operator mode,
+which requires a literal loopback bind and automatically enforces a matching
+Host header. The composed runtime applies the same Host guard to every route.
 Public finding detail remains gated on owner authentication.
 
 The AI package is an unnetworked fixture harness. Its only provider tag is
@@ -113,4 +114,3 @@ event/result codes only.
   proves identity, not that the upstream build is trustworthy.
 - Integrate and test dependency, workflow, and source-rule specialists; until
   then their coverage remains explicitly `unsupported`.
-
