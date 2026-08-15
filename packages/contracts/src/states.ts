@@ -22,6 +22,7 @@ export const REPOSITORY_ACTIVE_STATES = [
   "uploading",
   "waiting_to_publish",
 ] as const;
+export type RepositoryActiveState = (typeof REPOSITORY_ACTIVE_STATES)[number];
 
 export const REPOSITORY_TERMINAL_STATES = [
   "complete",

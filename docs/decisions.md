@@ -74,3 +74,27 @@ from its per-engine channel and the lease. Any `engine` key in a packet, even
 with a valid value, rejects the whole packet as an unknown field (tested).
 `engine` remains only in the broker-derived hosted finding, where the broker
 injects it from trusted state.
+
+## ADR-006: progressive durable requests and generation-derived publication
+
+**Status:** accepted (2026-08-16, Fable/Codex core review)
+
+The control plane persists `accepted` before discovery so the API can return a
+real request ID immediately. Discovery completion atomically creates the full
+repository ledger (`waiting` or `empty`) and is idempotent only for an exact
+ledger match. SQLite is the exercised local adapter; the Store port remains
+asynchronous for a future D1 adapter, whose deployed semantics are still an
+open proof gate.
+
+Lease generation is a monotonically increasing repository field, not data
+hidden inside a nullable lease. It survives release/expiry and prevents ABA.
+Publication has no worker-selected idempotency string: repository identity,
+immutable commit, and lease generation form the key. Exact at-least-once
+retries are acknowledged before stale-lease checks; changed payloads or
+generations conflict. At the three-attempt ceiling an expired row remains
+nonterminal and returns the exact generation requiring cleanup.
+`finalizeExhausted` uses a generation/expiry/attempt CAS and only then reports
+fixed `LEASE_RETRY_EXHAUSTED`; wrong-generation finalization is tested and
+rejected. The worker slice must key scratch roots by the same tuple and invoke
+finalization only after removal; filesystem enforcement is not claimed by the
+store alone.

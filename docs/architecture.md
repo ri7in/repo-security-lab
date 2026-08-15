@@ -1,6 +1,6 @@
 # Architecture
 
-**Status:** private vertical slice, stage 1 (scaffold, branding, contracts).
+**Status:** private vertical slice, stage 2 (contracts, durable core, local store).
 This document grows with each implemented stage; the complete accepted
 architecture lives in the transfer task's authority documents until the
 research import stage copies them into `docs/research/`.
@@ -64,8 +64,8 @@ report viewer only; it never downloads repositories or scans anything.
   Specialists are `snapshot`, `archive_guard`, `gitleaks`, `osv`, `zizmor`,
   `opengrep`.
 - **AI lane states:** `ai_not_run | ai_waiting | ai_partial`.
-- **Failure classes:** the 19 accepted fixed classes plus
-  `PRIVATE_SLICE_SCOPE`.
+- **Failure classes:** the accepted fixed classes plus
+  `PRIVATE_SLICE_SCOPE` and `LEASE_RETRY_EXHAUSTED` (ADR-006).
 - **Broker primitives:** numeric manifest tokens, count-bucket codes 0..3 with
   fixed labels, strict engine-free result packets (schemaVersion plus
   token/bucket groups only; 256-group ceiling, unique tokens, unknown keys —
@@ -83,10 +83,47 @@ report viewer only; it never downloads repositories or scans anything.
 Schemas are Zod validators with inferred types; consumers validate at runtime
 at every boundary, not only at compile time.
 
+## Durable core and local store (implemented)
+
+`packages/core` owns the storage-neutral state graph, complete-ledger
+aggregation, deterministic scheduling, lease/publication types, and the
+asynchronous Store port shared by local SQLite and the future D1 adapter.
+Every ordinary worker mutation is bound to `(requestId, repositoryId,
+workerId, leaseGeneration)`; terminal outcomes use a separate publication
+operation that requires a fixed reason where applicable and six real coverage
+outcomes (never `waiting`).
+
+The progressive lifecycle is durable rather than simulated: a request is
+created as `accepted` before the `202` response, moves to `discovering`, then
+`completeDiscovery` atomically installs the complete owned-repository ledger
+and marks each row `waiting` or `empty`. Retrying the same ledger is
+idempotent; a different ledger conflicts. Request-level discovery failure uses
+one fixed failure class. `discovered` remains the logical discovery output,
+not a separately committed row between that atomic operation and `waiting`.
+
+`packages/store-sqlite` is the real local adapter. It uses
+better-sqlite3 13.0.3, versioned STRICT tables, normalized coverage rows, and
+a D1-compatible SQL subset for shared queries. Local transaction wrappers are
+explicitly adapter-specific and are not presented as deployed D1 proof. A
+single conditional `UPDATE ... RETURNING` claims work in stable order and
+increments a durable generation that is never reset when the lease is
+cleared. Failed/terminal requests cannot be claimed.
+
+Publication identity is not worker-supplied text: it derives from the durable
+repository/commit plus lease generation. Same-generation, same-payload retry
+is acknowledged before stale-lease checks; changed metadata or generation
+conflicts. Lease release and expiry preserve the generation. At the attempt
+ceiling an expired job parks nonterminal and returns its exact generation to
+the janitor; only an exact-generation CAS after that scratch root is removed
+can finalize fixed `LEASE_RETRY_EXHAUSTED`. This two-phase store gate is
+implemented and tested. The worker janitor/filesystem proof itself lands with
+the worker slice; no third-party scan may rely on the local boundary.
+
 ## Toolchain
 
 pnpm workspaces, strict TypeScript (shared `tsconfig.base.json`), ESLint flat
-config with type-checked rules, Vitest. Node 24 is the CI target; Node 25 is
+config with type-checked rules, Vitest, and better-sqlite3 for the isolated
+local store package. Node 24 is the CI target; Node 25 is
 tolerated locally. Internal packages resolve TypeScript source directly
 (`exports` → `src/index.ts`); they are private and never published, so no
 build artifact exists yet. A build/reference setup lands when the first

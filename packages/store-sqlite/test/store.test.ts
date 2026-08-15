@@ -1,0 +1,627 @@
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { Worker } from "node:worker_threads";
+import { afterEach, describe, expect, it } from "vitest";
+import {
+  SPECIALISTS,
+  type FailureClass,
+  type OpaqueId,
+  type RepositoryTerminalState,
+  type SpecialistCoverageOutcome,
+} from "@app/contracts";
+import type {
+  LeaseRef,
+  PublishInput,
+  RepositoryRecord,
+  SpecialistOutcomes,
+} from "@app/core";
+import { CLAIM_NEXT_SQL, SqliteStore } from "@app/store-sqlite";
+
+const temporaryDirectories: string[] = [];
+
+afterEach(() => {
+  for (const directory of temporaryDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+function databasePath(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "repo-security-store-"));
+  temporaryDirectories.push(directory);
+  return path.join(directory, "store.sqlite");
+}
+
+function discoveryInput(
+  repositoryIds: readonly number[],
+  requestId = "req_0000000001" as OpaqueId,
+) {
+  return {
+    requestId,
+    repositories: repositoryIds.map((repositoryId) => ({
+      repositoryId,
+      name: `repo-${repositoryId}`,
+      commitSha: "a".repeat(40),
+    })),
+    nowMs: 1_000,
+  } as const;
+}
+
+async function createLedger(
+  store: SqliteStore,
+  repositoryIds: readonly number[],
+  requestId = "req_0000000001" as OpaqueId,
+) {
+  await store.createRequest({
+    requestId,
+    githubAccountId: 123,
+    username: "ri7in",
+    nowMs: 900,
+  });
+  expect(await store.startDiscovery(requestId, 950)).toBe(true);
+  expect(
+    await store.completeDiscovery(discoveryInput(repositoryIds, requestId)),
+  ).toBe("completed");
+  const completed = await store.getRequest(requestId);
+  if (completed === null) throw new Error("test expected request");
+  return completed;
+}
+
+function outcomes(
+  outcome: SpecialistCoverageOutcome = "complete",
+): SpecialistOutcomes {
+  return Object.fromEntries(
+    SPECIALISTS.map((specialist) => [specialist, outcome]),
+  ) as SpecialistOutcomes;
+}
+
+function leaseRef(repository: RepositoryRecord): LeaseRef {
+  if (repository.lease === null) {
+    throw new Error("test expected a lease");
+  }
+  return {
+    requestId: repository.requestId,
+    repositoryId: repository.repositoryId,
+    workerId: repository.lease.workerId,
+    generation: repository.lease.generation,
+  };
+}
+
+async function advanceToWaitingToPublish(
+  store: SqliteStore,
+  repository: RepositoryRecord,
+  nowMs: number,
+): Promise<LeaseRef> {
+  const lease = leaseRef(repository);
+  const edges = [
+    ["leased", "acquiring"],
+    ["acquiring", "guarding"],
+    ["guarding", "scanning"],
+    ["scanning", "normalizing"],
+    ["normalizing", "cleaning"],
+    ["cleaning", "uploading"],
+    ["uploading", "waiting_to_publish"],
+  ] as const;
+  for (const [expectedState, nextState] of edges) {
+    expect(
+      await store.transition({
+        ...lease,
+        expectedState,
+        nextState,
+        nowMs,
+      }),
+    ).toBe(true);
+  }
+  return lease;
+}
+
+function publication(
+  lease: LeaseRef,
+  terminalState: Exclude<RepositoryTerminalState, "empty"> = "complete",
+  reason: FailureClass | null = null,
+): PublishInput {
+  if (terminalState === "complete") {
+    return {
+      ...lease,
+      terminalState,
+      reason: null,
+      coverage: outcomes(),
+      nowMs: 1_500,
+    };
+  }
+  if (reason === null) {
+    throw new Error("test requires a failure reason");
+  }
+  return {
+    ...lease,
+    terminalState,
+    reason,
+    coverage: outcomes(),
+    nowMs: 1_500,
+  };
+}
+
+describe("SQLite store ledger", () => {
+  it("persists accepted before discovery and completes discovery idempotently", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const accepted = await store.createRequest({
+      requestId: "req_0000000001",
+      githubAccountId: 123,
+      username: "ri7in",
+      nowMs: 100,
+    });
+    expect(accepted.state).toBe("accepted");
+    expect(accepted.discoveryComplete).toBe(false);
+    expect(await store.startDiscovery(accepted.requestId, 110)).toBe(true);
+    expect((await store.getRequest(accepted.requestId))?.state).toBe("discovering");
+
+    const discovery = discoveryInput([1, 2]);
+    expect(await store.completeDiscovery(discovery)).toBe("completed");
+    expect(await store.completeDiscovery(discovery)).toBe("idempotent");
+    expect(
+      await store.completeDiscovery({
+        ...discovery,
+        repositories: [
+          ...discovery.repositories,
+          { repositoryId: 3, name: "repo-3", commitSha: "b".repeat(40) },
+        ],
+      }),
+    ).toBe("conflict");
+    store.close();
+  });
+
+  it("records a fixed request-level discovery failure", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const accepted = await store.createRequest({
+      requestId: "req_0000000001",
+      githubAccountId: 123,
+      username: "ri7in",
+      nowMs: 100,
+    });
+    expect(
+      await store.failRequest({
+        requestId: accepted.requestId,
+        reason: "GITHUB_RATE_LIMIT",
+        nowMs: 120,
+      }),
+    ).toBe(true);
+    const failed = await store.getRequest(accepted.requestId);
+    expect(failed?.state).toBe("failed");
+    expect(failed?.reason).toBe("GITHUB_RATE_LIMIT");
+    expect(await store.startDiscovery(accepted.requestId, 130)).toBe(false);
+    expect(await store.completeDiscovery(discoveryInput([1]))).toBe(
+      "invalid_state",
+    );
+    store.close();
+  });
+
+  it("creates the complete ledger atomically and persists it across reopen", async () => {
+    const filename = databasePath();
+    const first = new SqliteStore({ filename, migrationTimeMs: 100 });
+    const created = await createLedger(first, [3, 1, 2]);
+    expect(created.state).toBe("scanning");
+    expect(created.discoveryComplete).toBe(true);
+    expect(
+      (await first.listRepositories({
+        requestId: created.requestId,
+        afterRepositoryId: null,
+        limit: 100,
+      })).repositories.map((repository) => repository.repositoryId),
+    ).toEqual([1, 2, 3]);
+    first.close();
+
+    const reopened = new SqliteStore({ filename, migrationTimeMs: 200 });
+    expect((await reopened.getRequest(created.requestId))?.state).toBe("scanning");
+    expect(
+      (await reopened.listRepositories({
+        requestId: created.requestId,
+        afterRepositoryId: null,
+        limit: 100,
+      })).repositories,
+    ).toHaveLength(3);
+    reopened.close();
+  });
+
+  it("records zero-repository and no-default-branch accounts without omission", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const emptyAccount = await createLedger(store, []);
+    expect(emptyAccount.state).toBe("complete");
+
+    await store.createRequest({
+      requestId: "req_0000000002",
+      githubAccountId: 123,
+      username: "ri7in",
+      nowMs: 900,
+    });
+    const noBranchResult = await store.completeDiscovery({
+      ...discoveryInput([], "req_0000000002"),
+      repositories: [{ repositoryId: 77, name: "blank", commitSha: null }],
+    });
+    expect(noBranchResult).toBe("completed");
+    const noBranch = await store.getRequest("req_0000000002");
+    if (noBranch === null) throw new Error("test expected request");
+    expect(noBranch.state).toBe("complete");
+    const page = await store.listRepositories({
+      requestId: noBranch.requestId,
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    expect(page.repositories[0]?.state).toBe("empty");
+    expect(new Set(Object.values(page.repositories[0]?.coverage ?? {}))).toEqual(
+      new Set(["not_applicable"]),
+    );
+    store.close();
+  });
+
+  it("leaves the durable request untouched when a discovery ledger is invalid", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await store.createRequest({
+      requestId: "req_0000000001",
+      githubAccountId: 123,
+      username: "ri7in",
+      nowMs: 900,
+    });
+    const duplicate = {
+      ...discoveryInput([1]),
+      repositories: [
+        { repositoryId: 1, name: "one", commitSha: "a".repeat(40) },
+        { repositoryId: 1, name: "duplicate", commitSha: "b".repeat(40) },
+      ],
+    };
+    await expect(store.completeDiscovery(duplicate)).rejects.toThrow(
+      "invalid repository ledger input",
+    );
+    expect((await store.getRequest(duplicate.requestId))?.state).toBe("accepted");
+    expect(
+      (await store.listRepositories({
+        requestId: duplicate.requestId,
+        afterRepositoryId: null,
+        limit: 10,
+      })).repositories,
+    ).toEqual([]);
+    store.close();
+  });
+
+  it("paginates by immutable repository id without duplicates", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const created = await createLedger(store, [5, 2, 9]);
+    const first = await store.listRepositories({
+      requestId: created.requestId,
+      afterRepositoryId: null,
+      limit: 2,
+    });
+    expect(first.repositories.map((repository) => repository.repositoryId)).toEqual([2, 5]);
+    expect(first.nextRepositoryId).toBe(5);
+    const second = await store.listRepositories({
+      requestId: created.requestId,
+      afterRepositoryId: first.nextRepositoryId,
+      limit: 2,
+    });
+    expect(second.repositories.map((repository) => repository.repositoryId)).toEqual([9]);
+    expect(second.nextRepositoryId).toBeNull();
+    store.close();
+  });
+});
+
+describe("SQLite store leases", () => {
+  it("atomically gives two independent connections different jobs", async () => {
+    const filename = databasePath();
+    const setup = new SqliteStore({ filename, migrationTimeMs: 1 });
+    await createLedger(setup, [10, 20]);
+    const first = new SqliteStore({ filename, migrationTimeMs: 1 });
+    const second = new SqliteStore({ filename, migrationTimeMs: 1 });
+    const [left, right] = await Promise.all([
+      first.claimNext({ workerId: "worker_00000001", nowMs: 1_100, leaseDurationMs: 500 }),
+      second.claimNext({ workerId: "worker_00000002", nowMs: 1_100, leaseDurationMs: 500 }),
+    ]);
+    expect(new Set([left?.repositoryId, right?.repositoryId])).toEqual(
+      new Set([10, 20]),
+    );
+    first.close();
+    second.close();
+    setup.close();
+  });
+
+  it("survives a true worker-thread race on the exact claim statement", async () => {
+    const filename = databasePath();
+    const setup = new SqliteStore({ filename, migrationTimeMs: 1 });
+    await createLedger(setup, [10, 20]);
+    const gate = new SharedArrayBuffer(Int32Array.BYTES_PER_ELEMENT * 2);
+    const barrier = new Int32Array(gate);
+
+    const runWorker = (workerId: string): Promise<number | null> =>
+      new Promise((resolve, reject) => {
+        const worker = new Worker(new URL("./claim-worker.mjs", import.meta.url), {
+          workerData: {
+            filename,
+            workerId,
+            nowMs: 1_100,
+            expiresAtMs: 1_600,
+            sql: CLAIM_NEXT_SQL,
+            gate,
+          },
+        });
+        worker.once("message", (message: { repositoryId?: number | null; error?: string }) => {
+          if (message.error !== undefined) {
+            reject(new Error(message.error));
+          } else {
+            resolve(message.repositoryId ?? null);
+          }
+        });
+        worker.once("error", reject);
+      });
+
+    const claims = [runWorker("worker_00000001"), runWorker("worker_00000002")];
+    while (Atomics.load(barrier, 0) < 2) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    Atomics.store(barrier, 1, 1);
+    Atomics.notify(barrier, 1, 2);
+    expect(new Set(await Promise.all(claims))).toEqual(new Set([10, 20]));
+    setup.close();
+  });
+
+  it("rejects expired, wrong-owner, and stale-generation mutations", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const first = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 100,
+    });
+    expect(first?.lease?.generation).toBe(1);
+    if (first === null || first.lease === null) throw new Error("test expected lease");
+    expect(
+      await store.heartbeat({
+        ...leaseRef(first),
+        nowMs: 1_200,
+        leaseDurationMs: 100,
+      }),
+    ).toBe(false);
+    expect(await store.requeueExpiredLeases(1_200)).toEqual({
+      requeued: 1,
+      exhausted: [],
+    });
+    const second = await store.claimNext({
+      workerId: "worker_00000002",
+      nowMs: 1_201,
+      leaseDurationMs: 500,
+    });
+    expect(second?.lease?.generation).toBe(2);
+    if (second === null || second.lease === null) throw new Error("test expected lease");
+    expect(
+      await store.transition({
+        ...leaseRef(first),
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_202,
+      }),
+    ).toBe(false);
+    expect(
+      await store.transition({
+        ...leaseRef(second),
+        workerId: "worker_00000003",
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_202,
+      }),
+    ).toBe(false);
+    expect(
+      await store.transition({
+        ...leaseRef(second),
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_202,
+      }),
+    ).toBe(true);
+    store.close();
+  });
+
+  it("voluntarily releases without resetting the ABA generation", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const first = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 500,
+    });
+    if (first === null) throw new Error("test expected claim");
+    expect(await store.release({ ...leaseRef(first), nowMs: 1_200 })).toBe(true);
+    const waiting = (
+      await store.listRepositories({
+        requestId: first.requestId,
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(waiting?.lease).toBeNull();
+    expect(waiting?.leaseGeneration).toBe(1);
+
+    const second = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_201,
+      leaseDurationMs: 500,
+    });
+    expect(second?.leaseGeneration).toBe(2);
+    expect(second?.lease?.generation).toBe(2);
+    if (second === null) throw new Error("test expected claim");
+    expect(await store.release({ ...leaseRef(first), nowMs: 1_202 })).toBe(false);
+    store.close();
+  });
+
+  it("does not let release bypass janitor cleanup at the attempt ceiling", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const claim = await store.claimNext({
+        workerId: `worker_0000000${attempt}`,
+        nowMs: 1_000 + attempt * 100,
+        leaseDurationMs: 100,
+      });
+      if (claim === null) throw new Error("test expected claim");
+      expect(
+        await store.release({
+          ...leaseRef(claim),
+          nowMs: 1_000 + attempt * 100 + 10,
+        }),
+      ).toBe(attempt < 3);
+    }
+    const parked = (
+      await store.listRepositories({
+        requestId: "req_0000000001",
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(parked?.state).toBe("leased");
+    expect(parked?.leaseGeneration).toBe(3);
+    store.close();
+  });
+
+  it("parks exhaustion until the exact cleaned generation is finalized", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const created = await createLedger(store, [1]);
+    let exhausted:
+      | { requestId: OpaqueId; repositoryId: number; generation: number }
+      | undefined;
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const claim = await store.claimNext({
+        workerId: `worker_0000000${attempt}`,
+        nowMs: 1_000 + attempt * 100,
+        leaseDurationMs: 50,
+      });
+      if (claim === null) throw new Error("test expected claim");
+      expect(claim.leaseGeneration).toBe(attempt);
+      const result = await store.requeueExpiredLeases(
+        1_000 + attempt * 100 + 50,
+      );
+      if (attempt < 3) {
+        expect(result).toEqual({ requeued: 1, exhausted: [] });
+      } else {
+        expect(result.requeued).toBe(0);
+        expect(result.exhausted).toHaveLength(1);
+        exhausted = result.exhausted[0];
+      }
+    }
+    const parked = (
+      await store.listRepositories({
+        requestId: created.requestId,
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(parked?.state).toBe("leased");
+    expect(parked?.reason).toBeNull();
+    expect((await store.getRequest(created.requestId))?.state).toBe("scanning");
+    if (exhausted === undefined) throw new Error("test expected exhaustion");
+    expect(
+      await store.finalizeExhausted({
+        ...exhausted,
+        generation: exhausted.generation - 1,
+        nowMs: 1_400,
+      }),
+    ).toBe(false);
+
+    // The production caller performs generation-keyed scratch cleanup before
+    // this CAS finalization. This store test proves the exact-generation gate.
+    expect(
+      await store.finalizeExhausted({ ...exhausted, nowMs: 1_400 }),
+    ).toBe(true);
+    const terminal = (
+      await store.listRepositories({
+        requestId: created.requestId,
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(terminal?.state).toBe("failed");
+    expect(terminal?.reason).toBe("LEASE_RETRY_EXHAUSTED");
+    expect(terminal?.leaseGeneration).toBe(3);
+    expect(new Set(Object.values(terminal?.coverage ?? {}))).toEqual(
+      new Set(["failed"]),
+    );
+    expect((await store.getRequest(created.requestId))?.state).toBe("complete");
+    expect(
+      await store.claimNext({
+        workerId: "worker_00000009",
+        nowMs: 2_000,
+        leaseDurationMs: 100,
+      }),
+    ).toBeNull();
+    store.close();
+  });
+});
+
+describe("SQLite store publication", () => {
+  it("publishes exactly once and compares same-key payloads", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const claimed = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 1_000,
+    });
+    if (claimed === null) throw new Error("test expected claim");
+    const lease = await advanceToWaitingToPublish(store, claimed, 1_200);
+    const input = publication(lease);
+    expect(await store.publish(input)).toBe("published");
+    expect(await store.publish(input)).toBe("idempotent");
+    expect(
+      await store.publish({
+        ...input,
+        coverage: { ...input.coverage, gitleaks: "partial" },
+      }),
+    ).toBe("idempotency_conflict");
+    expect(
+      await store.publish({ ...input, generation: input.generation + 1 }),
+    ).toBe("idempotency_conflict");
+    expect((await store.getRequest(input.requestId))?.state).toBe("complete");
+    store.close();
+  });
+
+  it("marks a mixed terminal ledger complete only after the last row", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const created = await createLedger(store, [1, 2]);
+    const first = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 1_000,
+    });
+    if (first === null) throw new Error("test expected claim");
+    const firstLease = await advanceToWaitingToPublish(store, first, 1_200);
+    expect(await store.publish(publication(firstLease))).toBe("published");
+    expect((await store.getRequest(created.requestId))?.state).toBe("scanning");
+
+    const second = await store.claimNext({
+      workerId: "worker_00000002",
+      nowMs: 1_300,
+      leaseDurationMs: 1_000,
+    });
+    if (second === null) throw new Error("test expected claim");
+    const secondLease = leaseRef(second);
+    expect(
+      await store.transition({
+        ...secondLease,
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_350,
+      }),
+    ).toBe(true);
+    expect(
+      await store.transition({
+        ...secondLease,
+        expectedState: "acquiring",
+        nextState: "cleaning",
+        nowMs: 1_360,
+      }),
+    ).toBe(true);
+    expect(
+      await store.publish({
+        ...publication(secondLease, "partial", "FINDING_LIMIT"),
+        coverage: outcomes("partial"),
+      }),
+    ).toBe("published");
+    expect((await store.getRequest(created.requestId))?.state).toBe("complete");
+    store.close();
+  });
+});

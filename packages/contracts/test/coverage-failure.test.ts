@@ -78,7 +78,8 @@ describe("failure classes", () => {
     expect(FAILURE_CLASSES).toContain("PRIVATE_SLICE_SCOPE");
     expect(FAILURE_CLASSES).toContain("FINDING_LIMIT");
     expect(FAILURE_CLASSES).toContain("SOURCE_CLEANUP_FAILED");
-    expect(FAILURE_CLASSES).toHaveLength(20);
+    expect(FAILURE_CLASSES).toContain("LEASE_RETRY_EXHAUSTED");
+    expect(FAILURE_CLASSES).toHaveLength(21);
   });
 
   it("uses only fixed UPPER_SNAKE identifiers", () => {

@@ -30,6 +30,10 @@ and is not a released product. Current guarantees of the design:
 - `packages/branding` — the only place the product name exists; guarded by a test.
 - `packages/contracts` — versioned Zod schemas and types for states, coverage,
   failure classes, API DTOs, source-blind broker primitives, and AI tagging.
+- `packages/core` — state graph, scheduler, complete-ledger aggregation, and
+  the portable durable Store contract.
+- `packages/store-sqlite` — exercised STRICT SQLite adapter with atomic leases,
+  generation-based stale rejection, and idempotent publication.
 - `docs/` — architecture, maintenance, and decision records.
 
 ## Development

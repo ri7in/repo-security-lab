@@ -34,8 +34,10 @@ To rename the product:
   for local development; any 25-only behavior difference must be caught before
   it reaches CI assumptions.
 - **pnpm:** pinned via the `packageManager` field in the root `package.json`.
-- **Dependencies:** lean by policy. Runtime dependency of the contracts
-  package is Zod only; everything else is dev tooling. Dependency majors track
+- **Dependencies:** lean by policy. Runtime dependencies are Zod in contracts
+  and better-sqlite3 inside the local-store package only; everything else is
+  dev tooling. better-sqlite3 13.0.3 ships the supported platform prebuilds,
+  so pnpm's blocked lifecycle scripts are not approved or required. Dependency majors track
   the current stable release compatible with Node 24; version adjustments
   against the original implementation plan are recorded in
   `docs/decisions.md`.
@@ -48,4 +50,11 @@ pnpm typecheck        # strict TypeScript over all packages and tests
 pnpm lint             # ESLint flat config, type-checked rules
 pnpm test             # Vitest, includes the rename guard and contract suites
 pnpm check            # all of the above
+```
+
+The store smoke test must resolve from its owning workspace package:
+
+```sh
+cd packages/store-sqlite
+node --input-type=module -e "import Database from 'better-sqlite3'; const db=new Database(':memory:'); db.exec('SELECT 1'); db.close()"
 ```
