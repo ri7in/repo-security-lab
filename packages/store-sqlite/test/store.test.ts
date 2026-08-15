@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Worker } from "node:worker_threads";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   SPECIALISTS,
@@ -16,7 +17,7 @@ import type {
   RepositoryRecord,
   SpecialistOutcomes,
 } from "@app/core";
-import { CLAIM_NEXT_SQL, SqliteStore } from "@app/store-sqlite";
+import { CLAIM_NEXT_SQL, MIGRATION_001, SqliteStore } from "@app/store-sqlite";
 
 const temporaryDirectories: string[] = [];
 
@@ -38,9 +39,12 @@ function discoveryInput(
 ) {
   return {
     requestId,
+    githubAccountId: 123,
+    canonicalLogin: "ri7in",
     repositories: repositoryIds.map((repositoryId) => ({
       repositoryId,
       name: `repo-${repositoryId}`,
+      isFork: false,
       commitSha: "a".repeat(40),
     })),
     nowMs: 1_000,
@@ -54,7 +58,6 @@ async function createLedger(
 ) {
   await store.createRequest({
     requestId,
-    githubAccountId: 123,
     username: "ri7in",
     nowMs: 900,
   });
@@ -126,6 +129,7 @@ function publication(
       terminalState,
       reason: null,
       coverage: outcomes(),
+      findings: [],
       nowMs: 1_500,
     };
   }
@@ -137,6 +141,7 @@ function publication(
     terminalState,
     reason,
     coverage: outcomes(),
+    findings: [],
     nowMs: 1_500,
   };
 }
@@ -146,24 +151,45 @@ describe("SQLite store ledger", () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     const accepted = await store.createRequest({
       requestId: "req_0000000001",
-      githubAccountId: 123,
       username: "ri7in",
       nowMs: 100,
     });
     expect(accepted.state).toBe("accepted");
+    expect(accepted.githubAccountId).toBeNull();
     expect(accepted.discoveryComplete).toBe(false);
     expect(await store.startDiscovery(accepted.requestId, 110)).toBe(true);
     expect((await store.getRequest(accepted.requestId))?.state).toBe("discovering");
 
     const discovery = discoveryInput([1, 2]);
     expect(await store.completeDiscovery(discovery)).toBe("completed");
+    expect((await store.getRequest(accepted.requestId))?.githubAccountId).toBe(123);
     expect(await store.completeDiscovery(discovery)).toBe("idempotent");
+    expect(
+      await store.completeDiscovery({
+        ...discovery,
+        githubAccountId: 124,
+      }),
+    ).toBe("conflict");
+    expect(
+      await store.completeDiscovery({
+        ...discovery,
+        canonicalLogin: "renamed-user",
+      }),
+    ).toBe("conflict");
+    expect(
+      await store.completeDiscovery({
+        ...discovery,
+        repositories: discovery.repositories.map((repository, index) =>
+          index === 0 ? { ...repository, isFork: !repository.isFork } : repository,
+        ),
+      }),
+    ).toBe("conflict");
     expect(
       await store.completeDiscovery({
         ...discovery,
         repositories: [
           ...discovery.repositories,
-          { repositoryId: 3, name: "repo-3", commitSha: "b".repeat(40) },
+          { repositoryId: 3, name: "repo-3", isFork: true, commitSha: "b".repeat(40) },
         ],
       }),
     ).toBe("conflict");
@@ -174,7 +200,6 @@ describe("SQLite store ledger", () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     const accepted = await store.createRequest({
       requestId: "req_0000000001",
-      githubAccountId: 123,
       username: "ri7in",
       nowMs: 100,
     });
@@ -192,6 +217,40 @@ describe("SQLite store ledger", () => {
     expect(await store.completeDiscovery(discoveryInput([1]))).toBe(
       "invalid_state",
     );
+    store.close();
+  });
+
+  it("atomically prevents case-insensitive duplicate active usernames", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await store.createRequest({
+      requestId: "req_0000000001",
+      username: "ri7in",
+      nowMs: 100,
+    });
+    await expect(
+      store.createRequest({
+        requestId: "req_0000000002",
+        username: "RI7IN",
+        nowMs: 101,
+      }),
+    ).rejects.toThrow("request creation failed");
+    expect((await store.findActiveRequestByUsername("RI7IN"))?.requestId).toBe(
+      "req_0000000001",
+    );
+    await store.failRequest({
+      requestId: "req_0000000001",
+      reason: "CANCELLED",
+      nowMs: 102,
+    });
+    expect(
+      (
+        await store.createRequest({
+          requestId: "req_0000000002",
+          username: "RI7IN",
+          nowMs: 103,
+        })
+      ).requestId,
+    ).toBe("req_0000000002");
     store.close();
   });
 
@@ -222,6 +281,96 @@ describe("SQLite store ledger", () => {
     reopened.close();
   });
 
+  it("upgrades a version-one database before persisting fork identity", async () => {
+    const filename = databasePath();
+    const legacy = new Database(filename);
+    legacy.exec(MIGRATION_001);
+    legacy
+      .prepare(
+        "INSERT INTO schema_migrations(version, applied_at_ms) VALUES (1, 1)",
+      )
+      .run();
+    legacy
+      .prepare(
+        `INSERT INTO scan_requests(
+          request_id, github_account_id, username, state, reason,
+          discovery_complete, ai_lane, created_at_ms, updated_at_ms
+        ) VALUES (?, ?, ?, 'scanning', NULL, 1, 'ai_not_run', 1, 1)`,
+      )
+      .run("req_legacy0001", 999, "old-login");
+    legacy
+      .prepare(
+        `INSERT INTO repositories(
+          request_id, repository_id, name, commit_sha, state, reason,
+          attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
+          published_lease_generation, discovered_at_ms, updated_at_ms
+        ) VALUES (?, 99, 'legacy-repo', ?, 'waiting', NULL, 0, NULL, 0, NULL, NULL, 1, 1)`,
+      )
+      .run("req_legacy0001", "b".repeat(40));
+    const insertLegacyCoverage = legacy.prepare(
+      `INSERT INTO repository_coverage(
+        request_id, repository_id, specialist, progress_state
+      ) VALUES ('req_legacy0001', 99, ?, 'waiting')`,
+    );
+    for (const specialist of SPECIALISTS) {
+      insertLegacyCoverage.run(specialist);
+    }
+    legacy.close();
+
+    const store = new SqliteStore({ filename, migrationTimeMs: 2 });
+    expect((await store.getRequest("req_legacy0001"))?.githubAccountId).toBe(999);
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_legacy0001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({ repositoryId: 99, isFork: false });
+    await store.createRequest({
+      requestId: "req_0000000001",
+      username: "ri7in",
+      nowMs: 10,
+    });
+    expect(
+      await store.completeDiscovery({
+        ...discoveryInput([1]),
+        repositories: [
+          {
+            repositoryId: 1,
+            name: "forked",
+            isFork: true,
+            commitSha: "a".repeat(40),
+          },
+        ],
+      }),
+    ).toBe("completed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0]?.isFork,
+    ).toBe(true);
+    store.close();
+
+    const migrated = new Database(filename);
+    migrated.pragma("foreign_keys = ON");
+    expect(migrated.pragma("foreign_key_check")).toEqual([]);
+    migrated.prepare("DELETE FROM scan_requests WHERE request_id = ?").run(
+      "req_legacy0001",
+    );
+    expect(
+      migrated
+        .prepare("SELECT count(*) AS count FROM repositories WHERE request_id = ?")
+        .get("req_legacy0001"),
+    ).toEqual({ count: 0 });
+    migrated.close();
+  });
+
   it("records zero-repository and no-default-branch accounts without omission", async () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     const emptyAccount = await createLedger(store, []);
@@ -229,13 +378,12 @@ describe("SQLite store ledger", () => {
 
     await store.createRequest({
       requestId: "req_0000000002",
-      githubAccountId: 123,
       username: "ri7in",
       nowMs: 900,
     });
     const noBranchResult = await store.completeDiscovery({
       ...discoveryInput([], "req_0000000002"),
-      repositories: [{ repositoryId: 77, name: "blank", commitSha: null }],
+      repositories: [{ repositoryId: 77, name: "blank", isFork: false, commitSha: null }],
     });
     expect(noBranchResult).toBe("completed");
     const noBranch = await store.getRequest("req_0000000002");
@@ -257,15 +405,14 @@ describe("SQLite store ledger", () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     await store.createRequest({
       requestId: "req_0000000001",
-      githubAccountId: 123,
       username: "ri7in",
       nowMs: 900,
     });
     const duplicate = {
       ...discoveryInput([1]),
       repositories: [
-        { repositoryId: 1, name: "one", commitSha: "a".repeat(40) },
-        { repositoryId: 1, name: "duplicate", commitSha: "b".repeat(40) },
+        { repositoryId: 1, name: "one", isFork: false, commitSha: "a".repeat(40) },
+        { repositoryId: 1, name: "duplicate", isFork: false, commitSha: "b".repeat(40) },
       ],
     };
     await expect(store.completeDiscovery(duplicate)).rejects.toThrow(
@@ -379,7 +526,13 @@ describe("SQLite store leases", () => {
       }),
     ).toBe(false);
     expect(await store.requeueExpiredLeases(1_200)).toEqual({
-      requeued: 1,
+      requeued: [
+        {
+          requestId: first.requestId,
+          repositoryId: first.repositoryId,
+          generation: first.leaseGeneration,
+        },
+      ],
       exhausted: [],
     });
     const second = await store.claimNext({
@@ -496,9 +649,18 @@ describe("SQLite store leases", () => {
         1_000 + attempt * 100 + 50,
       );
       if (attempt < 3) {
-        expect(result).toEqual({ requeued: 1, exhausted: [] });
+        expect(result).toEqual({
+          requeued: [
+            {
+              requestId: claim.requestId,
+              repositoryId: claim.repositoryId,
+              generation: claim.leaseGeneration,
+            },
+          ],
+          exhausted: [],
+        });
       } else {
-        expect(result.requeued).toBe(0);
+        expect(result.requeued).toEqual([]);
         expect(result.exhausted).toHaveLength(1);
         exhausted = result.exhausted[0];
       }
@@ -563,7 +725,26 @@ describe("SQLite store publication", () => {
     });
     if (claimed === null) throw new Error("test expected claim");
     const lease = await advanceToWaitingToPublish(store, claimed, 1_200);
-    const input = publication(lease);
+    const input: PublishInput = {
+      ...publication(lease),
+      findings: [
+        {
+          schema_version: 1,
+          finding_id: "fnd_0000000001",
+          request_id: lease.requestId,
+          repository_id: lease.repositoryId,
+          commit_sha: "a".repeat(40),
+          engine: "gitleaks",
+          rule_id: "github-pat",
+          category: "secret",
+          severity: "high",
+          confidence: "high",
+          occurrence_bucket: "one",
+          remediation_key: "rotate-secret",
+          owner_detail_ref: "chunk_000001",
+        },
+      ],
+    };
     expect(await store.publish(input)).toBe("published");
     expect(await store.publish(input)).toBe("idempotent");
     expect(
@@ -575,6 +756,22 @@ describe("SQLite store publication", () => {
     expect(
       await store.publish({ ...input, generation: input.generation + 1 }),
     ).toBe("idempotency_conflict");
+    expect(
+      await store.publish({
+        ...input,
+        findings: input.findings.map((finding) => ({
+          ...finding,
+          occurrence_bucket: "two_to_five",
+        })),
+      }),
+    ).toBe("idempotency_conflict");
+    expect(
+      await store.listFindings({
+        requestId: input.requestId,
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: input.findings, nextFindingId: null });
     expect((await store.getRequest(input.requestId))?.state).toBe("complete");
     store.close();
   });

@@ -2,6 +2,7 @@
 import Database from "better-sqlite3";
 import {
   SPECIALISTS,
+  brokerDerivedFindingSchema,
   commitShaSchema,
   failureClassSchema,
   githubLoginSchema,
@@ -12,7 +13,9 @@ import {
   specialistCoverageOutcomeSchema,
   specialistProgressStateSchema,
   type AiLaneState,
+  type BrokerDerivedFinding,
   type FailureClass,
+  type GithubLogin,
   type OpaqueId,
   type RepositoryState,
   type ScanRequestState,
@@ -28,6 +31,8 @@ import {
   type DiscoveryCompletionResult,
   type ExhaustedLeaseRef,
   type FailRequestInput,
+  type FindingPageInput,
+  type FindingPageRecord,
   type FinalizeExhaustedInput,
   type HeartbeatInput,
   type LeaseIdentity,
@@ -43,7 +48,13 @@ import {
   type Store,
   type TransitionInput,
 } from "@app/core";
-import { MIGRATION_001, SCHEMA_VERSION } from "./migrations.js";
+import {
+  MIGRATION_001,
+  MIGRATION_002,
+  MIGRATION_003,
+  MIGRATION_004,
+  SCHEMA_VERSION,
+} from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 
 export interface SqliteStoreOptions {
@@ -53,7 +64,7 @@ export interface SqliteStoreOptions {
 
 interface RequestRow {
   request_id: string;
-  github_account_id: number;
+  github_account_id: number | null;
   username: string;
   state: string;
   reason: string | null;
@@ -67,6 +78,7 @@ interface RepositoryRow {
   request_id: string;
   repository_id: number;
   name: string;
+  is_fork: number;
   commit_sha: string | null;
   state: string;
   reason: string | null;
@@ -84,9 +96,64 @@ interface CoverageRow {
   progress_state: string;
 }
 
+interface FindingRow {
+  finding_id: string;
+  request_id: string;
+  repository_id: number;
+  commit_sha: string;
+  engine: string;
+  rule_id: string;
+  category: string;
+  severity: string;
+  confidence: string;
+  occurrence_bucket: string;
+  remediation_key: string;
+  owner_detail_ref: string;
+}
 
 function isSafeNonNegativeInteger(value: number): boolean {
   return Number.isSafeInteger(value) && value >= 0;
+}
+
+function parseFindingRow(row: FindingRow): BrokerDerivedFinding {
+  const parsed = brokerDerivedFindingSchema.safeParse({
+    schema_version: 1,
+    finding_id: row.finding_id,
+    request_id: row.request_id,
+    repository_id: row.repository_id,
+    commit_sha: row.commit_sha,
+    engine: row.engine,
+    rule_id: row.rule_id,
+    category: row.category,
+    severity: row.severity,
+    confidence: row.confidence,
+    occurrence_bucket: row.occurrence_bucket,
+    remediation_key: row.remediation_key,
+    owner_detail_ref: row.owner_detail_ref,
+  });
+  if (!parsed.success) throw new Error("invalid finding row");
+  return parsed.data;
+}
+
+function sameFinding(
+  left: BrokerDerivedFinding,
+  right: BrokerDerivedFinding,
+): boolean {
+  return (
+    left.schema_version === right.schema_version &&
+    left.finding_id === right.finding_id &&
+    left.request_id === right.request_id &&
+    left.repository_id === right.repository_id &&
+    left.commit_sha === right.commit_sha &&
+    left.engine === right.engine &&
+    left.rule_id === right.rule_id &&
+    left.category === right.category &&
+    left.severity === right.severity &&
+    left.confidence === right.confidence &&
+    left.occurrence_bucket === right.occurrence_bucket &&
+    left.remediation_key === right.remediation_key &&
+    left.owner_detail_ref === right.owner_detail_ref
+  );
 }
 
 function assertTime(value: number): void {
@@ -104,7 +171,8 @@ function assertOpaqueId(value: string): asserts value is OpaqueId {
 function parseRequestRow(row: RequestRow): ScanRequestRecord {
   assertOpaqueId(row.request_id);
   if (
-    !isSafeNonNegativeInteger(row.github_account_id) ||
+    (row.github_account_id !== null &&
+      !isSafeNonNegativeInteger(row.github_account_id)) ||
     !githubLoginSchema.safeParse(row.username).success ||
     !scanRequestStateSchema.safeParse(row.state).success ||
     (row.reason !== null && !failureClassSchema.safeParse(row.reason).success) ||
@@ -158,6 +226,7 @@ function parseRepositoryRow(
   if (
     !isSafeNonNegativeInteger(row.repository_id) ||
     !githubRepoNameSchema.safeParse(row.name).success ||
+    (row.is_fork !== 0 && row.is_fork !== 1) ||
     (row.commit_sha !== null && !commitShaSchema.safeParse(row.commit_sha).success) ||
     !repositoryStateSchema.safeParse(row.state).success ||
     (row.reason !== null && !failureClassSchema.safeParse(row.reason).success) ||
@@ -194,6 +263,7 @@ function parseRepositoryRow(
     requestId: row.request_id,
     repositoryId: row.repository_id,
     name: row.name,
+    isFork: row.is_fork === 1,
     commitSha: row.commit_sha,
     state: row.state as RepositoryState,
     reason: row.reason as FailureClass | null,
@@ -218,14 +288,47 @@ export class SqliteStore implements Store {
     assertTime(migrationTimeMs);
     try {
       this.#database = new Database(options.filename);
-      this.#database.pragma("foreign_keys = ON");
       this.#database.pragma("busy_timeout = 5000");
-      this.#database.exec(MIGRATION_001);
-      this.#database
-        .prepare(
+      // Version two rebuilds the request table to make the immutable GitHub id
+      // nullable until discovery. SQLite requires foreign keys to be disabled
+      // outside the migration transaction while that parent table is swapped.
+      this.#database.pragma("foreign_keys = OFF");
+      const migrate = this.#database.transaction(() => {
+        this.#database.exec(MIGRATION_001);
+        const recordMigration = this.#database.prepare(
           "INSERT OR IGNORE INTO schema_migrations(version, applied_at_ms) VALUES (?, ?)",
-        )
-        .run(SCHEMA_VERSION, migrationTimeMs);
+        );
+        recordMigration.run(1, migrationTimeMs);
+        const versionTwo = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 2")
+          .get() as { version: number } | undefined;
+        if (versionTwo === undefined) {
+          this.#database.exec(MIGRATION_002);
+          recordMigration.run(2, migrationTimeMs);
+        }
+        const versionThree = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 3")
+          .get() as { version: number } | undefined;
+        if (versionThree === undefined) {
+          this.#database.exec(MIGRATION_003);
+          recordMigration.run(3, migrationTimeMs);
+        }
+        const versionFour = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 4")
+          .get() as { version: number } | undefined;
+        if (versionFour === undefined) {
+          this.#database.exec(MIGRATION_004);
+          recordMigration.run(SCHEMA_VERSION, migrationTimeMs);
+        }
+      });
+      migrate();
+      const foreignKeyViolations = this.#database.pragma(
+        "foreign_key_check",
+      ) as unknown[];
+      if (foreignKeyViolations.length > 0) {
+        throw new Error("foreign key migration check failed");
+      }
+      this.#database.pragma("foreign_keys = ON");
     } catch {
       throw new Error("store initialization failed");
     }
@@ -243,11 +346,10 @@ export class SqliteStore implements Store {
           `INSERT INTO scan_requests(
             request_id, github_account_id, username, state, reason,
             discovery_complete, ai_lane, created_at_ms, updated_at_ms
-          ) VALUES (?, ?, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?)`,
+          ) VALUES (?, NULL, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?)`,
         )
         .run(
           input.requestId,
-          input.githubAccountId,
           input.username,
           input.nowMs,
           input.nowMs,
@@ -296,10 +398,10 @@ export class SqliteStore implements Store {
 
         const insertRepository = this.#database.prepare(
           `INSERT INTO repositories(
-            request_id, repository_id, name, commit_sha, state, reason,
+            request_id, repository_id, name, is_fork, commit_sha, state, reason,
             attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
             published_lease_generation, discovered_at_ms, updated_at_ms
-          ) VALUES (?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?)`,
         );
         const insertCoverage = this.#database.prepare(
           `INSERT INTO repository_coverage(
@@ -312,6 +414,7 @@ export class SqliteStore implements Store {
             input.requestId,
             repository.repositoryId,
             repository.name,
+            repository.isFork ? 1 : 0,
             repository.commitSha,
             state,
             input.nowMs,
@@ -332,11 +435,14 @@ export class SqliteStore implements Store {
         const result = this.#database
           .prepare(
             `UPDATE scan_requests
-             SET state = ?, reason = NULL, discovery_complete = 1, updated_at_ms = ?
+             SET github_account_id = ?, username = ?, state = ?, reason = NULL,
+                 discovery_complete = 1, updated_at_ms = ?
              WHERE request_id = ? AND discovery_complete = 0
                AND state IN ('accepted','discovering')`,
           )
           .run(
+            input.githubAccountId,
+            input.canonicalLogin,
             completeImmediately ? "complete" : "scanning",
             input.nowMs,
             input.requestId,
@@ -379,6 +485,23 @@ export class SqliteStore implements Store {
     return row === undefined ? null : parseRequestRow(row);
   }
 
+  async findActiveRequestByUsername(
+    username: GithubLogin,
+  ): Promise<ScanRequestRecord | null> {
+    if (!githubLoginSchema.safeParse(username).success) {
+      throw new Error("invalid GitHub username");
+    }
+    const row = this.#database
+      .prepare(
+        `SELECT * FROM scan_requests
+         WHERE username = ? COLLATE NOCASE
+           AND state IN ('accepted','discovering','scanning')
+         ORDER BY created_at_ms ASC LIMIT 1`,
+      )
+      .get(username) as RequestRow | undefined;
+    return row === undefined ? null : parseRequestRow(row);
+  }
+
   async listRepositories(
     input: RepositoryPageInput,
   ): Promise<RepositoryPageRecord> {
@@ -411,6 +534,32 @@ export class SqliteStore implements Store {
       nextRepositoryId:
         hasNext && repositories.length > 0
           ? repositories.at(-1)?.repositoryId ?? null
+          : null,
+    };
+  }
+
+  async listFindings(input: FindingPageInput): Promise<FindingPageRecord> {
+    assertOpaqueId(input.requestId);
+    if (input.afterFindingId !== null) assertOpaqueId(input.afterFindingId);
+    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100) {
+      throw new Error("invalid finding page");
+    }
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM findings
+         WHERE request_id = ? AND finding_id > ?
+         ORDER BY finding_id ASC LIMIT ?`,
+      )
+      .all(input.requestId, input.afterFindingId ?? "", input.limit + 1) as FindingRow[];
+    const hasNext = rows.length > input.limit;
+    const findings = (hasNext ? rows.slice(0, input.limit) : rows).map(
+      parseFindingRow,
+    );
+    return {
+      findings,
+      nextFindingId:
+        hasNext && findings.length > 0
+          ? findings.at(-1)?.finding_id ?? null
           : null,
     };
   }
@@ -479,7 +628,7 @@ export class SqliteStore implements Store {
         lease_generation: number;
       }>;
       const exhausted: ExhaustedLeaseRef[] = [];
-      let requeued = 0;
+      const requeued: ExhaustedLeaseRef[] = [];
       for (const row of rows) {
         if (row.attempt_count >= MAX_LEASE_ATTEMPTS) {
           assertOpaqueId(row.request_id);
@@ -499,7 +648,14 @@ export class SqliteStore implements Store {
                  AND lease_expires_at_ms <= ?`,
             )
             .run(nowMs, row.request_id, row.repository_id, nowMs);
-          requeued += result.changes;
+          if (result.changes === 1) {
+            assertOpaqueId(row.request_id);
+            requeued.push({
+              requestId: row.request_id,
+              repositoryId: row.repository_id,
+              generation: row.lease_generation,
+            });
+          }
         }
       }
       return { requeued, exhausted };
@@ -659,6 +815,12 @@ export class SqliteStore implements Store {
         if (row === undefined) {
           return "stale_lease";
         }
+        if (
+          row.commit_sha === null ||
+          input.findings.some((finding) => finding.commit_sha !== row.commit_sha)
+        ) {
+          throw new Error("finding commit mismatch");
+        }
 
         // At-least-once retry is checked before lease staleness. The key is
         // server-derived from repository/commit identity plus lease generation;
@@ -676,7 +838,8 @@ export class SqliteStore implements Store {
           );
           return row.state === input.terminalState &&
             row.reason === input.reason &&
-            sameCoverage
+            sameCoverage &&
+            this.#publicationFindingsMatch(input)
             ? "idempotent"
             : "idempotency_conflict";
         }
@@ -710,6 +873,30 @@ export class SqliteStore implements Store {
           if (result.changes !== 1) {
             throw new Error("coverage publication failed");
           }
+        }
+
+        const insertFinding = this.#database.prepare(
+          `INSERT INTO findings(
+            finding_id, request_id, repository_id, commit_sha, engine,
+            rule_id, category, severity, confidence, occurrence_bucket,
+            remediation_key, owner_detail_ref
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        );
+        for (const finding of input.findings) {
+          insertFinding.run(
+            finding.finding_id,
+            finding.request_id,
+            finding.repository_id,
+            finding.commit_sha,
+            finding.engine,
+            finding.rule_id,
+            finding.category,
+            finding.severity,
+            finding.confidence,
+            finding.occurrence_bucket,
+            finding.remediation_key,
+            finding.owner_detail_ref,
+          );
         }
 
         const result = this.#database
@@ -768,13 +955,30 @@ export class SqliteStore implements Store {
     return coverageFromRows(rows);
   }
 
+  #publicationFindingsMatch(input: PublishInput): boolean {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM findings
+         WHERE request_id = ? AND repository_id = ? ORDER BY finding_id`,
+      )
+      .all(input.requestId, input.repositoryId) as FindingRow[];
+    const current = rows.map(parseFindingRow);
+    const expected = [...input.findings].toSorted((left, right) =>
+      left.finding_id.localeCompare(right.finding_id),
+    );
+    return (
+      current.length === expected.length &&
+      current.every((finding, index) => {
+        const candidate = expected[index];
+        return candidate !== undefined && sameFinding(finding, candidate);
+      })
+    );
+  }
+
   #validateCreateInput(input: CreateRequestInput): void {
     assertOpaqueId(input.requestId);
     assertTime(input.nowMs);
-    if (
-      !isSafeNonNegativeInteger(input.githubAccountId) ||
-      !githubLoginSchema.safeParse(input.username).success
-    ) {
+    if (!githubLoginSchema.safeParse(input.username).success) {
       throw new Error("invalid request input");
     }
   }
@@ -782,12 +986,19 @@ export class SqliteStore implements Store {
   #validateDiscoveryInput(input: CompleteDiscoveryInput): void {
     assertOpaqueId(input.requestId);
     assertTime(input.nowMs);
+    if (
+      !isSafeNonNegativeInteger(input.githubAccountId) ||
+      !githubLoginSchema.safeParse(input.canonicalLogin).success
+    ) {
+      throw new Error("invalid discovered account");
+    }
     const ids = new Set<number>();
     for (const repository of input.repositories) {
       if (
         !isSafeNonNegativeInteger(repository.repositoryId) ||
         ids.has(repository.repositoryId) ||
         !githubRepoNameSchema.safeParse(repository.name).success ||
+        typeof repository.isFork !== "boolean" ||
         (repository.commitSha !== null &&
           !commitShaSchema.safeParse(repository.commitSha).success)
       ) {
@@ -798,14 +1009,29 @@ export class SqliteStore implements Store {
   }
 
   #discoveryMatches(input: CompleteDiscoveryInput): boolean {
+    const request = this.#database
+      .prepare(
+        "SELECT github_account_id, username FROM scan_requests WHERE request_id = ?",
+      )
+      .get(input.requestId) as
+      | { github_account_id: number | null; username: string }
+      | undefined;
+    if (
+      request === undefined ||
+      request.github_account_id !== input.githubAccountId ||
+      request.username !== input.canonicalLogin
+    ) {
+      return false;
+    }
     const rows = this.#database
       .prepare(
-        `SELECT repository_id, name, commit_sha FROM repositories
+        `SELECT repository_id, name, is_fork, commit_sha FROM repositories
          WHERE request_id = ? ORDER BY repository_id`,
       )
       .all(input.requestId) as Array<{
       repository_id: number;
       name: string;
+      is_fork: number;
       commit_sha: string | null;
     }>;
     const expected = [...input.repositories].toSorted(
@@ -819,6 +1045,7 @@ export class SqliteStore implements Store {
           repository !== undefined &&
           row.repository_id === repository.repositoryId &&
           row.name === repository.name &&
+          row.is_fork === (repository.isFork ? 1 : 0) &&
           row.commit_sha === repository.commitSha
         );
       })
@@ -875,6 +1102,26 @@ export class SqliteStore implements Store {
       if (!specialistCoverageOutcomeSchema.safeParse(input.coverage[specialist]).success) {
         throw new Error("invalid publication coverage");
       }
+    }
+    if (input.findings.length > 1_024) {
+      throw new Error("invalid publication findings");
+    }
+    const findingIds = new Set<string>();
+    const engineRules = new Set<string>();
+    for (const finding of input.findings) {
+      const parsed = brokerDerivedFindingSchema.safeParse(finding);
+      const engineRule = `${finding.engine}\0${finding.rule_id}`;
+      if (
+        !parsed.success ||
+        finding.request_id !== input.requestId ||
+        finding.repository_id !== input.repositoryId ||
+        findingIds.has(finding.finding_id) ||
+        engineRules.has(engineRule)
+      ) {
+        throw new Error("invalid publication findings");
+      }
+      findingIds.add(finding.finding_id);
+      engineRules.add(engineRule);
     }
   }
 }

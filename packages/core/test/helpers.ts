@@ -28,6 +28,7 @@ export function repository(
     requestId: "req_0000000001",
     repositoryId,
     name: `repo-${repositoryId}`,
+    isFork: false,
     commitSha: "a".repeat(40),
     state,
     reason: null,

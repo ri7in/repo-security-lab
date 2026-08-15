@@ -12,12 +12,14 @@ import type {
   Specialist,
   SpecialistCoverageOutcome,
   SpecialistProgressState,
+  BrokerDerivedFinding,
 } from "@app/contracts";
 
 export interface ScanRequestRecord {
   readonly schemaVersion: 1;
   readonly requestId: OpaqueId;
-  readonly githubAccountId: number;
+  /** Null until discovery atomically binds GitHub's immutable account id. */
+  readonly githubAccountId: number | null;
   readonly username: GithubLogin;
   readonly state: ScanRequestState;
   readonly reason: FailureClass | null;
@@ -41,6 +43,7 @@ export interface RepositoryRecord {
   readonly requestId: OpaqueId;
   readonly repositoryId: number;
   readonly name: GithubRepoName;
+  readonly isFork: boolean;
   readonly commitSha: CommitSha | null;
   readonly state: RepositoryState;
   readonly reason: FailureClass | null;
@@ -57,18 +60,20 @@ export interface RepositoryRecord {
 export interface DiscoveredRepository {
   readonly repositoryId: number;
   readonly name: GithubRepoName;
+  readonly isFork: boolean;
   readonly commitSha: CommitSha | null;
 }
 
 export interface CreateRequestInput {
   readonly requestId: OpaqueId;
-  readonly githubAccountId: number;
   readonly username: GithubLogin;
   readonly nowMs: number;
 }
 
 export interface CompleteDiscoveryInput {
   readonly requestId: OpaqueId;
+  readonly githubAccountId: number;
+  readonly canonicalLogin: GithubLogin;
   readonly repositories: readonly DiscoveredRepository[];
   readonly nowMs: number;
 }
@@ -114,6 +119,7 @@ export interface TransitionInput extends LeaseRef {
 
 interface PublishInputBase extends LeaseRef {
   readonly coverage: SpecialistOutcomes;
+  readonly findings: readonly BrokerDerivedFinding[];
   readonly nowMs: number;
 }
 
@@ -137,7 +143,8 @@ export interface ExhaustedLeaseRef {
 }
 
 export interface RequeueExpiredResult {
-  readonly requeued: number;
+  /** Exact stale-generation scratch roots to remove after rows are requeued. */
+  readonly requeued: readonly ExhaustedLeaseRef[];
   /** Exact expired generations whose scratch roots require janitor proof. */
   readonly exhausted: readonly ExhaustedLeaseRef[];
 }
@@ -166,6 +173,17 @@ export interface RepositoryPageRecord {
   readonly nextRepositoryId: number | null;
 }
 
+export interface FindingPageInput {
+  readonly requestId: OpaqueId;
+  readonly afterFindingId: OpaqueId | null;
+  readonly limit: number;
+}
+
+export interface FindingPageRecord {
+  readonly findings: readonly BrokerDerivedFinding[];
+  readonly nextFindingId: OpaqueId | null;
+}
+
 export interface RequestAggregate {
   readonly request: ScanRequestRecord;
   readonly repositories: readonly RepositoryRecord[];
@@ -182,7 +200,9 @@ export interface Store {
   completeDiscovery(input: CompleteDiscoveryInput): Promise<DiscoveryCompletionResult>;
   failRequest(input: FailRequestInput): Promise<boolean>;
   getRequest(requestId: OpaqueId): Promise<ScanRequestRecord | null>;
+  findActiveRequestByUsername(username: GithubLogin): Promise<ScanRequestRecord | null>;
   listRepositories(input: RepositoryPageInput): Promise<RepositoryPageRecord>;
+  listFindings(input: FindingPageInput): Promise<FindingPageRecord>;
   claimNext(input: ClaimInput): Promise<RepositoryRecord | null>;
   heartbeat(input: HeartbeatInput): Promise<boolean>;
   requeueExpiredLeases(nowMs: number): Promise<RequeueExpiredResult>;
