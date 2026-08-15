@@ -295,4 +295,39 @@ describe("anonymous-safe control-plane API", () => {
     ).toBe(404);
     database.close();
   });
+
+  it("rejects DNS-rebinding host headers in runtime mode", async () => {
+    const database = await store();
+    const app = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      operatorMode: true,
+      bindHost: "127.0.0.1",
+      enforceHostHeader: true,
+      dispatch: () => undefined,
+    });
+    const rebound = await app.request("/api/scan-requests", {
+      method: "POST",
+      headers: {
+        host: "attacker.example",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ username: "ri7in" }),
+    });
+    expect(rebound.status).toBe(404);
+    expect(await database.findActiveRequestByUsername("ri7in")).toBeNull();
+
+    const local = await app.request("/api/scan-requests", {
+      method: "POST",
+      headers: {
+        host: "127.0.0.1:5173",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ username: "ri7in" }),
+    });
+    expect(local.status).toBe(202);
+    database.close();
+  });
 });

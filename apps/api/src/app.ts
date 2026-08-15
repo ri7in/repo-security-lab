@@ -72,6 +72,7 @@ export interface ApiOptions {
   readonly createRequestId?: () => string;
   readonly operatorMode?: boolean;
   readonly bindHost?: string;
+  readonly enforceHostHeader?: boolean;
 }
 
 function discoveryFailure(error: unknown) {
@@ -98,6 +99,18 @@ function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1";
 }
 
+function matchesBindHost(hostHeader: string | undefined, bindHost: string): boolean {
+  if (hostHeader === undefined) return false;
+  const pattern =
+    bindHost === "::1"
+      ? /^\[::1\](?::(\d{1,5}))?$/
+      : /^127\.0\.0\.1(?::(\d{1,5}))?$/;
+  const match = pattern.exec(hostHeader);
+  if (match === null) return false;
+  const port = match[1];
+  return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
+}
+
 export function createApi(options: ApiOptions): Hono {
   const now = options.now ?? Date.now;
   const createRequestId =
@@ -111,6 +124,7 @@ export function createApi(options: ApiOptions): Hono {
     });
   const operatorMode = options.operatorMode ?? false;
   const bindHost = options.bindHost ?? "127.0.0.1";
+  const enforceHostHeader = options.enforceHostHeader ?? false;
   if (operatorMode && !isLoopback(bindHost)) {
     throw new Error("operator mode requires loopback binding");
   }
@@ -163,6 +177,14 @@ export function createApi(options: ApiOptions): Hono {
     context.header("X-Content-Type-Options", "nosniff");
     context.header("Referrer-Policy", "no-referrer");
   });
+  if (enforceHostHeader) {
+    app.use("*", async (context, next) => {
+      if (!matchesBindHost(context.req.header("host"), bindHost)) {
+        return context.json({ reason: "NOT_FOUND" }, 404);
+      }
+      await next();
+    });
+  }
 
   app.post("/api/scan-requests", async (context) => {
     let body: unknown;

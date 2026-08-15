@@ -51,6 +51,7 @@ const app = createApi({
   allowedGithubAccountIds: configuration.allowedGithubAccountIds,
   operatorMode: configuration.operatorMode,
   bindHost: configuration.host,
+  enforceHostHeader: true,
 });
 
 let workerBusy = false;

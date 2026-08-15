@@ -25,8 +25,10 @@ current stable majors instead: `zod ^4`, `vitest ^4` (+ matching
 `@vitest/coverage-v8`), `typescript ^5.9`, `eslint ^9` with
 `typescript-eslint ^8`, `@types/node ^24` (matching the Node 24 CI target).
 Schemas use the Zod 4 API (`z.strictObject`, exhaustive enum records,
-`z.iso.datetime`). External runtime dependencies remain limited to Zod,
-Hono plus its Node adapter, and better-sqlite3.
+`z.iso.datetime`). Vite moved from 6 to 7 and better-sqlite3 from 12 to 13;
+Hono remains on 4 and its Node adapter on 2. The exact lock resolves Zod 4.4.3,
+Vite 7.3.6, better-sqlite3 13.0.3, Hono 4.13.2, and the Node adapter 2.1.1.
+External runtime dependencies remain limited to those three runtime families.
 
 ## ADR-003: internal packages resolve TypeScript source; no build artifact yet
 
@@ -156,3 +158,15 @@ package records `MIT`; contribution/security guidance and third-party notices
 are committed with the source. This selection can be revisited before public
 release, but the repository is no longer left in the legally ambiguous
 "source visible but no permission granted" state.
+
+## ADR-012: loopback runtime rejects DNS rebinding
+
+**Status:** accepted (2026-08-16)
+
+Loopback binding alone is not an owner-authentication boundary: a hostile DNS
+name can resolve to `127.0.0.1` and make same-origin browser requests to a
+local service. The composed runtime therefore accepts only a literal Host
+header matching its configured `127.0.0.1` or `[::1]` bind (with a valid port).
+The in-process app keeps this enforcement opt-in for unit embedding, while the
+real server always enables it. A Vite-proxy smoke proof returned 400 through
+the legitimate local host and fixed 404 for an attacker Host.

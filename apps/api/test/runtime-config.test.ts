@@ -32,7 +32,17 @@ describe("private local runtime configuration", () => {
       environment({ HOST: "0.0.0.0" }),
       environment({ HOST: "localhost" }),
       environment({ PRIVATE_SLICE_ACCOUNT_IDS: "not-an-id" }),
+      environment({ PRIVATE_SLICE_ACCOUNT_IDS: "123,0123" }),
+      environment({ PRIVATE_SLICE_LOGINS: "ri7in,RI7IN" }),
       environment({ GITLEAKS_SHA256: "short" }),
+      environment({
+        DATABASE_PATH: "/product/.data/scratch/store.sqlite",
+        SCRATCH_PATH: "/product/.data/scratch",
+      }),
+      environment({
+        GITLEAKS_BINARY: "/product/.data/scratch/gitleaks",
+        SCRATCH_PATH: "/product/.data/scratch",
+      }),
     ]) {
       expect(() => parseRuntimeConfiguration(invalid)).toThrow();
     }

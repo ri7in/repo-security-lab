@@ -12,6 +12,7 @@ const DEFAULT_REST_URL = "https://api.github.com";
 const API_VERSION = "2022-11-28";
 const CODELOAD_HOST = "codeload.github.com";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_MINIMUM_INTERVAL_MS = 2_000;
 
 export const MAX_COMPRESSED_ARCHIVE_BYTES = 50 * 1_024 * 1_024;
 
@@ -105,7 +106,8 @@ export class GithubArchiveClient {
       throw new Error("invalid GitHub archive base URL");
     }
     this.#restBaseUrl = restBaseUrl.href.replace(/\/$/, "");
-    this.#minimumIntervalMs = options.minimumIntervalMs ?? 500;
+    this.#minimumIntervalMs =
+      options.minimumIntervalMs ?? DEFAULT_MINIMUM_INTERVAL_MS;
     if (
       !Number.isSafeInteger(this.#minimumIntervalMs) ||
       this.#minimumIntervalMs < 0 ||

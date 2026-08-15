@@ -1,6 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import {
-  chmod,
   lstat,
   mkdir,
   readdir,
@@ -180,17 +179,23 @@ export class RepositoryWorker {
   }
 
   async initialize(): Promise<void> {
+    if (this.#scratchBase === path.parse(this.#scratchBase).root) {
+      throw new Error("invalid worker scratch root");
+    }
     await mkdir(this.#scratchBase, { recursive: true, mode: 0o700 });
     const configuredMetadata = await lstat(this.#scratchBase);
-    if (!configuredMetadata.isDirectory() || configuredMetadata.isSymbolicLink()) {
+    if (
+      !configuredMetadata.isDirectory() ||
+      configuredMetadata.isSymbolicLink() ||
+      (configuredMetadata.mode & 0o077) !== 0
+    ) {
       throw new Error("invalid worker scratch root");
     }
     const resolved = await realpath(this.#scratchBase);
     const metadata = await lstat(resolved);
-    if (!metadata.isDirectory()) {
+    if (!metadata.isDirectory() || (metadata.mode & 0o077) !== 0) {
       throw new Error("invalid worker scratch root");
     }
-    await chmod(resolved, 0o700);
   }
 
   /** Call only during single-worker startup, before any lease is claimed. */

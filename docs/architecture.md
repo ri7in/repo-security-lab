@@ -31,7 +31,8 @@ remain gated on Linux isolation and an approved deployment identity.
    publish findings with durable lease identity.
 9. The anonymous API exposes exhaustive status and coverage, never findings.
    A local operator endpoint is available only when explicitly enabled and
-   bound to loopback.
+   bound to loopback. The composed runtime also validates the literal `Host`
+   header to reject DNS-rebinding access.
 
 ## Trust boundaries
 
@@ -83,7 +84,8 @@ deterministic finding.
 `apps/api/src/server.ts` composes the real local stack. It requires immutable
 GitHub account IDs and the exact scanner path/hash, removes startup orphans,
 reaps expired generations, and polls work without concurrent ticks. It refuses
-all public bind addresses. The private worker also terminalizes forks as
+all public bind addresses and non-matching Host headers. The private worker
+also terminalizes forks as
 `PRIVATE_SLICE_SCOPE`: owning a fork does not make its upstream source
 operator-authored. The web development server proxies `/api` to this loopback
 runtime.

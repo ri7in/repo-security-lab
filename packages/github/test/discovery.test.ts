@@ -328,6 +328,26 @@ describe("fixed failures", () => {
     ).rejects.toMatchObject({ code: "NETWORK_FAILED" });
   });
 
+  it("stream-bounds a response even when content-length is absent", async () => {
+    let cancelled = false;
+    const fetchImpl: typeof fetch = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(new Uint8Array(2 * 1_024 * 1_024));
+            controller.enqueue(new Uint8Array([1]));
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+      );
+    await expect(
+      new GithubDiscoveryClient({ token: "test", fetchImpl }).discover("ri7in"),
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    expect(cancelled).toBe(true);
+  });
+
   it("rejects an invalid username before network access", async () => {
     let called = false;
     const fetchImpl: typeof fetch = async () => {

@@ -162,14 +162,13 @@ describe("immutable GitHub archive client", () => {
     });
   });
 
-  it("serializes concurrent archive starts at the configured interval", async () => {
+  it("serializes concurrent archive starts at the two-second default interval", async () => {
     let now = 1_000;
     const delays: number[] = [];
     const fetchImpl: typeof fetch = async () =>
       new Response(new Uint8Array([1]));
     const client = new GithubArchiveClient({
       fetchImpl,
-      minimumIntervalMs: 500,
       now: () => now,
       sleep: async (milliseconds) => {
         delays.push(milliseconds);
@@ -180,6 +179,6 @@ describe("immutable GitHub archive client", () => {
       client.fetchArchive({ owner: "ri7in", repository: "one", commitSha: SHA }),
       client.fetchArchive({ owner: "ri7in", repository: "two", commitSha: SHA }),
     ]);
-    expect(delays).toEqual([500]);
+    expect(delays).toEqual([2_000]);
   });
 });

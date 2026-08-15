@@ -1,5 +1,15 @@
 /* eslint-disable @typescript-eslint/require-await -- worker port doubles model asynchronous boundaries */
-import { readFile, readdir, writeFile, mkdtemp, rm, mkdir, symlink } from "node:fs/promises";
+import {
+  chmod,
+  lstat,
+  readFile,
+  readdir,
+  writeFile,
+  mkdtemp,
+  rm,
+  mkdir,
+  symlink,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
@@ -149,6 +159,18 @@ describe("leased repository worker", () => {
     await expect(
       worker(store, files.scratch, archiveFetcher(archive())).initialize(),
     ).rejects.toThrow("invalid worker scratch root");
+    store.close();
+  });
+
+  it("refuses a permissive existing scratch root without changing its mode", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await mkdir(files.scratch, { mode: 0o755 });
+    await chmod(files.scratch, 0o755);
+    await expect(
+      worker(store, files.scratch, archiveFetcher(archive())).initialize(),
+    ).rejects.toThrow("invalid worker scratch root");
+    expect((await lstat(files.scratch)).mode & 0o777).toBe(0o755);
     store.close();
   });
 
@@ -309,11 +331,15 @@ describe("leased repository worker", () => {
       repositoryId: 7,
       generation: 1,
     });
+    const repositoryWorker = worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive()),
+    );
+    await repositoryWorker.initialize();
     await mkdir(exactRoot, { recursive: true });
     await writeFile(path.join(exactRoot, "orphan-source"), "RVN_ORPHAN_SOURCE");
-    expect(
-      await worker(store, files.scratch, archiveFetcher(archive())).runOne(),
-    ).toBe("failed");
+    expect(await repositoryWorker.runOne()).toBe("failed");
     expect(await readdir(files.scratch)).toEqual([]);
     expect(
       (

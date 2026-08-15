@@ -14,6 +14,7 @@ const API_VERSION = "2022-11-28";
 const MAX_PAGES = 1_000;
 const MAX_JSON_BYTES = 2 * 1_024 * 1_024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
+const strictJsonDecoder = new TextDecoder("utf-8", { fatal: true });
 
 const safeGithubIdSchema = z.number().int().nonnegative().safe();
 
@@ -113,6 +114,41 @@ export interface GithubDiscoveryClientOptions {
 interface JsonResponse {
   readonly body: unknown;
   readonly headers: Headers;
+}
+
+async function cancelBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+async function readBoundedBody(response: Response): Promise<Uint8Array> {
+  if (response.body === null) throw new GithubClientError("INVALID_RESPONSE");
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const result = await reader.read();
+      if (result.done) break;
+      total += result.value.byteLength;
+      if (total > MAX_JSON_BYTES) {
+        await reader.cancel().catch(() => undefined);
+        throw new GithubClientError("INVALID_RESPONSE");
+      }
+      chunks.push(result.value);
+    }
+  } catch {
+    await reader.cancel().catch(() => undefined);
+    throw new GithubClientError("INVALID_RESPONSE");
+  } finally {
+    reader.releaseLock();
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
 }
 
 function validatedHttpsEndpoint(raw: string, label: string): URL {
@@ -430,12 +466,15 @@ export class GithubDiscoveryClient {
       throw new GithubClientError("NETWORK_FAILED");
     }
     if (response.status === 401) {
+      await cancelBody(response);
       throw new GithubClientError("AUTH_REQUIRED");
     }
     if (commitLookup && response.status === 409) {
+      await cancelBody(response);
       throw new GithubClientError("EMPTY_REPOSITORY");
     }
     if (response.status === 404) {
+      await cancelBody(response);
       throw new GithubClientError(
         commitLookup ? "REPOSITORY_CHANGED" : "ACCOUNT_NOT_FOUND",
       );
@@ -444,29 +483,32 @@ export class GithubDiscoveryClient {
       response.status === 429 ||
       (response.status === 403 && this.#isRateLimitResponse(response.headers))
     ) {
+      await cancelBody(response);
       throw new GithubClientError(
         "RATE_LIMITED",
         this.#retryAfterSeconds(response.headers),
       );
     }
     if (!response.ok) {
+      await cancelBody(response);
       throw new GithubClientError("UPSTREAM_FAILED");
     }
     const contentLength = response.headers.get("content-length");
-    if (
-      contentLength !== null &&
-      /^\d+$/.test(contentLength) &&
-      Number(contentLength) > MAX_JSON_BYTES
-    ) {
-      throw new GithubClientError("INVALID_RESPONSE");
-    }
-    try {
-      const bytes = await response.arrayBuffer();
-      if (bytes.byteLength > MAX_JSON_BYTES) {
+    if (contentLength !== null) {
+      const parsedLength = Number(contentLength);
+      if (
+        !/^\d+$/.test(contentLength) ||
+        !Number.isSafeInteger(parsedLength) ||
+        parsedLength > MAX_JSON_BYTES
+      ) {
+        await cancelBody(response);
         throw new GithubClientError("INVALID_RESPONSE");
       }
+    }
+    try {
+      const bytes = await readBoundedBody(response);
       return {
-        body: JSON.parse(new TextDecoder().decode(bytes)) as unknown,
+        body: JSON.parse(strictJsonDecoder.decode(bytes)) as unknown,
         headers: response.headers,
       };
     } catch {

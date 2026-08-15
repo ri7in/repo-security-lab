@@ -32,6 +32,16 @@ function csv(value: string): string[] {
   return entries;
 }
 
+function isInside(parent: string, candidate: string): boolean {
+  const relative = path.relative(parent, candidate);
+  return (
+    relative === "" ||
+    (!relative.startsWith(`..${path.sep}`) &&
+      relative !== ".." &&
+      !path.isAbsolute(relative))
+  );
+}
+
 export function parseRuntimeConfiguration(
   environment: NodeJS.ProcessEnv,
   cwd = process.cwd(),
@@ -49,8 +59,9 @@ export function parseRuntimeConfiguration(
   );
   if (
     accountIds.some(
-      (value) => !Number.isSafeInteger(value) || value < 0,
-    )
+      (value) => !Number.isSafeInteger(value) || value <= 0,
+    ) ||
+    new Set(accountIds).size !== accountIds.length
   ) {
     throw new Error("invalid PRIVATE_SLICE_ACCOUNT_IDS");
   }
@@ -59,27 +70,40 @@ export function parseRuntimeConfiguration(
     throw new Error("invalid GITLEAKS_SHA256");
   }
   const dataRoot = path.resolve(cwd, ".data");
+  const databasePath = path.resolve(
+    environment["DATABASE_PATH"] ?? path.join(dataRoot, "store.sqlite"),
+  );
+  const scratchPath = path.resolve(
+    environment["SCRATCH_PATH"] ?? path.join(dataRoot, "scratch"),
+  );
+  const gitleaksBinary = path.resolve(required(environment, "GITLEAKS_BINARY"));
+  if (
+    databasePath === path.parse(databasePath).root ||
+    scratchPath === path.parse(scratchPath).root ||
+    isInside(scratchPath, databasePath) ||
+    isInside(scratchPath, gitleaksBinary)
+  ) {
+    throw new Error("invalid runtime path relationship");
+  }
+  const requestedLogins = csv(
+    environment["PRIVATE_SLICE_LOGINS"] ?? "ri7in",
+  ).map((value) => value.toLowerCase());
+  if (new Set(requestedLogins).size !== requestedLogins.length) {
+    throw new Error("invalid PRIVATE_SLICE_LOGINS");
+  }
   return {
     host,
     port,
-    databasePath: path.resolve(
-      environment["DATABASE_PATH"] ?? path.join(dataRoot, "store.sqlite"),
-    ),
-    scratchPath: path.resolve(
-      environment["SCRATCH_PATH"] ?? path.join(dataRoot, "scratch"),
-    ),
+    databasePath,
+    scratchPath,
     githubToken:
       environment["GITHUB_TOKEN"] === undefined ||
       environment["GITHUB_TOKEN"] === ""
         ? undefined
         : environment["GITHUB_TOKEN"],
-    gitleaksBinary: path.resolve(required(environment, "GITLEAKS_BINARY")),
+    gitleaksBinary,
     gitleaksSha256,
-    allowedRequestedLogins: new Set(
-      csv(environment["PRIVATE_SLICE_LOGINS"] ?? "ri7in").map((value) =>
-        value.toLowerCase(),
-      ),
-    ),
+    allowedRequestedLogins: new Set(requestedLogins),
     allowedGithubAccountIds: new Set(accountIds),
     operatorMode: environment["OPERATOR_MODE"] === "true",
   };
