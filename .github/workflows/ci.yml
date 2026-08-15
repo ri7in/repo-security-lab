@@ -21,6 +21,7 @@ jobs:
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
+          fetch-depth: 0
 
       - name: Install pnpm
         uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
@@ -73,7 +74,7 @@ jobs:
       - name: Build web application
         run: pnpm build
 
-      - name: Self-scan repository
+      - name: Self-scan repository tree and history
         shell: bash
         run: |
           set -euo pipefail
@@ -93,3 +94,17 @@ jobs:
             --no-color \
             .
           test "$(tr -d '[:space:]' < /tmp/gitleaks-self-scan.json)" = "[]"
+          "$GITLEAKS_BINARY" git \
+            --config packages/scanners/config/gitleaks.toml \
+            --gitleaks-ignore-path packages/scanners/config/gitleaks.ignore \
+            --ignore-gitleaks-allow \
+            --max-decode-depth 2 \
+            --exit-code 1 \
+            --report-format json \
+            --report-path /tmp/gitleaks-history-scan.json \
+            --redact=100 \
+            --log-level error \
+            --no-banner \
+            --no-color \
+            .
+          test "$(tr -d '[:space:]' < /tmp/gitleaks-history-scan.json)" = "[]"

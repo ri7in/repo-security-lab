@@ -108,7 +108,7 @@ the owner's personal account rather than the excluded organization account.
 - CI pins every third-party action to a full commit SHA, downloads the exact
   Gitleaks Linux archive and verifies both archive and binary hashes, runs the
   full gate and real-binary canary proof, builds the web app, and self-scans the
-  repository.
+  repository tree plus full Git history.
 
 ## Known release gates
 

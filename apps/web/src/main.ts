@@ -74,7 +74,14 @@ function renderSummary(summary: ScanRequestSummary): void {
     [String(total), "repositories"],
     [String(terminal), "terminal"],
     [String(summary.repositoryTotals.complete), "fully complete"],
-    [String(summary.repositoryTotals.failed + summary.repositoryTotals.partial), "needs attention"],
+    [
+      String(
+        summary.repositoryTotals.failed +
+          summary.repositoryTotals.partial +
+          summary.repositoryTotals.cancelled,
+      ),
+      "needs attention",
+    ],
   ];
   summaryGrid.replaceChildren(
     ...values.map(([value, label]) => {
