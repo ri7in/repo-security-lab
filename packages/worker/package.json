@@ -1,0 +1,21 @@
+{
+  "name": "@app/worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@app/archive": "workspace:*",
+    "@app/broker": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/core": "workspace:*",
+    "@app/github": "workspace:*",
+    "@app/normalize": "workspace:*",
+    "@app/scanners": "workspace:*"
+  },
+  "devDependencies": {
+    "@app/store-sqlite": "workspace:*"
+  }
+}

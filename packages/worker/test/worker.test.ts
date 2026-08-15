@@ -1,0 +1,357 @@
+/* eslint-disable @typescript-eslint/require-await -- worker port doubles model asynchronous boundaries */
+import { readFile, readdir, writeFile, mkdtemp, rm, mkdir, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { gzipSync } from "node:zlib";
+import { afterEach, describe, expect, it } from "vitest";
+import { SourceBlindBroker } from "@app/broker";
+import { SqliteStore } from "@app/store-sqlite";
+import { GITLEAKS_BROKER_MANIFEST } from "@app/scanners";
+import {
+  RepositoryWorker,
+  scratchPathFor,
+  type ArchiveFetcher,
+  type SecretScanner,
+} from "@app/worker";
+
+const temporaryDirectories: string[] = [];
+const SHA = "a".repeat(40);
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories.splice(0).map((directory) =>
+      rm(directory, { recursive: true, force: true }),
+    ),
+  );
+});
+
+async function workspace(): Promise<{ root: string; database: string; scratch: string }> {
+  const root = await mkdtemp(path.join(tmpdir(), "repo-security-worker-"));
+  temporaryDirectories.push(root);
+  return {
+    root,
+    database: path.join(root, "store.sqlite"),
+    scratch: path.join(root, "scratch"),
+  };
+}
+
+function octal(value: number, width: number): Buffer {
+  return Buffer.from(`${value.toString(8).padStart(width - 1, "0")}\0`, "ascii");
+}
+
+function tarEntry(name: string, data: Buffer): Buffer {
+  const block = Buffer.alloc(512);
+  block.write(name, 0, 100, "utf8");
+  octal(0o600, 8).copy(block, 100);
+  octal(0, 8).copy(block, 108);
+  octal(0, 8).copy(block, 116);
+  octal(data.length, 12).copy(block, 124);
+  octal(0, 12).copy(block, 136);
+  block.fill(0x20, 148, 156);
+  block.write("0", 156, 1, "ascii");
+  block.write("ustar\0", 257, 6, "ascii");
+  block.write("00", 263, 2, "ascii");
+  let checksum = 0;
+  for (const byte of block) checksum += byte;
+  Buffer.from(`${checksum.toString(8).padStart(6, "0")}\0 `, "ascii").copy(
+    block,
+    148,
+  );
+  return Buffer.concat([
+    block,
+    data,
+    Buffer.alloc((512 - (data.length % 512)) % 512),
+  ]);
+}
+
+function archive(name = "root/file.txt", content = "safe fixture"): Uint8Array {
+  return gzipSync(
+    Buffer.concat([tarEntry(name, Buffer.from(content)), Buffer.alloc(1_024)]),
+  );
+}
+
+function archiveFetcher(bytes: Uint8Array, onFetch?: () => void): ArchiveFetcher {
+  return {
+    async fetchArchive() {
+      onFetch?.();
+      const body = new Response(Uint8Array.from(bytes).buffer).body;
+      if (body === null) throw new Error("test expected response body");
+      return { body, contentLength: bytes.byteLength, requestCount: 1 };
+    },
+  };
+}
+
+async function createLedger(
+  store: SqliteStore,
+  githubAccountId = 123,
+  isFork = false,
+): Promise<void> {
+  await store.createRequest({
+    requestId: "req_0000000001",
+    username: "ri7in",
+    nowMs: 1,
+  });
+  await store.completeDiscovery({
+    requestId: "req_0000000001",
+    githubAccountId,
+    canonicalLogin: "ri7in",
+    repositories: [
+      {
+        repositoryId: 7,
+        name: "fixture-repo",
+        isFork,
+        commitSha: SHA,
+      },
+    ],
+    nowMs: 2,
+  });
+}
+
+function scanner(assertSource?: (sourceDirectory: string) => Promise<void>): SecretScanner {
+  return {
+    async scan(sourceDirectory) {
+      await assertSource?.(sourceDirectory);
+      return {
+        findings: [{ ruleId: "github-pat" }],
+        rawFindingCount: 1,
+        findingLimitExceeded: false,
+      };
+    },
+  };
+}
+
+function worker(
+  store: SqliteStore,
+  scratch: string,
+  fetcher: ArchiveFetcher,
+  secretScanner: SecretScanner = scanner(),
+  overrides: Partial<ConstructorParameters<typeof RepositoryWorker>[0]> = {},
+): RepositoryWorker {
+  return new RepositoryWorker({
+    store,
+    archiveFetcher: fetcher,
+    gitleaks: secretScanner,
+    gitleaksBroker: new SourceBlindBroker("gitleaks", GITLEAKS_BROKER_MANIFEST),
+    workerId: "worker_00000001",
+    scratchBase: scratch,
+    allowedGithubAccountIds: new Set([123]),
+    ...overrides,
+  });
+}
+
+describe("leased repository worker", () => {
+  it("refuses a configured scratch root that is itself a symlink", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    const actual = path.join(files.root, "actual-scratch");
+    await mkdir(actual);
+    await symlink(actual, files.scratch);
+    await expect(
+      worker(store, files.scratch, archiveFetcher(archive())).initialize(),
+    ).rejects.toThrow("invalid worker scratch root");
+    store.close();
+  });
+
+  it("runs fetch→guard→scan→normalize→cleanup→broker→durable publish", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const canary = "RVN_SOURCE_CANARY_39f0";
+    const result = await worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive("root/file.txt", canary)),
+      scanner(async (sourceDirectory) => {
+        expect(await readFile(path.join(sourceDirectory, "root/file.txt"), "utf8")).toBe(
+          canary,
+        );
+      }),
+    ).runOne();
+
+    expect(result).toBe("complete");
+    const repositories = await store.listRepositories({
+      requestId: "req_0000000001",
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    expect(repositories.repositories[0]).toMatchObject({
+      state: "complete",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "complete",
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
+      },
+    });
+    const findings = await store.listFindings({
+      requestId: "req_0000000001",
+      afterFindingId: null,
+      limit: 10,
+    });
+    expect(findings.findings[0]).toMatchObject({
+      engine: "gitleaks",
+      rule_id: "github-pat",
+      occurrence_bucket: "one",
+    });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+    expect((await readFile(files.database)).includes(Buffer.from(canary))).toBe(false);
+  });
+
+  it("double-enforces the immutable account allowlist before archive access", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store, 999);
+    let fetched = false;
+    const result = await worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive(), () => {
+        fetched = true;
+      }),
+    ).runOne();
+    expect(result).toBe("scope_refused");
+    expect(fetched).toBe(false);
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({ state: "cancelled", reason: "PRIVATE_SLICE_SCOPE" });
+    store.close();
+  });
+
+  it("refuses account-owned forks because their source is third-party", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store, 123, true);
+    let fetched = false;
+    const result = await worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive(), () => {
+        fetched = true;
+      }),
+    ).runOne();
+    expect(result).toBe("scope_refused");
+    expect(fetched).toBe(false);
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({ state: "cancelled", reason: "PRIVATE_SLICE_SCOPE" });
+    store.close();
+  });
+
+  it("fails an unsafe archive explicitly and removes every source byte", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(archive("../escape", "RVN_ESCAPE")),
+      ).runOne(),
+    ).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "ARCHIVE_UNSAFE",
+      coverage: { snapshot: "complete", archive_guard: "failed" },
+    });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+  });
+
+  it("never terminalizes when cleanup verification fails", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const result = await worker(store, files.scratch, archiveFetcher(archive()), scanner(), {
+      removeScratch: async () => false,
+    }).runOne();
+    expect(result).toBe("cleanup_pending");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0]?.state,
+    ).toBe("cleaning");
+    store.close();
+  });
+
+  it("removes a pre-existing exact tuple root before publishing the failure", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const exactRoot = scratchPathFor(files.scratch, {
+      requestId: "req_0000000001",
+      repositoryId: 7,
+      generation: 1,
+    });
+    await mkdir(exactRoot, { recursive: true });
+    await writeFile(path.join(exactRoot, "orphan-source"), "RVN_ORPHAN_SOURCE");
+    expect(
+      await worker(store, files.scratch, archiveFetcher(archive())).runOne(),
+    ).toBe("failed");
+    expect(await readdir(files.scratch)).toEqual([]);
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({ state: "failed", reason: "SCANNER_INTERNAL" });
+    store.close();
+  });
+
+  it("removes the exact stale-generation scratch root returned by requeue", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const claim = await store.claimNext({
+      workerId: "worker_00000009",
+      nowMs: 1_000,
+      leaseDurationMs: 60_000,
+    });
+    if (claim === null) throw new Error("test expected claim");
+    const exactRoot = scratchPathFor(files.scratch, {
+      requestId: claim.requestId,
+      repositoryId: claim.repositoryId,
+      generation: claim.leaseGeneration,
+    });
+    await mkdir(exactRoot, { recursive: true });
+    await writeFile(path.join(exactRoot, "source"), "RVN_STALE_SOURCE");
+    const repositoryWorker = worker(store, files.scratch, archiveFetcher(archive()), scanner(), {
+      now: () => 61_000,
+    });
+    expect(await repositoryWorker.reapExpired()).toEqual({
+      requeuedCleaned: 1,
+      exhaustedFinalized: 0,
+    });
+    await expect(readFile(path.join(exactRoot, "source"))).rejects.toThrow();
+    store.close();
+  });
+});
