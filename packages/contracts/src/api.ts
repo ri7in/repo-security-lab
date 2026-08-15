@@ -15,6 +15,7 @@ import {
   specialistSchema,
 } from "./coverage.js";
 import { failureClassSchema } from "./failure.js";
+import { brokerDerivedFindingSchema } from "./broker.js";
 
 /**
  * Anonymous-safe API DTOs (D-043): status and coverage only. These schemas
@@ -77,6 +78,8 @@ export const scanRequestSummarySchema = z.strictObject({
   requestId: opaqueIdSchema,
   username: githubLoginSchema,
   state: scanRequestStateSchema,
+  /** Fixed request-level failure only; never upstream or target prose. */
+  reason: failureClassSchema.optional(),
   repositoryTotals: repositoryStateTotalsSchema,
   coverageTotals: coverageTotalsSchema,
   aiLane: aiLaneStateSchema,
@@ -120,3 +123,15 @@ export const repositoryPageSchema = z.strictObject({
   nextCursor: opaqueIdSchema.optional(),
 });
 export type RepositoryPage = z.infer<typeof repositoryPageSchema>;
+
+/**
+ * Owner/operator-only finding page. This is deliberately separate from every
+ * anonymous DTO above. Fields are the already source-blind broker output; raw
+ * paths, snippets, matches, and secret characters remain unrepresentable.
+ */
+export const operatorFindingPageSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  findings: z.array(brokerDerivedFindingSchema).max(100),
+  nextCursor: opaqueIdSchema.optional(),
+});
+export type OperatorFindingPage = z.infer<typeof operatorFindingPageSchema>;

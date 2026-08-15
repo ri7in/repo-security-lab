@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A free security coverage ledger for public GitHub repositories." />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="referrer" content="no-referrer" />
+    <meta name="robots" content="noindex,nofollow" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'" />
+    <title>Repository security ledger</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+  <body data-scan-state="idle">
+    <a class="skip-link" href="#main">Skip to scanner</a>
+    <header class="site-header">
+      <a class="wordmark" href="/" aria-label="Home">
+        <span class="mark" aria-hidden="true">{#}</span>
+        <span id="product-name">Security ledger</span>
+      </a>
+      <div class="header-actions">
+        <span class="cost-badge">$0 · open source</span>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme">◐</button>
+      </div>
+    </header>
+
+    <main id="main">
+      <section class="hero" aria-labelledby="headline">
+        <div class="hero-copy">
+          <p class="eyebrow">PUBLIC REPOSITORY SECURITY / COVERAGE-FIRST</p>
+          <h1 id="headline">Every public repo.<br /><span>One honest security ledger.</span></h1>
+          <p class="lede" id="tagline">
+            Enter a GitHub username. The backend inventories every owned public repository,
+            scans immutable snapshots, and shows exactly what ran—or why it did not.
+          </p>
+
+          <form id="scan-form" class="scan-form" novalidate>
+            <label for="username">GitHub username</label>
+            <div class="input-row">
+              <span class="prompt" aria-hidden="true">github.com/</span>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                inputmode="text"
+                autocomplete="username"
+                maxlength="39"
+                pattern="[A-Za-z0-9](?:-?[A-Za-z0-9])*"
+                placeholder="username"
+                required
+              />
+              <button id="scan-button" type="submit">Start scan <span aria-hidden="true">→</span></button>
+            </div>
+            <p class="form-note">No install. No card. No target code is executed.</p>
+          </form>
+        </div>
+
+        <div class="bot-panel" aria-label="Scanner status illustration">
+          <div class="panel-label"><span>AGENT STATUS</span><span id="bot-code">IDLE_00</span></div>
+          <div class="scan-bot" aria-hidden="true">
+            <span class="antenna">;</span>
+            <div class="bot-head">
+              <span class="brace left">{</span>
+              <span class="eyes">• •</span>
+              <span class="brace right">}</span>
+            </div>
+            <div class="bot-body">
+              <span>[</span><span class="core">#</span><span>]</span>
+              <i class="scanline"></i>
+            </div>
+            <div class="bot-feet"><span>/_</span><span>_\</span></div>
+          </div>
+          <div class="bot-log" aria-hidden="true">
+            <span>01 enumerate</span><span>02 snapshot</span><span>03 verify</span><span>04 report</span>
+          </div>
+        </div>
+      </section>
+
+      <section id="status-section" class="status-section" hidden aria-labelledby="status-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">LIVE REQUEST</p>
+            <h2 id="status-title">Coverage in progress</h2>
+          </div>
+          <span class="request-id" id="request-id"></span>
+        </div>
+        <div id="live-status" class="live-status" aria-live="polite"></div>
+        <div class="progress-track" aria-hidden="true"><i id="progress-bar"></i></div>
+        <div id="summary-grid" class="summary-grid"></div>
+      </section>
+
+      <section id="ledger-section" class="ledger-section" hidden aria-labelledby="ledger-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">REPOSITORY LEDGER</p>
+            <h2 id="ledger-title">What was covered</h2>
+          </div>
+          <p class="legend"><span class="dot complete"></span>complete <span class="dot waiting"></span>waiting <span class="dot failed"></span>failed</p>
+        </div>
+        <div class="table-shell" tabindex="0" aria-label="Scrollable repository coverage table">
+          <table>
+            <thead>
+              <tr><th>Repository</th><th>State</th><th>Snapshot</th><th>Guard</th><th>Secrets</th><th>Dependencies</th><th>Workflows</th><th>Source rules</th></tr>
+            </thead>
+            <tbody id="repository-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="findings-section" class="ledger-section" hidden aria-labelledby="findings-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">OWNER-ONLY REPORT</p>
+            <h2 id="findings-title">Deterministic findings</h2>
+          </div>
+          <p class="legend" id="finding-count"></p>
+        </div>
+        <p class="findings-note">Local operator view. Secrets, paths, snippets, and raw matches never enter this report.</p>
+        <div class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
+          <table>
+            <thead>
+              <tr><th>Repository</th><th>Engine</th><th>Rule</th><th>Severity</th><th>Occurrences</th><th>Action</th></tr>
+            </thead>
+            <tbody id="finding-rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="principles" aria-label="Product principles">
+        <article><span>01</span><h3>Complete inventory</h3><p>Forks and empty repositories stay visible. Nothing quietly disappears.</p></article>
+        <article><span>02</span><h3>Immutable evidence</h3><p>Each scan is tied to an exact commit. AI can never hide deterministic findings.</p></article>
+        <article><span>03</span><h3>Explicit limits</h3><p>Rate limits, unsupported checks, and partial results are labeled instead of guessed away.</p></article>
+      </section>
+    </main>
+
+    <footer>
+      <p><strong>Development boundary:</strong> this private slice accepts only the operator’s account until enforced Linux isolation passes.</p>
+      <p id="footer-name">Free and open source.</p>
+    </footer>
+  </body>
+</html>

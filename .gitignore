@@ -16,3 +16,4 @@ coverage/
 
 # Local scratch (never committed; source archives must never live here anyway)
 tmp/
+.data/

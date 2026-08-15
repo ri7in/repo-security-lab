@@ -1,0 +1,23 @@
+{
+  "name": "@app/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@app/broker": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/core": "workspace:*",
+    "@app/github": "workspace:*",
+    "@app/scanners": "workspace:*",
+    "@app/store-sqlite": "workspace:*",
+    "@app/worker": "workspace:*",
+    "@hono/node-server": "^2.1.1",
+    "hono": "^4.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}

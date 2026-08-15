@@ -2,12 +2,16 @@
   "name": "workspace-root",
   "private": true,
   "version": "0.0.0",
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@10.33.0",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
+    "build": "pnpm --filter @app/web build",
+    "dev:api": "tsx apps/api/src/server.ts",
+    "dev:web": "pnpm --filter @app/web dev",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
@@ -21,6 +25,7 @@
     "eslint": "^9.0.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0",
+    "tsx": "^4.23.12",
     "vitest": "^4.0.0"
   }
 }
