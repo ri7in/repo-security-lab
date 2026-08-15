@@ -61,4 +61,3 @@ workflow/source-rule specialists, or real AI vulnerability detection. The
 frontend is buildable but has not been deployed because the available Vercel
 session could not be positively identified as the owner's personal account.
 Those are release gates, not details to hide behind optimistic wording.
-
