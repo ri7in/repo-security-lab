@@ -1,130 +1,122 @@
 # Architecture
 
-**Status:** private vertical slice, stage 2 (contracts, durable core, local store).
-This document grows with each implemented stage; the complete accepted
-architecture lives in the transfer task's authority documents until the
-research import stage copies them into `docs/research/`.
+**Status:** private end-to-end vertical slice. Discovery, durable scheduling,
+immutable archive acquisition, guarded extraction, real Gitleaks scanning,
+source-blind publication, the local API/worker runtime, responsive web UI, and
+the CI canary proof are implemented. Public deployment and third-party scans
+remain gated on Linux isolation and an approved deployment identity.
 
-## Product shape
+## Product flow
 
-A visitor enters a GitHub username on the website. The backend control plane
-creates a durable request and a complete ledger of every owned public
-repository from live GitHub discovery. Local trusted workers claim leases,
-fetch immutable-commit archives, guard and extract them safely, run pinned
-deterministic scanners with trusted configuration, normalize results, destroy
-source, and upload broker-validated results. The browser is the interface and
-report viewer only; it never downloads repositories or scans anything.
+1. The browser submits a GitHub username and receives a durable request ID.
+2. Authenticated GraphQL discovery enumerates every owned public repository,
+   including forks and empty repositories, and binds non-empty work to the
+   default branch's immutable commit SHA. A slower REST path is available.
+3. SQLite atomically installs the complete repository ledger. Workers claim
+   rows with generation-bearing leases and stable ordering.
+4. A worker requests the exact commit archive, manually validates the GitHub
+   codeload redirect, strips authorization before codeload, streams through a
+   compressed-size limit, and writes into a private tuple-keyed scratch root.
+5. The archive guard validates tar structure, paths, entry types, checksums,
+   Unicode, PAX metadata, sizes, counts, and expansion ratio while extracting
+   regular files only. Repository code is never executed.
+6. The exact hash-verified Gitleaks 8.30.1 binary runs with project-owned
+   configuration, target configuration disabled, bounded process output and
+   time, and full secret redaction. Other specialists report `unsupported`.
+7. The hostile normalization lane discards paths, matches, snippets, and all
+   other source strings. It emits only manifest-issued numeric rule tokens and
+   four count-bucket codes.
+8. The entire tuple-keyed scratch root is removed and absence is verified.
+   Only then can the trusted broker map numeric tokens to closed metadata and
+   publish findings with durable lease identity.
+9. The anonymous API exposes exhaustive status and coverage, never findings.
+   A local operator endpoint is available only when explicitly enabled and
+   bound to loopback.
 
-## Non-negotiable boundaries (implemented progressively)
+## Trust boundaries
 
-1. **No target code execution.** Scanned repository content is hostile data.
-   No dependency install, script, test, build, Dockerfile, Makefile, or hook
-   of a target repository ever runs.
-2. **Source-blind hosted egress.** The hostile normalization domain may emit
-   only manifest-issued numeric tokens plus four count-bucket codes (integer
-   0..3), at most 256 unique groups per engine and repository. Engine
-   identity is fixed out-of-band by the broker-owned per-engine channel and
-   the lease; the hostile packet carries no engine field, so a compromised
-   normalizer cannot relabel a packet onto another engine's manifest
-   (ADR-005). A source-blind broker maps tokens through pinned trusted
-   manifests, derives all metadata, injects lease identity, and rejects whole
-   results on any violation with fixed non-echoing reasons. No
-   archive-derived string can cross.
-3. **Immutable deterministic evidence.** Scanner findings are never
-   suppressed, downgraded, or overridden by AI.
-4. **AI is typed and inert in this slice.** The contracts define provider
-   policies, review tiers, and deterministic fixture tagging
-   (`provider: "fixture"`). No network provider adapter exists; production
-   mode reports `ai_not_run`.
-5. **Private-slice scope.** Until enforced Linux isolation passes, the control
-   plane structurally refuses usernames outside the allowlist with the fixed
-   failure class `PRIVATE_SLICE_SCOPE`.
-6. **Anonymous output is status/coverage only.** The anonymous API schemas
-   cannot express finding data; findings are owner-gated (operator mode now,
-   no-scope OAuth later).
+### Hostile source domain
 
-## Contracts package (implemented)
+Archive bytes, extracted files, and raw scanner output are hostile. They may
+contain traversal attempts, prompt injection, terminal controls, fake configs,
+or secret material. No value from this domain becomes a hosted string.
 
-`packages/contracts` is the single vocabulary for every later package:
+### Source-blind broker
 
-- **Repository states:** `discovered → waiting → leased → acquiring →
-  guarding → scanning → normalizing → cleaning → uploading →
-  waiting_to_publish → complete`, terminals `empty | partial | failed |
-  cancelled`.
-- **Request states:** `accepted | discovering | scanning | complete | failed`
-  (ADR-004, confirmed in review pass 2). `complete` means every ledger
-  repository reached a terminal state; per-repository `partial`/`failed`/
-  `cancelled` detail lives in the repository totals. `failed` means the
-  request itself could not proceed.
-- **Specialist coverage:** the five terminal coverage outcomes `complete |
-  not_applicable | unsupported | partial | failed`
-  (`specialistCoverageOutcomeSchema`); the progressive status API adds
-  `waiting` as a separate progress-state vocabulary
-  (`specialistProgressStateSchema`) — `waiting` is never a coverage outcome.
-  Specialists are `snapshot`, `archive_guard`, `gitleaks`, `osv`, `zizmor`,
-  `opengrep`.
-- **AI lane states:** `ai_not_run | ai_waiting | ai_partial`.
-- **Failure classes:** the accepted fixed classes plus
-  `PRIVATE_SLICE_SCOPE` and `LEASE_RETRY_EXHAUSTED` (ADR-006).
-- **Broker primitives:** numeric manifest tokens, count-bucket codes 0..3 with
-  fixed labels, strict engine-free result packets (schemaVersion plus
-  token/bucket groups only; 256-group ceiling, unique tokens, unknown keys —
-  including any `engine` claim — rejected), and the closed `schema_version 1`
-  broker-derived finding shape, where `engine` is broker-injected from the
-  channel/lease.
-- **API DTOs:** create/summary/repository-page schemas that are strict,
-  bounded, and structurally unable to carry findings, paths, snippets, or
-  free-form text. Identifier grammars (GitHub login/repository name) validate
-  control-plane data only.
-- **AI tagging:** closed provider vocabulary containing only `fixture`,
-  modes `disabled | fixture` (default `disabled`), review tiers, and typed
-  provider policies with a required-ZDR flag.
+The broker is constructed for one engine and one pinned manifest. Engine
+identity is out-of-band; the hostile packet has no engine field. Packets are
+strict JSON, at most 64 KiB, and contain at most 256 unique numeric groups.
+Unknown tokens or any extra field reject the entire packet with one fixed
+error. Request, repository, commit, and owner-detail identity come from the
+trusted lease context.
 
-Schemas are Zod validators with inferred types; consumers validate at runtime
-at every boundary, not only at compile time.
+### Durable state
 
-## Durable core and local store (implemented)
+The portable Store contract is asynchronous. The exercised adapter uses
+STRICT SQLite tables, normalized coverage, schema migrations, atomic
+`UPDATE ... RETURNING` claims, monotonic lease generations, exact idempotent
+publication, and generation-specific stale cleanup. A request is complete only
+when every ledger row is terminal.
 
-`packages/core` owns the storage-neutral state graph, complete-ledger
-aggregation, deterministic scheduling, lease/publication types, and the
-asynchronous Store port shared by local SQLite and the future D1 adapter.
-Every ordinary worker mutation is bound to `(requestId, repositoryId,
-workerId, leaseGeneration)`; terminal outcomes use a separate publication
-operation that requires a fixed reason where applicable and six real coverage
-outcomes (never `waiting`).
+### Browser and anonymous API
 
-The progressive lifecycle is durable rather than simulated: a request is
-created as `accepted` before the `202` response, moves to `discovering`, then
-`completeDiscovery` atomically installs the complete owned-repository ledger
-and marks each row `waiting` or `empty`. Retrying the same ledger is
-idempotent; a different ledger conflicts. Request-level discovery failure uses
-one fixed failure class. `discovered` remains the logical discovery output,
-not a separately committed row between that atomic operation and `waiting`.
+The browser is a viewer and controller only. Strict anonymous response schemas
+cannot express finding data, paths, snippets, secrets, or free-form upstream
+errors. Responses use `no-store`, `nosniff`, and `no-referrer`; unexpected
+exceptions collapse to one fixed 500 response.
 
-`packages/store-sqlite` is the real local adapter. It uses
-better-sqlite3 13.0.3, versioned STRICT tables, normalized coverage rows, and
-a D1-compatible SQL subset for shared queries. Local transaction wrappers are
-explicitly adapter-specific and are not presented as deployed D1 proof. A
-single conditional `UPDATE ... RETURNING` claims work in stable order and
-increments a durable generation that is never reset when the lease is
-cleared. Failed/terminal requests cannot be claimed.
+## AI boundary
 
-Publication identity is not worker-supplied text: it derives from the durable
-repository/commit plus lease generation. Same-generation, same-payload retry
-is acknowledged before stale-lease checks; changed metadata or generation
-conflicts. Lease release and expiry preserve the generation. At the attempt
-ceiling an expired job parks nonterminal and returns its exact generation to
-the janitor; only an exact-generation CAS after that scratch root is removed
-can finalize fixed `LEASE_RETRY_EXHAUSTED`. This two-phase store gate is
-implemented and tested. The worker janitor/filesystem proof itself lands with
-the worker slice; no third-party scan may rely on the local boundary.
+The current AI lane is deliberately inert. It has strict candidate contracts,
+two family-distinct deterministic fixture scouts, an exact file/line/quote/
+symbol/trace grounding validator, and a fixture judge. The default is
+`ai_not_run`; the only provider tag is `fixture`, and registration of any real
+adapter throws. No repository byte can reach a model from this codebase.
 
-## Toolchain
+A real provider lane requires separate owner consent, provider/data-use proof,
+secret-sanitizer proof, family routing, benchmark evidence, quota accounting,
+and a second authorization. AI can add candidates but can never suppress a
+deterministic finding.
 
-pnpm workspaces, strict TypeScript (shared `tsconfig.base.json`), ESLint flat
-config with type-checked rules, Vitest, and better-sqlite3 for the isolated
-local store package. Node 24 is the CI target; Node 25 is
-tolerated locally. Internal packages resolve TypeScript source directly
-(`exports` → `src/index.ts`); they are private and never published, so no
-build artifact exists yet. A build/reference setup lands when the first
-deployable app appears (see `docs/decisions.md`).
+## Private runtime and deployment boundary
+
+`apps/api/src/server.ts` composes the real local stack. It requires immutable
+GitHub account IDs and the exact scanner path/hash, removes startup orphans,
+reaps expired generations, and polls work without concurrent ticks. It refuses
+all public bind addresses. The private worker also terminalizes forks as
+`PRIVATE_SLICE_SCOPE`: owning a fork does not make its upstream source
+operator-authored. The web development server proxies `/api` to this loopback
+runtime.
+
+The production web bundle is static and deployable, but a public frontend alone
+is not the scanner backend. No deployment has been made because the available
+Vercel identity is not authenticated and therefore cannot yet be proven to be
+the owner's personal account rather than the excluded organization account.
+
+## Verification layers
+
+- Unit and integration suites cover the full repository state-pair matrix,
+  migrations, two-connection claim races, GitHub pagination/errors, archive
+  hostility, scanner pinning, broker smuggling, cleanup, API safety, UI build,
+  and inert AI grounding.
+- The real-binary end-to-end test drives API → store → guarded archive → exact
+  Gitleaks → cleanup → broker → API, then scans SQLite, every captured response,
+  fixed process logs, and scratch storage for a planted `RVN_` marker, a
+  synthetic secret, and every eight-character window of both.
+- CI pins every third-party action to a full commit SHA, downloads the exact
+  Gitleaks Linux archive and verifies both archive and binary hashes, runs the
+  full gate and real-binary canary proof, builds the web app, and self-scans the
+  repository.
+
+## Known release gates
+
+- Enforced Linux privilege separation, no-network sandboxing, cgroups, tmpfs,
+  crash/reboot cleanup, and swap policy.
+- Deployed control-plane semantics and abuse/rate-limit controls.
+- Owner authentication for finding detail, public disclosure UX, and privacy
+  review.
+- Project-attested scanner build provenance; a release hash pin is identity,
+  not provenance.
+- OSV, workflow, and source-rule specialists; current explicit `unsupported`
+  coverage is honest.
+- Public accessibility, load, cross-platform, and release-security audits.

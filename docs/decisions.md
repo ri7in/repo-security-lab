@@ -98,3 +98,58 @@ fixed `LEASE_RETRY_EXHAUSTED`; wrong-generation finalization is tested and
 rejected. The worker slice must key scratch roots by the same tuple and invoke
 finalization only after removal; filesystem enforcement is not claimed by the
 store alone.
+
+## ADR-007: guarded streaming archives and cleanup-before-publication
+
+**Status:** accepted (2026-08-16)
+
+Workers accept only exact-commit GitHub tarballs after a manually validated
+codeload redirect. Extraction is a project-owned streaming tar.gz guard; it
+rejects links, devices, sparse/unknown entries, unsafe or ambiguous paths,
+invalid checksums/padding, abusive PAX metadata, and every configured size,
+count, depth, or ratio limit. Broker invocation occurs only after the entire
+tuple-keyed job root has been removed and verified absent. Failed cleanup leaves
+the repository nonterminal in `cleaning`.
+
+## ADR-008: real Gitleaks identity and contextual redaction
+
+**Status:** accepted (2026-08-16), provenance gate remains open
+
+The scanner adapter verifies the exact executable, trusted config, and ignore
+file hashes before every scan, verifies version 8.30.1, and invokes without a
+shell in a minimal environment. The `Secret` field must be exactly `REDACTED`.
+Gitleaks may preserve non-secret expression context in `Match` (for example
+`TOKEN=REDACTED`), so the adapter requires that marker but discards the entire
+field inside the hostile domain. Only a pinned rule ID returns to the caller.
+Release-asset hashes establish exact identity, not reproducible provenance.
+
+## ADR-009: loopback-only composed runtime before Linux isolation
+
+**Status:** accepted (2026-08-16)
+
+The private composed runtime requires both requested-login and immutable
+GitHub-account-ID allowlists, an exact scanner path/hash, and a loopback host.
+It refuses public binding even when operator mode is off. Public third-party
+scanning waits for the separate Linux isolation proof; the static web build is
+not presented as a complete hosted backend.
+
+## ADR-010: AI is an unnetworked fixture lane
+
+**Status:** accepted (2026-08-16)
+
+The slice exercises two distinct fixture scouts, strict candidates, local
+grounding, and a fixture judge while the default state remains `ai_not_run`.
+The provider vocabulary contains only `fixture`; a real adapter cannot be
+registered. Provider access, source submission, and terms-dependent behavior
+remain outside this authorization.
+
+## ADR-011: MIT license for the open-source project
+
+**Status:** accepted for the private slice (2026-08-16)
+
+The repository uses the MIT License, matching the owner's existing open-source
+project style and the standalone Gitleaks engine's permissive license. The root
+package records `MIT`; contribution/security guidance and third-party notices
+are committed with the source. This selection can be revisited before public
+release, but the repository is no longer left in the legally ambiguous
+"source visible but no permission granted" state.

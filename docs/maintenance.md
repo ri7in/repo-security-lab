@@ -49,7 +49,19 @@ pnpm install          # resolves/checks the committed lockfile
 pnpm typecheck        # strict TypeScript over all packages and tests
 pnpm lint             # ESLint flat config, type-checked rules
 pnpm test             # Vitest, includes the rename guard and contract suites
+pnpm test:coverage    # same suite plus the enforced aggregate coverage floor
 pnpm check            # all of the above
+pnpm build            # production web bundle
+```
+
+The real-binary end-to-end privacy proof is opt-in locally and mandatory in
+CI:
+
+```sh
+RUN_GITLEAKS_E2E=1 \
+GITLEAKS_BINARY=/absolute/path/to/gitleaks \
+GITLEAKS_SHA256=<verified-binary-sha256> \
+pnpm vitest run apps/api/test/e2e.test.ts
 ```
 
 The store smoke test must resolve from its owning workspace package:
@@ -58,3 +70,30 @@ The store smoke test must resolve from its owning workspace package:
 cd packages/store-sqlite
 node --input-type=module -e "import Database from 'better-sqlite3'; const db=new Database(':memory:'); db.exec('SELECT 1'); db.close()"
 ```
+
+## CI and scanner pin renewal
+
+The workflow pins GitHub Actions to full commit SHAs and Gitleaks to both the
+official release-archive SHA-256 and extracted-binary SHA-256. Upgrades require:
+
+1. Resolve action tags through the GitHub commits API and record the resulting
+   full SHAs; never copy an unverified floating tag into the workflow.
+2. Download the Gitleaks checksum file and platform archive from the official
+   release, verify the checksum file's entry, extract into a private temporary
+   directory, and independently hash the binary.
+3. Update the adapter vocabulary/config provenance record if the rule set
+   changes; rule-token order is a hosted data contract.
+4. Run `pnpm check`, the real-binary e2e proof, `pnpm build`, and a redacted
+   self-scan before committing.
+5. Treat the release hash as identity only. Public release still requires the
+   project-attested/reproducible-build gate documented in the architecture.
+
+## Local private runtime
+
+The runtime writes only under `.data/` by default, which is gitignored. It
+requires `PRIVATE_SLICE_ACCOUNT_IDS`, `GITLEAKS_BINARY`, and
+`GITLEAKS_SHA256`; `PRIVATE_SLICE_LOGINS` defaults to the operator username.
+Set `GITHUB_TOKEN` for efficient GraphQL discovery. `OPERATOR_MODE=true` adds
+the finding endpoint but is accepted only on loopback. Stop the process cleanly
+with SIGINT/SIGTERM so the SQLite handle closes; startup cleanup removes any
+tuple-keyed scratch directories left by a prior interrupted private run.
