@@ -8,6 +8,7 @@ import {
   scanRequestAcceptedSchema,
   scanRequestSummarySchema,
   type GithubLogin,
+  type OpaqueId,
 } from "@app/contracts";
 import { aggregateLedger, type Store } from "@app/core";
 import {
@@ -75,6 +76,14 @@ export interface ApiOptions {
   readonly enforceHostHeader?: boolean;
 }
 
+export interface DiscoveryProcessingOptions {
+  readonly store: Store;
+  readonly discovery: DiscoveryPort;
+  readonly allowedRequestedLogins: ReadonlySet<string>;
+  readonly allowedGithubAccountIds: ReadonlySet<number>;
+  readonly now?: () => number;
+}
+
 function discoveryFailure(error: unknown) {
   if (error instanceof GithubClientError) {
     if (error.code === "RATE_LIMITED") return "GITHUB_RATE_LIMIT" as const;
@@ -111,6 +120,80 @@ function matchesBindHost(hostHeader: string | undefined, bindHost: string): bool
   return port === undefined || (Number(port) >= 1 && Number(port) <= 65_535);
 }
 
+async function processDiscovery(
+  options: DiscoveryProcessingOptions,
+  requestId: OpaqueId,
+  username: GithubLogin,
+): Promise<void> {
+  const now = options.now ?? Date.now;
+  if (!(await options.store.startDiscovery(requestId, now()))) return;
+  const requestedKey = username.toLowerCase();
+  if (
+    ![...options.allowedRequestedLogins].some(
+      (login) => login.toLowerCase() === requestedKey,
+    )
+  ) {
+    await options.store.failRequest({
+      requestId,
+      reason: "PRIVATE_SLICE_SCOPE",
+      nowMs: now(),
+    });
+    return;
+  }
+  try {
+    const result = await options.discovery.discover(username);
+    if (!options.allowedGithubAccountIds.has(result.account.githubAccountId)) {
+      await options.store.failRequest({
+        requestId,
+        reason: "PRIVATE_SLICE_SCOPE",
+        nowMs: now(),
+      });
+      return;
+    }
+    const completion = await options.store.completeDiscovery({
+      requestId,
+      githubAccountId: result.account.githubAccountId,
+      canonicalLogin: result.account.canonicalLogin,
+      repositories: result.account.repositories,
+      nowMs: now(),
+    });
+    if (completion !== "completed" && completion !== "idempotent") {
+      await options.store.failRequest({
+        requestId,
+        reason: "REPOSITORY_CHANGED",
+        nowMs: now(),
+      });
+    }
+  } catch (error) {
+    await options.store.failRequest({
+      requestId,
+      reason: discoveryFailure(error),
+      nowMs: now(),
+    });
+  }
+}
+
+/** Replays durable accepted/discovering rows after a local-runtime restart. */
+export async function resumePendingDiscoveries(
+  options: DiscoveryProcessingOptions,
+  limit = 100,
+): Promise<number> {
+  const attempted = new Set<OpaqueId>();
+  while (true) {
+    const pending = await options.store.listPendingDiscoveryRequests(limit);
+    if (pending.length === 0) return attempted.size;
+    for (const request of pending) {
+      if (attempted.has(request.requestId)) {
+        // Do not start while an accepted/discovering row cannot make durable
+        // progress; otherwise it could also starve later pages forever.
+        throw new Error("pending discovery recovery stalled");
+      }
+      attempted.add(request.requestId);
+      await processDiscovery(options, request.requestId, request.username);
+    }
+  }
+}
+
 export function createApi(options: ApiOptions): Hono {
   const now = options.now ?? Date.now;
   const createRequestId =
@@ -132,42 +215,12 @@ export function createApi(options: ApiOptions): Hono {
     throw new Error("operator mode requires loopback binding");
   }
 
-  const processDiscovery = async (
-    requestId: import("@app/contracts").OpaqueId,
-    username: GithubLogin,
-  ): Promise<void> => {
-    if (!(await options.store.startDiscovery(requestId, now()))) return;
-    try {
-      const result = await options.discovery.discover(username);
-      if (!options.allowedGithubAccountIds.has(result.account.githubAccountId)) {
-        await options.store.failRequest({
-          requestId,
-          reason: "PRIVATE_SLICE_SCOPE",
-          nowMs: now(),
-        });
-        return;
-      }
-      const completion = await options.store.completeDiscovery({
-        requestId,
-        githubAccountId: result.account.githubAccountId,
-        canonicalLogin: result.account.canonicalLogin,
-        repositories: result.account.repositories,
-        nowMs: now(),
-      });
-      if (completion !== "completed" && completion !== "idempotent") {
-        await options.store.failRequest({
-          requestId,
-          reason: "REPOSITORY_CHANGED",
-          nowMs: now(),
-        });
-      }
-    } catch (error) {
-      await options.store.failRequest({
-        requestId,
-        reason: discoveryFailure(error),
-        nowMs: now(),
-      });
-    }
+  const discoveryOptions: DiscoveryProcessingOptions = {
+    store: options.store,
+    discovery: options.discovery,
+    allowedRequestedLogins: options.allowedRequestedLogins,
+    allowedGithubAccountIds: options.allowedGithubAccountIds,
+    now,
   };
 
   const app = new Hono();
@@ -237,7 +290,13 @@ export function createApi(options: ApiOptions): Hono {
       }
       throw error;
     }
-    dispatch(() => processDiscovery(accepted.requestId, parsed.data.username));
+    dispatch(() =>
+      processDiscovery(
+        discoveryOptions,
+        accepted.requestId,
+        parsed.data.username,
+      ),
+    );
     return context.json(scanRequestAcceptedSchema.parse({ requestId }), 202);
   });
 

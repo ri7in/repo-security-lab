@@ -201,6 +201,8 @@ export interface Store {
   failRequest(input: FailRequestInput): Promise<boolean>;
   getRequest(requestId: OpaqueId): Promise<ScanRequestRecord | null>;
   findActiveRequestByUsername(username: GithubLogin): Promise<ScanRequestRecord | null>;
+  /** Startup recovery for requests durably accepted before discovery finished. */
+  listPendingDiscoveryRequests(limit: number): Promise<readonly ScanRequestRecord[]>;
   listRepositories(input: RepositoryPageInput): Promise<RepositoryPageRecord>;
   listFindings(input: FindingPageInput): Promise<FindingPageRecord>;
   claimNext(input: ClaimInput): Promise<RepositoryRecord | null>;

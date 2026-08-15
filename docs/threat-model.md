@@ -36,7 +36,9 @@ project-attested scanner provenance described below.
 ### Control plane
 
 The API validates a closed GitHub-login grammar, creates the request durably
-before discovery, and admits only configured logins. Discovery then binds the
+before discovery, and admits only configured logins. On restart, the local
+runtime replays durable accepted/discovering rows under the current login and
+account-ID allowlists before it begins serving. Discovery then binds the
 request to GitHub's immutable account ID and refuses IDs outside the private
 allowlist. Complete pagination, stable totals, duplicate IDs, changing cursors,
 and inconsistent account metadata fail closed.

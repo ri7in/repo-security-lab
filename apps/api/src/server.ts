@@ -9,7 +9,7 @@ import {
 } from "@app/scanners";
 import { SqliteStore } from "@app/store-sqlite";
 import { RepositoryWorker } from "@app/worker";
-import { createApi } from "./app.js";
+import { createApi, resumePendingDiscoveries } from "./app.js";
 import { parseRuntimeConfiguration } from "./runtime-config.js";
 
 const configuration = parseRuntimeConfiguration(process.env);
@@ -43,6 +43,13 @@ const worker = new RepositoryWorker({
   allowedGithubAccountIds: configuration.allowedGithubAccountIds,
 });
 await worker.cleanStartupOrphans();
+
+await resumePendingDiscoveries({
+  store,
+  discovery,
+  allowedRequestedLogins: configuration.allowedRequestedLogins,
+  allowedGithubAccountIds: configuration.allowedGithubAccountIds,
+});
 
 const app = createApi({
   store,

@@ -502,6 +502,24 @@ export class SqliteStore implements Store {
     return row === undefined ? null : parseRequestRow(row);
   }
 
+  async listPendingDiscoveryRequests(
+    limit: number,
+  ): Promise<readonly ScanRequestRecord[]> {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+      throw new Error("invalid pending-discovery limit");
+    }
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM scan_requests
+         WHERE discovery_complete = 0
+           AND state IN ('accepted','discovering')
+         ORDER BY created_at_ms ASC, request_id ASC
+         LIMIT ?`,
+      )
+      .all(limit) as RequestRow[];
+    return rows.map(parseRequestRow);
+  }
+
   async listRepositories(
     input: RepositoryPageInput,
   ): Promise<RepositoryPageRecord> {

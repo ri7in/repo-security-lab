@@ -9,6 +9,10 @@ remain gated on Linux isolation and an approved deployment identity.
 ## Product flow
 
 1. The browser submits a GitHub username and receives a durable request ID.
+   A local-runtime restart replays every accepted/discovering row in bounded
+   pages before serving,
+   so a crash between the 202 response and ledger installation does not strand
+   the username or require an in-memory callback to survive.
 2. Authenticated GraphQL discovery enumerates every owned public repository,
    including forks and empty repositories, and binds non-empty work to the
    default branch's immutable commit SHA. A slower REST path is available.

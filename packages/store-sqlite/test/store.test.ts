@@ -147,6 +147,49 @@ function publication(
 }
 
 describe("SQLite store ledger", () => {
+  it("lists accepted and interrupted-discovery rows for startup recovery", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await store.createRequest({
+      requestId: "req_pending00001",
+      username: "ri7in",
+      nowMs: 200,
+    });
+    await store.createRequest({
+      requestId: "req_pending00002",
+      username: "other-user",
+      nowMs: 100,
+    });
+    expect(await store.startDiscovery("req_pending00002", 150)).toBe(true);
+    await store.createRequest({
+      requestId: "req_terminal0001",
+      username: "third-user",
+      nowMs: 50,
+    });
+    expect(
+      await store.failRequest({
+        requestId: "req_terminal0001",
+        reason: "GITHUB_NOT_FOUND",
+        nowMs: 60,
+      }),
+    ).toBe(true);
+
+    expect(
+      (await store.listPendingDiscoveryRequests(100)).map(
+        (request) => [request.requestId, request.state],
+      ),
+    ).toEqual([
+      ["req_pending00002", "discovering"],
+      ["req_pending00001", "accepted"],
+    ]);
+    expect(
+      (await store.listPendingDiscoveryRequests(1))[0]?.requestId,
+    ).toBe("req_pending00002");
+    await expect(store.listPendingDiscoveryRequests(0)).rejects.toThrow(
+      "invalid pending-discovery limit",
+    );
+    store.close();
+  });
+
   it("persists accepted before discovery and completes discovery idempotently", async () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     const accepted = await store.createRequest({

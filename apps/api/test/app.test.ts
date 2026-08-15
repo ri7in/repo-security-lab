@@ -3,7 +3,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createApi, type DiscoveryPort } from "@app/api";
+import {
+  createApi,
+  resumePendingDiscoveries,
+  type DiscoveryPort,
+} from "@app/api";
 import {
   operatorFindingPageSchema,
   repositoryPageSchema,
@@ -52,6 +56,91 @@ function discovery(repositoryCount = 2, githubAccountId = 123): DiscoveryPort {
 }
 
 describe("anonymous-safe control-plane API", () => {
+  it("replays an interrupted durable discovery after restart", async () => {
+    const database = await store();
+    await database.createRequest({
+      requestId: "req_recovery0001",
+      username: "ri7in",
+      nowMs: 1,
+    });
+    expect(await database.startDiscovery("req_recovery0001", 2)).toBe(true);
+    let calls = 0;
+    const resumed = await resumePendingDiscoveries({
+      store: database,
+      discovery: {
+        async discover() {
+          calls += 1;
+          return await discovery(1).discover("ri7in");
+        },
+      },
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      now: () => 3,
+    });
+
+    expect(resumed).toBe(1);
+    expect(calls).toBe(1);
+    expect(await database.getRequest("req_recovery0001")).toMatchObject({
+      state: "complete",
+      discoveryComplete: true,
+      githubAccountId: 123,
+    });
+    expect(await resumePendingDiscoveries({
+      store: database,
+      discovery: discovery(1),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      now: () => 4,
+    })).toBe(0);
+    database.close();
+  });
+
+  it("replays every bounded page of pending discoveries", async () => {
+    const database = await store();
+    for (const [index, username] of ["first-user", "second-user"].entries()) {
+      await database.createRequest({
+        requestId: `req_paged00000${index + 1}`,
+        username,
+        nowMs: index + 1,
+      });
+    }
+    const calls: string[] = [];
+    const resumed = await resumePendingDiscoveries(
+      {
+        store: database,
+        discovery: {
+          async discover(username) {
+            calls.push(username);
+            const githubAccountId = username === "first-user" ? 101 : 102;
+            return {
+              mode: "authenticated_graphql",
+              requestCount: 1,
+              account: {
+                githubAccountId,
+                canonicalLogin: username,
+                repositories: [],
+              },
+            };
+          },
+        },
+        allowedRequestedLogins: new Set(["first-user", "second-user"]),
+        allowedGithubAccountIds: new Set([101, 102]),
+        now: () => 10,
+      },
+      1,
+    );
+
+    expect(resumed).toBe(2);
+    expect(calls).toEqual(["first-user", "second-user"]);
+    for (const requestId of ["req_paged000001", "req_paged000002"]) {
+      expect(await database.getRequest(requestId)).toMatchObject({
+        state: "complete",
+        discoveryComplete: true,
+      });
+    }
+    database.close();
+  });
+
   it("returns one fixed non-echoing response for unexpected failures", async () => {
     const database = await store();
     const app = createApi({
