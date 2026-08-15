@@ -322,6 +322,40 @@ describe("leased repository worker", () => {
     store.close();
   });
 
+  it("removes source immediately when the lease expires before cleaning", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const times = [1_000, 1_001, 1_002, 601_001, 601_002];
+    const repositoryWorker = worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive("root/file.txt", "RVN_EXPIRED_SOURCE")),
+      scanner(),
+      {
+        leaseDurationMs: 10 * 60 * 1_000,
+        now: () => times.shift() ?? 601_003,
+      },
+    );
+
+    expect(await repositoryWorker.runOne()).toBe("stale_lease");
+    expect(await readdir(files.scratch)).toEqual([]);
+    expect(await repositoryWorker.reapExpired()).toEqual({
+      requeuedCleaned: 1,
+      exhaustedFinalized: 0,
+    });
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0]?.state,
+    ).toBe("waiting");
+    store.close();
+  });
+
   it("removes a pre-existing exact tuple root before publishing the failure", async () => {
     const files = await workspace();
     const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });

@@ -397,7 +397,14 @@ export class RepositoryWorker {
           try {
             await advance("cleaning");
           } catch {
-            return "stale_lease";
+            // The lease can expire after local source exists but before the
+            // durable cleaning transition. Remove the exact generation now;
+            // the janitor's later CAS will observe the already-absent path and
+            // safely requeue/finalize it. Do not leave source until that tick.
+            sourceCleaned = jobRootCreated
+              ? await this.#removeScratch(jobRoot)
+              : true;
+            return sourceCleaned ? "stale_lease" : "cleanup_pending";
           }
         }
         sourceCleaned = jobRootCreated

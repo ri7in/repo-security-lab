@@ -76,6 +76,9 @@ generation tuple. Source-bearing work cannot be voluntarily released. An
 expired generation remains parked until its exact scratch path is removed and
 an expiry/generation compare-and-swap requeues or terminalizes it. Normal
 publication removes and verifies the entire tuple root before broker acceptance.
+If a lease expires after local source exists but before the durable cleaning
+transition, the worker removes that exact generation immediately; the janitor
+then performs the later durable compare-and-swap against the absent path.
 
 SQLite persists only control-plane repository names, closed coverage/failure
 states, and broker-derived finding metadata. Raw source, paths, snippets,
