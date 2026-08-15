@@ -1,0 +1,16 @@
+{
+  "name": "@app/broker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@app/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@app/normalize": "workspace:*",
+    "@app/scanners": "workspace:*"
+  }
+}

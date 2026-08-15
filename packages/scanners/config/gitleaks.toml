@@ -1,0 +1,4 @@
+title = "repository-security-worker trusted Gitleaks rules"
+
+[extend]
+useDefault = true
