@@ -66,3 +66,68 @@ export const aiFixtureArtifactTagSchema = z.strictObject({
   fixtureId: boundedTokenSchema,
 });
 export type AiFixtureArtifactTag = z.infer<typeof aiFixtureArtifactTagSchema>;
+
+export const AI_CWE_IDS = [
+  "CWE-22",
+  "CWE-78",
+  "CWE-79",
+  "CWE-89",
+  "CWE-94",
+  "CWE-287",
+  "CWE-352",
+  "CWE-502",
+  "CWE-918",
+  "CWE-1321",
+] as const;
+export const aiCweSchema = z.enum(AI_CWE_IDS);
+
+export const AI_PRECONDITIONS = [
+  "remote-input",
+  "authenticated-input",
+  "local-input",
+  "attacker-controlled-file",
+  "unsafe-configuration",
+] as const;
+export const aiPreconditionSchema = z.enum(AI_PRECONDITIONS);
+
+export const AI_IMPACTS = [
+  "code-execution",
+  "data-disclosure",
+  "data-modification",
+  "authorization-bypass",
+  "service-disruption",
+] as const;
+export const aiImpactSchema = z.enum(AI_IMPACTS);
+
+export const AI_MISSING_EVIDENCE = [
+  "source",
+  "sink",
+  "trace",
+  "precondition",
+  "sanitizer",
+] as const;
+export const aiMissingEvidenceSchema = z.enum(AI_MISSING_EVIDENCE);
+
+/** Strict transient scout output. It is grounded then discarded, never hosted. */
+export const aiCandidateSchema = z.strictObject({
+  provider: aiProviderTagSchema,
+  fixtureId: boundedTokenSchema,
+  candidateId: boundedTokenSchema,
+  cwe: aiCweSchema,
+  fileToken: z.number().int().nonnegative(),
+  lineStart: z.number().int().positive(),
+  lineEnd: z.number().int().positive(),
+  evidenceQuote: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value)),
+  sourceSymbol: z.number().int().nonnegative(),
+  sinkSymbol: z.number().int().nonnegative(),
+  traceEdges: z.array(z.number().int().nonnegative()).max(64),
+  attackPreconditions: z.array(aiPreconditionSchema).max(5),
+  impact: aiImpactSchema,
+  confidence: z.enum(["high", "medium", "low"]),
+  missingEvidence: z.array(aiMissingEvidenceSchema).max(5),
+});
+export type AiCandidate = z.infer<typeof aiCandidateSchema>;
