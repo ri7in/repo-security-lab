@@ -48,7 +48,8 @@ and is not a released product. Current guarantees of the design:
   no external model adapter.
 - `apps/api` — Hono control plane and loopback-only private runtime.
 - `apps/web` — responsive vanilla TypeScript report interface.
-- `docs/` — architecture, maintenance, and decision records.
+- `docs/` — architecture, threat model, research record, maintenance,
+  decisions, and private-slice retrospective.
 
 ## Development
 
