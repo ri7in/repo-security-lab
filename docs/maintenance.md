@@ -61,6 +61,13 @@ configuration and ignores disabled. A clean JSON-v1 array is required. This is
 a repository self-scan only; hosted repository coverage remains explicitly
 `unsupported` until the source-blind zizmor adapter is integrated.
 
+CI also downloads the provenance-checked, exact SHA-256-pinned OSV-Scanner
+2.5.0 binary and scans only this project's committed `pnpm-lock.yaml`, with
+dependency resolution disabled. Its JSON report must contain zero vulnerable
+result groups. This CI hygiene check uses the public OSV lookup for the
+project-owned dependency graph; hosted target scanning remains disabled until
+the separate offline-database trust design is implemented.
+
 The real-binary end-to-end privacy proof is opt-in locally and mandatory in
 CI:
 

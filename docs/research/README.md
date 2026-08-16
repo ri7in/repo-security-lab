@@ -27,6 +27,12 @@ understand or review this repository are recorded here and in the linked ADRs.
   `--no-config`, `--no-ignores`, all-input collection, strict parsing, and the
   versioned JSON-v1 format; this self-scan does not claim that the product's
   hosted workflow specialist is integrated.
+- OSV-Scanner's release API digest and SLSA provenance identify the pinned
+  binary used to check this project's own exact pnpm lockfile. CI disables
+  dependency resolution and call analysis. This narrow self-scan may query the
+  public OSV service with project-owned package names/versions; it is separate
+  from the future target scanner, which remains gated on the attested offline
+  database design.
 - A static host can serve the interface but cannot provide the scanner worker.
   The default-zero-cost architecture therefore separates a portable Hono
   control plane/durable ledger from pull-based isolated workers. Provider free
@@ -51,6 +57,8 @@ understand or review this repository are recorded here and in the linked ADRs.
 - [Gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration)
 - [zizmor releases](https://github.com/zizmorcore/zizmor/releases)
 - [zizmor usage and offline mode](https://docs.zizmor.sh/usage/)
+- [OSV-Scanner releases](https://github.com/google/osv-scanner/releases)
+- [OSV-Scanner source-scan usage](https://google.github.io/osv-scanner/usage/scan-source)
 - [Cloudflare Workers platform limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Cloudflare D1 pricing and limits](https://developers.cloudflare.com/d1/platform/pricing/)
 - [OWASP path traversal guidance](https://owasp.org/www-community/attacks/Path_Traversal)

@@ -74,6 +74,20 @@ jobs:
           chmod 0700 "$tool_dir/zizmor"
           echo "ZIZMOR_BINARY=$tool_dir/zizmor" >> "$GITHUB_ENV"
 
+      - name: Download pinned OSV-Scanner
+        shell: bash
+        run: |
+          set -euo pipefail
+          binary=/tmp/osv-scanner-2.5.0
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            --output "$binary" \
+            https://github.com/google/osv-scanner/releases/download/v2.5.0/osv-scanner_linux_amd64
+          echo "edcfc41d257db36148f065055655fe3fcfc434b0b423ea67468a84c207524e0c  $binary" | sha256sum --check --strict
+          chmod 0700 "$binary"
+          echo "OSV_SCANNER_BINARY=$binary" >> "$GITHUB_ENV"
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -90,6 +104,22 @@ jobs:
 
       - name: Build web application
         run: pnpm build
+
+      - name: Self-scan locked dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$OSV_SCANNER_BINARY" scan source \
+            --lockfile pnpm-lock.yaml \
+            --no-resolve \
+            --format json \
+            --verbosity error \
+            > /tmp/osv-self-scan.json
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            const report = JSON.parse(readFileSync("/tmp/osv-self-scan.json", "utf8"));
+            if (!Array.isArray(report.results) || report.results.length !== 0) process.exit(1);
+          '
 
       - name: Self-scan workflow definitions
         shell: bash
