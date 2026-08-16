@@ -64,6 +64,13 @@ finding bounds. The adapter accepts only allowlisted rule IDs and verifies the
 secret field is exactly redacted. Contextual match text is checked for the
 redaction marker and discarded inside the hostile domain.
 
+On POSIX, every scanner command runs as a new process-group leader and the
+adapter terminates that complete group on leader exit and every bounded failure
+path before accepting `close`; Windows fails closed until an equivalent job
+boundary exists. A descendant can create a new session and escape a process
+group, so this is cleanup defense in depth and does not weaken the separate
+Linux cgroup/systemd public-release gate.
+
 The normalizer emits strict JSON containing numeric manifest tokens and four
 count-bucket codes only. The trusted broker is constructed for one engine and
 manifest, rejects unknown/duplicate/extra content, derives all display strings

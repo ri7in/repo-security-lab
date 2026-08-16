@@ -1,4 +1,3 @@
-import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, realpath, stat } from "node:fs/promises";
@@ -13,6 +12,12 @@ import {
   ScannerError,
   type GitleaksScanResult,
 } from "./types.js";
+import {
+  runScannerCommand,
+  type ScannerCommandRunner,
+} from "./command-runner.js";
+
+export type { ScannerCommandRunner } from "./command-runner.js";
 
 const GITLEAKS_VERSION = "8.30.1";
 const MAX_STDOUT_BYTES = 32 * 1_024 * 1_024;
@@ -36,22 +41,6 @@ const findingSchema = z.object({
   Match: z.string().min(8).max(8_192).refine((value) => value.includes("REDACTED")),
 });
 
-interface CommandResult {
-  readonly stdout: Buffer;
-  readonly stderr: Buffer;
-}
-
-export type ScannerCommandRunner = (
-  executable: string,
-  args: readonly string[],
-  options: {
-    readonly cwd: string;
-    readonly timeoutMs: number;
-    readonly stdoutLimitBytes: number;
-    readonly stderrLimitBytes: number;
-  },
-) => Promise<CommandResult>;
-
 export interface GitleaksScannerOptions {
   readonly binaryPath: string;
   readonly expectedBinarySha256: string;
@@ -70,64 +59,6 @@ async function sha256(filename: string): Promise<string> {
     input.on("end", () => resolve(hash.digest("hex")));
   });
 }
-
-const defaultCommandRunner: ScannerCommandRunner = async (
-  executable,
-  args,
-  options,
-) =>
-  await new Promise((resolve, reject) => {
-    let timedOut = false;
-    let outputLimited = false;
-    const stdout: Buffer[] = [];
-    const stderr: Buffer[] = [];
-    let stdoutBytes = 0;
-    let stderrBytes = 0;
-    const child = spawn(executable, [...args], {
-      cwd: options.cwd,
-      env: { LANG: "C", LC_ALL: "C" },
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill("SIGKILL");
-    }, options.timeoutMs);
-    child.stdout.on("data", (value: Buffer) => {
-      stdoutBytes += value.length;
-      if (stdoutBytes > options.stdoutLimitBytes) {
-        outputLimited = true;
-        child.kill("SIGKILL");
-      } else {
-        stdout.push(value);
-      }
-    });
-    child.stderr.on("data", (value: Buffer) => {
-      stderrBytes += value.length;
-      if (stderrBytes > options.stderrLimitBytes) {
-        outputLimited = true;
-        child.kill("SIGKILL");
-      } else {
-        stderr.push(value);
-      }
-    });
-    child.once("error", () => {
-      clearTimeout(timer);
-      reject(new ScannerError("SCANNER_INTERNAL"));
-    });
-    child.once("close", (code) => {
-      clearTimeout(timer);
-      if (timedOut) {
-        reject(new ScannerError("SCANNER_TIMEOUT"));
-      } else if (outputLimited) {
-        reject(new ScannerError("SCANNER_OUTPUT_LIMIT"));
-      } else if (code !== 0) {
-        reject(new ScannerError("SCANNER_INTERNAL"));
-      } else {
-        resolve({ stdout: Buffer.concat(stdout), stderr: Buffer.concat(stderr) });
-      }
-    });
-  });
 
 async function assertTrustedFile(
   filename: string,
@@ -175,7 +106,7 @@ export class GitleaksScanner {
     ) {
       throw new Error("invalid Gitleaks timeout");
     }
-    this.#runCommand = options.runCommand ?? defaultCommandRunner;
+    this.#runCommand = options.runCommand ?? runScannerCommand;
   }
 
   async verify(): Promise<void> {

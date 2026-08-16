@@ -26,7 +26,11 @@ remain gated on Linux isolation and an approved deployment identity.
    regular files only. Repository code is never executed.
 6. The exact hash-verified Gitleaks 8.30.1 binary runs with project-owned
    configuration, target configuration disabled, bounded process output and
-   time, and full secret redaction. Other specialists report `unsupported`.
+   time, and full secret redaction. Each POSIX command owns a process group
+   that is terminated on leader exit, timeout, output overflow, or process
+   error. This descendant cleanup is defense in depth, not the Linux cgroup
+   isolation required for public release. Other specialists report
+   `unsupported`.
 7. The hostile normalization lane discards paths, matches, snippets, and all
    other source strings. It emits only manifest-issued numeric rule tokens and
    four count-bucket codes.
