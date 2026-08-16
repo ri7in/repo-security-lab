@@ -39,7 +39,10 @@ deployed queue or scanner-throughput proof.
   attention, and CI was extended from a tree-only secret scan to both the exact
   tree and full Git history.
 
-## Verification evidence at this checkpoint
+## Historical pre-hardening checkpoint (2026-08-15)
+
+The following numbers are retained as the dated evidence recorded at that
+checkpoint; they are not the current gate.
 
 - Strict TypeScript and type-aware ESLint pass.
 - 20 ordinary test files and 152 tests pass; six live/real/load proofs are
@@ -52,6 +55,23 @@ deployed queue or scanner-throughput proof.
 - A frozen scripts-disabled install in a fresh temporary copy, the native
   SQLite tests, production web build, real-binary e2e, dependency audit, and
   exact tree/history secret scans pass.
+
+## Current hardening gate (2026-08-16)
+
+- 22 ordinary test files and 169 tests pass; six live/real/load proofs remain
+  explicit opt-ins.
+- Aggregate coverage passes the raised floor at 75.05% statements, 74.05%
+  branches, 77.09% functions, and 77.47% lines.
+- Version five migrates populated version-four ledgers without losing active,
+  leased, terminal, published, coverage, or finding rows and recreates every
+  claim/lease/active-request index.
+- Transient GitHub failures retry only after exact-generation scratch cleanup,
+  for a maximum of three attempts. Authentication and archive-safety failures
+  remain immediate terminal outcomes with fixed honest causes.
+- A composed runtime-start test proves private database/scratch creation,
+  exclusive SQLite ownership, service startup, and clean shutdown. A static
+  first-party dependency test also keeps normalization, broker, AI, archive,
+  scanner, and worker source paths free of undeclared network capability.
 
 ## What remains deliberately unclaimed
 

@@ -97,4 +97,19 @@ requires `PRIVATE_SLICE_ACCOUNT_IDS`, `GITLEAKS_BINARY`, and
 Set `GITHUB_TOKEN` for efficient GraphQL discovery. `OPERATOR_MODE=true` adds
 the finding endpoint but is accepted only on loopback. Stop the process cleanly
 with SIGINT/SIGTERM so the SQLite handle closes; startup cleanup removes any
-tuple-keyed scratch directories left by a prior interrupted private run.
+tuple-keyed scratch directories left by a prior interrupted private run. The
+database parent must already be private or be safely creatable as mode `0700`;
+the runtime rejects permissive and symlinked parents instead of changing them.
+It also holds SQLite in exclusive locking mode, so a second local runtime fails
+promptly rather than sharing lease ownership.
+
+A crash tuple is deleted on the next startup, before the API listens. Its
+durable row remains parked until the old lease expires, so recovery can wait up
+to the configured 20-minute lease duration before the janitor requeues or
+finalizes it. Immediate startup lease adoption is intentionally deferred until
+that separate recovery protocol has its own exact-generation proof.
+
+Live GitHub rate-limit and transport failures are retried only after verified
+scratch cleanup, with a closed three-attempt budget. The private low-volume
+slice does not yet schedule backoff; Retry-After-aware `next_eligible_at`
+scheduling belongs to the phase-three queue adapter before public operation.
