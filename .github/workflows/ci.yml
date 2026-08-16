@@ -57,6 +57,23 @@ jobs:
           echo "GITLEAKS_BINARY=$tool_dir/gitleaks" >> "$GITHUB_ENV"
           echo "GITLEAKS_SHA256=88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509" >> "$GITHUB_ENV"
 
+      - name: Download pinned zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive=/tmp/zizmor_1.29.0_linux_x64.tar.gz
+          tool_dir=/tmp/zizmor-1.29.0
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            --output "$archive" \
+            https://github.com/zizmorcore/zizmor/releases/download/v1.29.0/zizmor-x86_64-unknown-linux-gnu.tar.gz
+          echo "dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839  $archive" | sha256sum --check --strict
+          mkdir --mode=0700 "$tool_dir"
+          tar --extract --gzip --file "$archive" --directory "$tool_dir" zizmor
+          chmod 0700 "$tool_dir/zizmor"
+          echo "ZIZMOR_BINARY=$tool_dir/zizmor" >> "$GITHUB_ENV"
+
       - name: Typecheck
         run: pnpm typecheck
 
@@ -73,6 +90,20 @@ jobs:
 
       - name: Build web application
         run: pnpm build
+
+      - name: Self-scan workflow definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ZIZMOR_BINARY" \
+            --offline \
+            --no-config \
+            --no-ignores \
+            --collect=all \
+            --strict-collection \
+            --format=json-v1 \
+            . > /tmp/zizmor-self-scan.json
+          test "$(tr -d '[:space:]' < /tmp/zizmor-self-scan.json)" = "[]"
 
       - name: Self-scan repository tree and history
         shell: bash

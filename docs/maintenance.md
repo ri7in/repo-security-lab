@@ -55,6 +55,12 @@ pnpm check            # all of the above
 pnpm build            # production web bundle
 ```
 
+CI additionally downloads the exact SHA-256-pinned zizmor 1.29.0 release and
+audits this repository's workflow/config definitions offline with target
+configuration and ignores disabled. A clean JSON-v1 array is required. This is
+a repository self-scan only; hosted repository coverage remains explicitly
+`unsupported` until the source-blind zizmor adapter is integrated.
+
 The real-binary end-to-end privacy proof is opt-in locally and mandatory in
 CI:
 

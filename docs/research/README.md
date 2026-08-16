@@ -22,6 +22,11 @@ understand or review this repository are recorded here and in the linked ADRs.
 - Gitleaks release checksums establish the identity of downloaded artifacts;
   they do not establish reproducible or project-attested provenance. Public
   release retains a separate provenance gate.
+- zizmor's attested release archive can audit this project's own workflow,
+  action, Dependabot, and pre-commit definitions fully offline. CI forces
+  `--no-config`, `--no-ignores`, all-input collection, strict parsing, and the
+  versioned JSON-v1 format; this self-scan does not claim that the product's
+  hosted workflow specialist is integrated.
 - A static host can serve the interface but cannot provide the scanner worker.
   The default-zero-cost architecture therefore separates a portable Hono
   control plane/durable ledger from pull-based isolated workers. Provider free
@@ -44,6 +49,8 @@ understand or review this repository are recorded here and in the linked ADRs.
 - [GitHub REST API versions](https://docs.github.com/en/rest/about-the-rest-api/api-versions)
 - [Gitleaks releases](https://github.com/gitleaks/gitleaks/releases)
 - [Gitleaks configuration](https://github.com/gitleaks/gitleaks#configuration)
+- [zizmor releases](https://github.com/zizmorcore/zizmor/releases)
+- [zizmor usage and offline mode](https://docs.zizmor.sh/usage/)
 - [Cloudflare Workers platform limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Cloudflare D1 pricing and limits](https://developers.cloudflare.com/d1/platform/pricing/)
 - [OWASP path traversal guidance](https://owasp.org/www-community/attacks/Path_Traversal)
