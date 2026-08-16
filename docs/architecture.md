@@ -29,8 +29,9 @@ remain gated on Linux isolation and an approved deployment identity.
    time, and full secret redaction. Each POSIX command owns a process group
    that is terminated on leader exit, timeout, output overflow, or process
    error. This descendant cleanup is defense in depth, not the Linux cgroup
-   isolation required for public release. Other specialists report
-   `unsupported`.
+   isolation required for public release. A separate bounded name/type-only
+   walk reports an unintegrated specialist `not_applicable` only after proving
+   whole-tree absence; relevant input or an incomplete walk is `unsupported`.
 7. The hostile normalization lane discards paths, matches, snippets, and all
    other source strings. It emits only manifest-issued numeric rule tokens and
    four count-bucket codes.
@@ -128,6 +129,7 @@ the owner's personal account rather than the excluded organization account.
   review.
 - Project-attested scanner build provenance; a release hash pin is identity,
   not provenance.
-- OSV, workflow, and source-rule specialists; current explicit `unsupported`
-  coverage is honest.
+- OSV, workflow, and source-rule specialists remain unintegrated; relevant
+  input or input whose presence was not ruled out stays explicit
+  `unsupported`.
 - Public accessibility, load, cross-platform, and release-security audits.

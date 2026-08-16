@@ -5,6 +5,7 @@ import { gzipSync } from "node:zlib";
 import { afterAll, afterEach, expect, test, vi } from "vitest";
 import { createApi } from "@app/api";
 import { SourceBlindBroker } from "@app/broker";
+import { scanRequestSummarySchema } from "@app/contracts";
 import {
   GITLEAKS_BROKER_MANIFEST,
   GitleaksScanner,
@@ -214,7 +215,12 @@ test.skipIf(!enabled || binaryPath === undefined || binaryHash === undefined)(
         headers: { host: "127.0.0.1" },
       });
       expect(response.status).toBe(200);
-      capturedResponses.push(await response.text());
+      const body = await response.text();
+      capturedResponses.push(body);
+      if (url === "/api/scan-requests/req_e2e00000001") {
+        const summary = scanRequestSummarySchema.parse(JSON.parse(body));
+        expect(summary.coverageTotals.zizmor.not_applicable).toBe(1);
+      }
     }
     expect(capturedResponses.at(-1)).toContain(
       '"rule_id":"generic-api-key"',

@@ -13,22 +13,24 @@ import {
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SourceBlindBroker } from "@app/broker";
 import { GithubClientError, type GithubErrorCode } from "@app/github";
 import { SqliteStore } from "@app/store-sqlite";
-import { GITLEAKS_BROKER_MANIFEST } from "@app/scanners";
+import { GITLEAKS_BROKER_MANIFEST, ScannerError } from "@app/scanners";
 import {
   RepositoryWorker,
   scratchPathFor,
   type ArchiveFetcher,
   type SecretScanner,
 } from "@app/worker";
+import * as applicability from "../src/applicability.js";
 
 const temporaryDirectories: string[] = [];
 const SHA = "a".repeat(40);
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       rm(directory, { recursive: true, force: true }),
@@ -75,10 +77,30 @@ function tarEntry(name: string, data: Buffer): Buffer {
   ]);
 }
 
-function archive(name = "root/file.txt", content = "safe fixture"): Uint8Array {
+function archiveEntries(
+  entries: ReadonlyArray<{ readonly name: string; readonly content: string }>,
+): Uint8Array {
   return gzipSync(
-    Buffer.concat([tarEntry(name, Buffer.from(content)), Buffer.alloc(1_024)]),
+    Buffer.concat([
+      ...entries.map((entry) =>
+        tarEntry(entry.name, Buffer.from(entry.content)),
+      ),
+      Buffer.alloc(1_024),
+    ]),
   );
+}
+
+function archive(name = "root/file.txt", content = "safe fixture"): Uint8Array {
+  return archiveEntries([{ name, content }]);
+}
+
+function mixedApplicabilityArchive(): Uint8Array {
+  return archiveEntries([
+    { name: "root/.github/workflows/ci.yml", content: "name: ci" },
+    { name: "root/package-lock.json", content: "{}" },
+    { name: "root/src/app.ts", content: "export {};" },
+    { name: "root/credential.txt", content: "safe fixture" },
+  ]);
 }
 
 function archiveFetcher(bytes: Uint8Array, onFetch?: () => void): ArchiveFetcher {
@@ -233,9 +255,9 @@ describe("leased repository worker", () => {
         snapshot: "complete",
         archive_guard: "complete",
         gitleaks: "complete",
-        osv: "unsupported",
-        zizmor: "unsupported",
-        opengrep: "unsupported",
+        osv: "not_applicable",
+        zizmor: "not_applicable",
+        opengrep: "not_applicable",
       },
     });
     const findings = await store.listFindings({
@@ -251,6 +273,246 @@ describe("leased repository worker", () => {
     expect(await readdir(files.scratch)).toEqual([]);
     store.close();
     expect((await readFile(files.database)).includes(Buffer.from(canary))).toBe(false);
+  });
+
+  it("reports present but unintegrated specialist inputs as unsupported", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(mixedApplicabilityArchive()),
+      ).runOne(),
+    ).toBe("complete");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "complete",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "complete",
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
+      },
+    });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+  });
+
+  it("retains concrete applicability when Gitleaks fails", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const failingScanner: SecretScanner = {
+      scan() {
+        return Promise.reject(new ScannerError("SCANNER_TIMEOUT"));
+      },
+    };
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(
+          archiveEntries([
+            { name: "root/package.json", content: "{}" },
+            { name: "root/readme.txt", content: "safe fixture" },
+          ]),
+        ),
+        failingScanner,
+      ).runOne(),
+    ).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "SCANNER_TIMEOUT",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "failed",
+        osv: "unsupported",
+        zizmor: "not_applicable",
+        opengrep: "not_applicable",
+      },
+    });
+    store.close();
+  });
+
+  it("keeps unknown applicability unsupported on a successful row", async () => {
+    vi.spyOn(applicability, "detectSpecialistApplicability").mockResolvedValueOnce(
+      null,
+    );
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(archive()),
+      ).runOne(),
+    ).toBe("complete");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "complete",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "complete",
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
+      },
+    });
+    store.close();
+  });
+
+  it("converts unknown applicability to failed on a failed row", async () => {
+    vi.spyOn(applicability, "detectSpecialistApplicability").mockResolvedValueOnce(
+      null,
+    );
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const failingScanner: SecretScanner = {
+      scan() {
+        return Promise.reject(new ScannerError("SCANNER_INTERNAL"));
+      },
+    };
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(archive()),
+        failingScanner,
+      ).runOne(),
+    ).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "SCANNER_INTERNAL",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "failed",
+        osv: "failed",
+        zizmor: "failed",
+        opengrep: "failed",
+      },
+    });
+    store.close();
+  });
+
+  it("retains concrete applicability when broker validation rejects", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(mixedApplicabilityArchive()),
+        scanner(),
+        { gitleaksBroker: new SourceBlindBroker("gitleaks", []) },
+      ).runOne(),
+    ).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "NORMALIZATION_REJECTED",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "failed",
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
+      },
+    });
+    store.close();
+  });
+
+  it("keeps concrete absence determinations on a finding-limit partial row", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const limitedScanner: SecretScanner = {
+      async scan() {
+        return {
+          findings: Array.from({ length: 10_000 }, () => ({
+            ruleId: "github-pat",
+          })),
+          rawFindingCount: 10_001,
+          findingLimitExceeded: true,
+        };
+      },
+    };
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(archive()),
+        limitedScanner,
+      ).runOne(),
+    ).toBe("partial");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "partial",
+      reason: "FINDING_LIMIT",
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks: "partial",
+        osv: "not_applicable",
+        zizmor: "not_applicable",
+        opengrep: "not_applicable",
+      },
+    });
+    store.close();
   });
 
   it("double-enforces the immutable account allowlist before archive access", async () => {
@@ -275,7 +537,18 @@ describe("leased repository worker", () => {
           limit: 10,
         })
       ).repositories[0],
-    ).toMatchObject({ state: "cancelled", reason: "PRIVATE_SLICE_SCOPE" });
+    ).toMatchObject({
+      state: "cancelled",
+      reason: "PRIVATE_SLICE_SCOPE",
+      coverage: {
+        snapshot: "not_applicable",
+        archive_guard: "not_applicable",
+        gitleaks: "not_applicable",
+        osv: "not_applicable",
+        zizmor: "not_applicable",
+        opengrep: "not_applicable",
+      },
+    });
     store.close();
   });
 
@@ -301,7 +574,18 @@ describe("leased repository worker", () => {
           limit: 10,
         })
       ).repositories[0],
-    ).toMatchObject({ state: "cancelled", reason: "PRIVATE_SLICE_SCOPE" });
+    ).toMatchObject({
+      state: "cancelled",
+      reason: "PRIVATE_SLICE_SCOPE",
+      coverage: {
+        snapshot: "not_applicable",
+        archive_guard: "not_applicable",
+        gitleaks: "not_applicable",
+        osv: "not_applicable",
+        zizmor: "not_applicable",
+        opengrep: "not_applicable",
+      },
+    });
     store.close();
   });
 
@@ -328,7 +612,14 @@ describe("leased repository worker", () => {
       state: "failed",
       reason: "ARCHIVE_UNSAFE",
       attemptCount: 1,
-      coverage: { snapshot: "complete", archive_guard: "failed" },
+      coverage: {
+        snapshot: "complete",
+        archive_guard: "failed",
+        gitleaks: "failed",
+        osv: "failed",
+        zizmor: "failed",
+        opengrep: "failed",
+      },
     });
     expect(await readdir(files.scratch)).toEqual([]);
     store.close();
@@ -392,7 +683,14 @@ describe("leased repository worker", () => {
       state: "failed",
       reason: "GITHUB_RATE_LIMIT",
       attemptCount: 3,
-      coverage: { snapshot: "failed" },
+      coverage: {
+        snapshot: "failed",
+        archive_guard: "failed",
+        gitleaks: "failed",
+        osv: "failed",
+        zizmor: "failed",
+        opengrep: "failed",
+      },
     });
     expect(
       await store.listFindings({
@@ -453,6 +751,14 @@ describe("leased repository worker", () => {
       state: "failed",
       reason: "GITHUB_AUTH",
       attemptCount: 1,
+      coverage: {
+        snapshot: "failed",
+        archive_guard: "failed",
+        gitleaks: "failed",
+        osv: "failed",
+        zizmor: "failed",
+        opengrep: "failed",
+      },
     });
     expect(await readdir(files.scratch)).toEqual([]);
     store.close();

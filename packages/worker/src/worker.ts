@@ -37,6 +37,10 @@ import {
   ScannerError,
   type GitleaksScanResult,
 } from "@app/scanners";
+import {
+  detectSpecialistApplicability,
+  type SpecialistApplicability,
+} from "./applicability.js";
 
 const DEFAULT_LEASE_DURATION_MS = 20 * 60 * 1_000;
 
@@ -289,6 +293,7 @@ export class RepositoryWorker {
     let jobRootCreated = false;
     let sourceCleaned = false;
     let state: RepositoryActiveState = "leased";
+    let detected: SpecialistApplicability | null | undefined;
 
     const advance = async (nextState: RepositoryActiveState): Promise<void> => {
       if (!canTransition(state, nextState)) throw new Error("invalid worker state");
@@ -325,9 +330,12 @@ export class RepositoryWorker {
       await advance("guarding");
       await extractTarGzip(createReadStream(archivePath), sourcePath);
       coverage.archive_guard = "complete";
-      coverage.osv = "unsupported";
-      coverage.zizmor = "unsupported";
-      coverage.opengrep = "unsupported";
+      detected = await detectSpecialistApplicability(sourcePath);
+      coverage.osv = detected?.osv === false ? "not_applicable" : "unsupported";
+      coverage.zizmor =
+        detected?.zizmor === false ? "not_applicable" : "unsupported";
+      coverage.opengrep =
+        detected?.opengrep === false ? "not_applicable" : "unsupported";
       await advance("scanning");
       if (
         !(await this.#store.heartbeat({
@@ -394,10 +402,6 @@ export class RepositoryWorker {
       if (coverage.snapshot !== "complete") coverage.snapshot = "failed";
       if (reason.startsWith("SCANNER_")) coverage.gitleaks = "failed";
       if (reason === "NORMALIZATION_REJECTED") coverage.gitleaks = "failed";
-      if (reason.startsWith("ARCHIVE_") && coverage.snapshot === "complete") {
-        coverage.archive_guard = "failed";
-      }
-
       if (!sourceCleaned) {
         if (canTransition(state, "cleaning")) {
           try {
@@ -433,6 +437,15 @@ export class RepositoryWorker {
         }
       }
       if (!canTransition(state, "failed")) return "stale_lease";
+      if (coverage.archive_guard === "not_applicable") {
+        coverage.archive_guard = "failed";
+      }
+      if (coverage.gitleaks === "not_applicable") coverage.gitleaks = "failed";
+      if (detected === undefined || detected === null) {
+        coverage.osv = "failed";
+        coverage.zizmor = "failed";
+        coverage.opengrep = "failed";
+      }
       try {
         const publication = await this.#store.publish({
           ...lease,

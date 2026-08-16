@@ -142,15 +142,18 @@ test.skipIf(
     const database = (await readFile(databasePath)).toString("latin1");
     expect(fragments.length).toBeGreaterThan(0);
     for (const fragment of fragments) expect(database).not.toContain(fragment);
-    console.info("live worker summary", {
-      repositories: repositoryPage.repositories.map((repository) => ({
-        name: repository.name,
-        state: repository.state,
-        coverage: repository.coverage,
-      })),
-      findingCount: findingPage.findings.length,
-      discoveryMs: Date.now() - discoveryStarted,
-    });
+    console.info(
+      "live worker summary",
+      JSON.stringify({
+        repositories: repositoryPage.repositories.map((repository) => ({
+          name: repository.name,
+          state: repository.state,
+          coverage: repository.coverage,
+        })),
+        findingCount: findingPage.findings.length,
+        discoveryMs: Date.now() - discoveryStarted,
+      }),
+    );
   },
   5 * 60_000,
 );

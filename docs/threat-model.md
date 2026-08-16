@@ -71,6 +71,14 @@ boundary exists. A descendant can create a new session and escape a process
 group, so this is cleanup defense in depth and does not weaken the separate
 Linux cgroup/systemd public-release gate.
 
+A separate iterative walk reads only extracted entry names and types under
+independent entry/depth/path-byte ceilings. For the three unintegrated engines,
+`not_applicable` means a complete anomaly-free walk proved no relevant input;
+present input or a walk that cannot finish is `unsupported`. Dependency
+relevance deliberately includes manifests and lockfile families that are not
+yet proven scannable: only exact `package-lock.json` parsing has passed the
+current pinned-OSV preflight, and no dependency specialist runs here.
+
 The normalizer emits strict JSON containing numeric manifest tokens and four
 count-bucket codes only. The trusted broker is constructed for one engine and
 manifest, rejects unknown/duplicate/extra content, derives all display strings
@@ -92,6 +100,10 @@ then performs the later durable compare-and-swap against the absent path.
 SQLite persists only control-plane repository names, closed coverage/failure
 states, and broker-derived finding metadata. Raw source, paths, snippets,
 matches, scanner stderr, and secret values are absent from its schema.
+
+On a failed repository row, specialist `failed` means no reliable result was
+available; it does not claim that specialist executed. The row-level fixed
+reason carries the cause. Cancelled pre-source rows remain `not_applicable`.
 
 ### Report and AI lanes
 
@@ -124,5 +136,5 @@ event/result codes only.
   exposing finding detail or enabling any future AI source lane.
 - Add project-attested/reproducible scanner provenance. A release archive hash
   proves identity, not that the upstream build is trustworthy.
-- Integrate and test dependency, workflow, and source-rule specialists; until
-  then their coverage remains explicitly `unsupported`.
+- Integrate and test dependency, workflow, and source-rule specialists;
+  relevant or conservatively unknown inputs remain explicitly `unsupported`.
