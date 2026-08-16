@@ -38,6 +38,9 @@ export interface LeaseIdentity {
   readonly expiresAtMs: number;
 }
 
+/** Closed retry budget shared by schedulers, stores, and workers. */
+export const MAX_LEASE_ATTEMPTS = 3;
+
 export interface RepositoryRecord {
   readonly schemaVersion: 1;
   readonly requestId: OpaqueId;
@@ -215,6 +218,8 @@ export interface Store {
   finalizeExhausted(input: FinalizeExhaustedInput): Promise<boolean>;
   /** Voluntary pre-acquisition release; source-bearing states require cleanup. */
   release(input: ReleaseInput): Promise<boolean>;
+  /** Live post-cleanup retry; only an exact unexpired cleaning lease may requeue. */
+  retryCleaned(input: ReleaseInput): Promise<boolean>;
   transition(input: TransitionInput): Promise<boolean>;
   publish(input: PublishInput): Promise<PublicationResult>;
 }

@@ -1,5 +1,11 @@
+import { chmod, lstat, mkdir, mkdtemp, rm, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { parseRuntimeConfiguration } from "../src/runtime-config.js";
+import {
+  ensurePrivateDatabaseParent,
+  parseRuntimeConfiguration,
+} from "../src/runtime-config.js";
 
 function environment(
   overrides: NodeJS.ProcessEnv = {},
@@ -13,6 +19,33 @@ function environment(
 }
 
 describe("private local runtime configuration", () => {
+  it("creates a private database parent and rejects permissive or symlinked ones", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "repo-security-config-"));
+    try {
+      const created = path.join(root, "created", "store.sqlite");
+      await ensurePrivateDatabaseParent(created);
+      expect((await lstat(path.dirname(created))).mode & 0o777).toBe(0o700);
+
+      const permissive = path.join(root, "permissive");
+      await mkdir(permissive, { mode: 0o755 });
+      await chmod(permissive, 0o755);
+      await expect(
+        ensurePrivateDatabaseParent(path.join(permissive, "store.sqlite")),
+      ).rejects.toThrow("invalid database directory");
+      expect((await lstat(permissive)).mode & 0o777).toBe(0o755);
+
+      const actual = path.join(root, "actual");
+      const redirected = path.join(root, "redirected");
+      await mkdir(actual, { mode: 0o700 });
+      await symlink(actual, redirected);
+      await expect(
+        ensurePrivateDatabaseParent(path.join(redirected, "store.sqlite")),
+      ).rejects.toThrow("invalid database directory");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("requires immutable account ids and exact scanner identity", () => {
     const configuration = parseRuntimeConfiguration(environment(), "/product");
     expect(configuration).toMatchObject({

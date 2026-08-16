@@ -79,7 +79,9 @@ describe("failure classes", () => {
     expect(FAILURE_CLASSES).toContain("FINDING_LIMIT");
     expect(FAILURE_CLASSES).toContain("SOURCE_CLEANUP_FAILED");
     expect(FAILURE_CLASSES).toContain("LEASE_RETRY_EXHAUSTED");
-    expect(FAILURE_CLASSES).toHaveLength(21);
+    expect(FAILURE_CLASSES).toContain("GITHUB_NETWORK");
+    expect(FAILURE_CLASSES).toContain("GITHUB_AUTH");
+    expect(FAILURE_CLASSES).toHaveLength(23);
   });
 
   it("uses only fixed UPPER_SNAKE identifiers", () => {
@@ -95,6 +97,9 @@ describe("failure classes", () => {
     );
     expect(failureClassSchema.safeParse("PRIVATE_SLICE_SCOPE").success).toBe(
       true,
+    );
+    expect(failureClassSchema.safeParse("GITHUB_SOMETHING_ELSE").success).toBe(
+      false,
     );
   });
 });

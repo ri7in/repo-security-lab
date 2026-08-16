@@ -13,6 +13,7 @@ import {
   repositoryPageSchema,
   scanRequestSummarySchema,
 } from "@app/contracts";
+import { GithubClientError } from "@app/github";
 import { SqliteStore } from "@app/store-sqlite";
 
 const temporaryDirectories: string[] = [];
@@ -157,7 +158,51 @@ describe("anonymous-safe control-plane API", () => {
     });
     expect(response.status).toBe(500);
     expect(await response.json()).toEqual({ reason: "INTERNAL_ERROR" });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(response.headers.get("x-content-type-options")).toBe("nosniff");
     database.close();
+  });
+
+  it("records GitHub transport and authentication discovery failures honestly", async () => {
+    for (const [code, expected] of [
+      ["NETWORK_FAILED", "GITHUB_NETWORK"],
+      ["UPSTREAM_FAILED", "GITHUB_NETWORK"],
+      ["INVALID_RESPONSE", "GITHUB_NETWORK"],
+      ["AUTH_REQUIRED", "GITHUB_AUTH"],
+    ] as const) {
+      const database = await store();
+      const tasks: Array<() => Promise<void>> = [];
+      const requestId = `req_${code.toLowerCase()}`;
+      const app = createApi({
+        store: database,
+        discovery: {
+          async discover() {
+            throw new GithubClientError(code);
+          },
+        },
+        allowedRequestedLogins: new Set(["ri7in"]),
+        allowedGithubAccountIds: new Set([123]),
+        dispatch: (task) => tasks.push(task),
+        createRequestId: () => requestId,
+      });
+      expect(
+        (
+          await app.request("/api/scan-requests", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ username: "ri7in" }),
+          })
+        ).status,
+      ).toBe(202);
+      await tasks[0]?.();
+      expect(await database.getRequest(requestId)).toMatchObject({
+        state: "failed",
+        reason: expected,
+      });
+      database.close();
+    }
   });
 
   it("bounds and type-checks the create-request body before JSON parsing", async () => {

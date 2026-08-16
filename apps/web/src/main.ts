@@ -1,6 +1,7 @@
 import { branding } from "@app/branding";
 import {
   operatorFindingPageSchema,
+  opaqueIdSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
   scanRequestSummarySchema,
@@ -279,15 +280,21 @@ form.addEventListener("submit", (event) => {
 const existingRequest = new URLSearchParams(location.search).get("request");
 if (existingRequest !== null) {
   statusSection.hidden = false;
-  requestIdLabel.textContent = existingRequest;
-  button.disabled = true;
-  setScanState("scanning");
-  void poll(existingRequest)
-    .catch(() => {
-      setScanState("failed");
-      liveStatus.textContent = "That request is unavailable.";
-    })
-    .finally(() => {
-      button.disabled = false;
-    });
+  const parsedRequest = opaqueIdSchema.safeParse(existingRequest);
+  if (!parsedRequest.success) {
+    setScanState("failed");
+    liveStatus.textContent = "That request is unavailable.";
+  } else {
+    requestIdLabel.textContent = parsedRequest.data;
+    button.disabled = true;
+    setScanState("scanning");
+    void poll(parsedRequest.data)
+      .catch(() => {
+        setScanState("failed");
+        liveStatus.textContent = "That request is unavailable.";
+      })
+      .finally(() => {
+        button.disabled = false;
+      });
+  }
 }

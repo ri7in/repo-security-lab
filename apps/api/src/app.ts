@@ -88,6 +88,14 @@ function discoveryFailure(error: unknown) {
   if (error instanceof GithubClientError) {
     if (error.code === "RATE_LIMITED") return "GITHUB_RATE_LIMIT" as const;
     if (error.code === "ACCOUNT_NOT_FOUND") return "GITHUB_NOT_FOUND" as const;
+    if (error.code === "AUTH_REQUIRED") return "GITHUB_AUTH" as const;
+    if (
+      error.code === "NETWORK_FAILED" ||
+      error.code === "UPSTREAM_FAILED" ||
+      error.code === "INVALID_RESPONSE"
+    ) {
+      return "GITHUB_NETWORK" as const;
+    }
     if (error.code === "REPOSITORY_CHANGED") return "REPOSITORY_CHANGED" as const;
   }
   return "REPOSITORY_CHANGED" as const;

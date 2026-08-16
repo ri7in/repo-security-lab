@@ -20,6 +20,7 @@ import {
 } from "@app/contracts";
 import {
   canTransition,
+  MAX_LEASE_ATTEMPTS,
   type ExhaustedLeaseRef,
   type LeaseRef,
   type RepositoryRecord,
@@ -69,6 +70,7 @@ export const WORK_RESULTS = [
   "stale_lease",
   "cleanup_pending",
   "publish_deferred",
+  "retry_queued",
 ] as const;
 export type WorkResult = (typeof WORK_RESULTS)[number];
 
@@ -118,6 +120,10 @@ function fixedFailure(error: unknown): FailureClass {
   if (error instanceof GithubClientError) {
     if (error.code === "RATE_LIMITED") return "GITHUB_RATE_LIMIT";
     if (error.code === "ACCOUNT_NOT_FOUND") return "GITHUB_NOT_FOUND";
+    if (error.code === "NETWORK_FAILED" || error.code === "UPSTREAM_FAILED") {
+      return "GITHUB_NETWORK";
+    }
+    if (error.code === "AUTH_REQUIRED") return "GITHUB_AUTH";
     if (error.code === "REPOSITORY_CHANGED") return "REPOSITORY_CHANGED";
     if (error.code === "ARCHIVE_LIMIT") return "ARCHIVE_LIMIT";
     if (error.code === "ARCHIVE_INVALID") return "ARCHIVE_INVALID";
@@ -412,6 +418,20 @@ export class RepositoryWorker {
           : true;
       }
       if (!sourceCleaned && jobRootCreated) return "cleanup_pending";
+      if (
+        (reason === "GITHUB_RATE_LIMIT" || reason === "GITHUB_NETWORK") &&
+        repository.attemptCount < MAX_LEASE_ATTEMPTS
+      ) {
+        try {
+          const queued = await this.#store.retryCleaned({
+            ...lease,
+            nowMs: this.#now(),
+          });
+          return queued ? "retry_queued" : "stale_lease";
+        } catch {
+          return "stale_lease";
+        }
+      }
       if (!canTransition(state, "failed")) return "stale_lease";
       try {
         const publication = await this.#store.publish({

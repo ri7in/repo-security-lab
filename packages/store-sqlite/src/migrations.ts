@@ -120,4 +120,73 @@ CREATE UNIQUE INDEX scan_requests_one_active_username
   WHERE state IN ('accepted','discovering','scanning');
 `;
 
-export const SCHEMA_VERSION = 4;
+/**
+ * Widen the closed failure vocabulary without weakening either table to free
+ * text. SQLite cannot alter a CHECK constraint in place, so both tables are
+ * rebuilt while the adapter has foreign keys disabled around its transaction.
+ */
+export const MIGRATION_005 = `
+CREATE TABLE scan_requests_v5 (
+  request_id TEXT PRIMARY KEY,
+  github_account_id INTEGER CHECK (github_account_id IS NULL OR github_account_id >= 0),
+  username TEXT NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('accepted','discovering','scanning','complete','failed')),
+  reason TEXT CHECK (reason IS NULL OR reason IN ('GITHUB_RATE_LIMIT','GITHUB_NOT_FOUND','GITHUB_NETWORK','GITHUB_AUTH','ARCHIVE_LIMIT','ARCHIVE_UNSAFE','ARCHIVE_INVALID','REPOSITORY_CHANGED','VULNERABILITY_DB_UNVERIFIED','VULNERABILITY_DB_STALE','VULNERABILITY_DB_MISMATCH','SCANNER_TIMEOUT','SCANNER_MEMORY_LIMIT','SCANNER_OUTPUT_LIMIT','SCANNER_INTERNAL','UNSUPPORTED_ECOSYSTEM','NORMALIZATION_REJECTED','FINDING_LIMIT','SOURCE_CLEANUP_FAILED','LEASE_RETRY_EXHAUSTED','D1_WRITE_RESERVE','CANCELLED','PRIVATE_SLICE_SCOPE')),
+  discovery_complete INTEGER NOT NULL CHECK (discovery_complete IN (0,1)),
+  ai_lane TEXT NOT NULL CHECK (ai_lane IN ('ai_not_run','ai_waiting','ai_partial')),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+) STRICT;
+
+INSERT INTO scan_requests_v5
+SELECT * FROM scan_requests;
+
+DROP TABLE scan_requests;
+ALTER TABLE scan_requests_v5 RENAME TO scan_requests;
+
+CREATE TABLE repositories_v5 (
+  request_id TEXT NOT NULL REFERENCES scan_requests(request_id) ON DELETE CASCADE,
+  repository_id INTEGER NOT NULL CHECK (repository_id >= 0),
+  name TEXT NOT NULL,
+  commit_sha TEXT,
+  state TEXT NOT NULL CHECK (state IN ('discovered','waiting','leased','acquiring','guarding','scanning','normalizing','cleaning','uploading','waiting_to_publish','complete','empty','partial','failed','cancelled')),
+  reason TEXT CHECK (reason IS NULL OR reason IN ('GITHUB_RATE_LIMIT','GITHUB_NOT_FOUND','GITHUB_NETWORK','GITHUB_AUTH','ARCHIVE_LIMIT','ARCHIVE_UNSAFE','ARCHIVE_INVALID','REPOSITORY_CHANGED','VULNERABILITY_DB_UNVERIFIED','VULNERABILITY_DB_STALE','VULNERABILITY_DB_MISMATCH','SCANNER_TIMEOUT','SCANNER_MEMORY_LIMIT','SCANNER_OUTPUT_LIMIT','SCANNER_INTERNAL','UNSUPPORTED_ECOSYSTEM','NORMALIZATION_REJECTED','FINDING_LIMIT','SOURCE_CLEANUP_FAILED','LEASE_RETRY_EXHAUSTED','D1_WRITE_RESERVE','CANCELLED','PRIVATE_SLICE_SCOPE')),
+  attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+  lease_owner TEXT,
+  lease_generation INTEGER NOT NULL DEFAULT 0 CHECK (lease_generation >= 0),
+  lease_expires_at_ms INTEGER,
+  published_lease_generation INTEGER CHECK (published_lease_generation IS NULL OR published_lease_generation > 0),
+  discovered_at_ms INTEGER NOT NULL CHECK (discovered_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  is_fork INTEGER NOT NULL DEFAULT 0 CHECK (is_fork IN (0,1)),
+  PRIMARY KEY (request_id, repository_id),
+  CHECK ((commit_sha IS NULL) OR (length(commit_sha) = 40)),
+  CHECK (
+    (lease_owner IS NULL AND lease_expires_at_ms IS NULL) OR
+    (lease_owner IS NOT NULL AND lease_expires_at_ms IS NOT NULL)
+  )
+) STRICT;
+
+INSERT INTO repositories_v5
+SELECT * FROM repositories;
+
+DROP TABLE repositories;
+ALTER TABLE repositories_v5 RENAME TO repositories;
+
+CREATE UNIQUE INDEX scan_requests_one_active_account
+  ON scan_requests(github_account_id)
+  WHERE github_account_id IS NOT NULL
+    AND state IN ('accepted','discovering','scanning');
+CREATE UNIQUE INDEX scan_requests_one_active_username
+  ON scan_requests(lower(username))
+  WHERE state IN ('accepted','discovering','scanning');
+CREATE INDEX repositories_claim_order
+  ON repositories(state, attempt_count, repository_id, request_id);
+CREATE INDEX repositories_lease_expiry
+  ON repositories(lease_expires_at_ms)
+  WHERE lease_expires_at_ms IS NOT NULL;
+CREATE INDEX repositories_request_state
+  ON repositories(request_id, state);
+`;
+
+export const SCHEMA_VERSION = 5;

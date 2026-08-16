@@ -53,6 +53,7 @@ import {
   MIGRATION_002,
   MIGRATION_003,
   MIGRATION_004,
+  MIGRATION_005,
   SCHEMA_VERSION,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
@@ -60,6 +61,8 @@ import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 export interface SqliteStoreOptions {
   readonly filename: string;
   readonly migrationTimeMs?: number;
+  /** Holds one exclusive local-runtime connection until close. */
+  readonly exclusive?: boolean;
 }
 
 interface RequestRow {
@@ -288,7 +291,14 @@ export class SqliteStore implements Store {
     assertTime(migrationTimeMs);
     try {
       this.#database = new Database(options.filename);
-      this.#database.pragma("busy_timeout = 5000");
+      // A second local runtime is a configuration error, so exclusive startup
+      // fails promptly instead of appearing to hang behind another process.
+      this.#database.pragma(
+        `busy_timeout = ${options.exclusive === true ? 250 : 5000}`,
+      );
+      if (options.exclusive === true) {
+        this.#database.pragma("locking_mode = EXCLUSIVE");
+      }
       // Version two rebuilds the request table to make the immutable GitHub id
       // nullable until discovery. SQLite requires foreign keys to be disabled
       // outside the migration transaction while that parent table is swapped.
@@ -318,10 +328,22 @@ export class SqliteStore implements Store {
           .get() as { version: number } | undefined;
         if (versionFour === undefined) {
           this.#database.exec(MIGRATION_004);
+          recordMigration.run(4, migrationTimeMs);
+        }
+        const versionFive = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 5")
+          .get() as { version: number } | undefined;
+        if (versionFive === undefined) {
+          this.#database.exec(MIGRATION_005);
           recordMigration.run(SCHEMA_VERSION, migrationTimeMs);
         }
       });
       migrate();
+      if (options.exclusive === true) {
+        // Make the lock real before startup orphan cleanup. Merely setting
+        // locking_mode does not acquire it until a transaction runs.
+        this.#database.exec("BEGIN EXCLUSIVE; COMMIT;");
+      }
       const foreignKeyViolations = this.#database.pragma(
         "foreign_key_check",
       ) as unknown[];
@@ -798,6 +820,33 @@ export class SqliteStore implements Store {
     } catch {
       throw new Error("lease release failed");
     }
+  }
+
+  async retryCleaned(input: ReleaseInput): Promise<boolean> {
+    this.#validateLeaseRef(input);
+    assertTime(input.nowMs);
+    const result = this.#database
+      .prepare(
+        `UPDATE repositories
+         SET state = 'waiting', reason = NULL, lease_owner = NULL,
+             lease_expires_at_ms = NULL, updated_at_ms = ?
+         WHERE request_id = ? AND repository_id = ?
+           AND state = 'cleaning'
+           AND lease_owner = ? AND lease_generation = ?
+           AND lease_expires_at_ms > ?
+           AND published_lease_generation IS NULL
+           AND attempt_count < ?`,
+      )
+      .run(
+        input.nowMs,
+        input.requestId,
+        input.repositoryId,
+        input.workerId,
+        input.generation,
+        input.nowMs,
+        MAX_LEASE_ATTEMPTS,
+      );
+    return result.changes === 1;
   }
 
   async transition(input: TransitionInput): Promise<boolean> {

@@ -15,6 +15,7 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { SourceBlindBroker } from "@app/broker";
+import { GithubClientError, type GithubErrorCode } from "@app/github";
 import { SqliteStore } from "@app/store-sqlite";
 import { GITLEAKS_BROKER_MANIFEST } from "@app/scanners";
 import {
@@ -87,6 +88,36 @@ function archiveFetcher(bytes: Uint8Array, onFetch?: () => void): ArchiveFetcher
       const body = new Response(Uint8Array.from(bytes).buffer).body;
       if (body === null) throw new Error("test expected response body");
       return { body, contentLength: bytes.byteLength, requestCount: 1 };
+    },
+  };
+}
+
+function failingArchiveFetcher(code: GithubErrorCode): ArchiveFetcher {
+  return {
+    async fetchArchive() {
+      throw new GithubClientError(code);
+    },
+  };
+}
+
+function interruptedArchiveFetcher(): ArchiveFetcher {
+  return {
+    async fetchArchive() {
+      let pulled = false;
+      return {
+        body: new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (!pulled) {
+              pulled = true;
+              controller.enqueue(Uint8Array.from([0x1f, 0x8b]));
+              return;
+            }
+            controller.error(new GithubClientError("NETWORK_FAILED"));
+          },
+        }),
+        contentLength: null,
+        requestCount: 1,
+      };
     },
   };
 }
@@ -296,7 +327,132 @@ describe("leased repository worker", () => {
     ).toMatchObject({
       state: "failed",
       reason: "ARCHIVE_UNSAFE",
+      attemptCount: 1,
       coverage: { snapshot: "complete", archive_guard: "failed" },
+    });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+  });
+
+  it("requeues a cleaned first rate-limit failure under a new generation", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        failingArchiveFetcher("RATE_LIMITED"),
+      ).runOne(),
+    ).toBe("retry_queued");
+    const waiting = (
+      await store.listRepositories({
+        requestId: "req_0000000001",
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(waiting).toMatchObject({
+      state: "waiting",
+      reason: null,
+      attemptCount: 1,
+      lease: null,
+    });
+    expect(await readdir(files.scratch)).toEqual([]);
+    const next = await store.claimNext({
+      workerId: "worker_00000002",
+      nowMs: Date.now(),
+      leaseDurationMs: 60_000,
+    });
+    expect(next).toMatchObject({ attemptCount: 2, leaseGeneration: 2 });
+    store.close();
+  });
+
+  it("retries rate limits twice, then publishes the honest final cause", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const repositoryWorker = worker(
+      store,
+      files.scratch,
+      failingArchiveFetcher("RATE_LIMITED"),
+    );
+    expect(await repositoryWorker.runOne()).toBe("retry_queued");
+    expect(await repositoryWorker.runOne()).toBe("retry_queued");
+    expect(await repositoryWorker.runOne()).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "GITHUB_RATE_LIMIT",
+      attemptCount: 3,
+      coverage: { snapshot: "failed" },
+    });
+    expect(
+      await store.listFindings({
+        requestId: "req_0000000001",
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: [] });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+  });
+
+  it("classifies an interrupted archive stream as a retryable GitHub network failure", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const repositoryWorker = worker(
+      store,
+      files.scratch,
+      interruptedArchiveFetcher(),
+    );
+    expect(await repositoryWorker.runOne()).toBe("retry_queued");
+    expect(await repositoryWorker.runOne()).toBe("retry_queued");
+    expect(await repositoryWorker.runOne()).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({ state: "failed", reason: "GITHUB_NETWORK" });
+    expect(await readdir(files.scratch)).toEqual([]);
+    store.close();
+  });
+
+  it("terminalizes GitHub authentication failure on the first attempt", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        failingArchiveFetcher("AUTH_REQUIRED"),
+      ).runOne(),
+    ).toBe("failed");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "failed",
+      reason: "GITHUB_AUTH",
+      attemptCount: 1,
     });
     expect(await readdir(files.scratch)).toEqual([]);
     store.close();

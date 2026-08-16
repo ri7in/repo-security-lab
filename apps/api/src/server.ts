@@ -1,5 +1,3 @@
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
 import { serve } from "@hono/node-server";
 import { SourceBlindBroker } from "@app/broker";
 import { GithubArchiveClient, GithubDiscoveryClient } from "@app/github";
@@ -10,14 +8,17 @@ import {
 import { SqliteStore } from "@app/store-sqlite";
 import { RepositoryWorker } from "@app/worker";
 import { createApi, resumePendingDiscoveries } from "./app.js";
-import { parseRuntimeConfiguration } from "./runtime-config.js";
+import {
+  ensurePrivateDatabaseParent,
+  parseRuntimeConfiguration,
+} from "./runtime-config.js";
 
 const configuration = parseRuntimeConfiguration(process.env);
-await mkdir(path.dirname(configuration.databasePath), {
-  recursive: true,
-  mode: 0o700,
+await ensurePrivateDatabaseParent(configuration.databasePath);
+const store = new SqliteStore({
+  filename: configuration.databasePath,
+  exclusive: true,
 });
-const store = new SqliteStore({ filename: configuration.databasePath });
 const discovery = new GithubDiscoveryClient({
   ...(configuration.githubToken === undefined
     ? {}

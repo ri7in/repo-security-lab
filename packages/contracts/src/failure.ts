@@ -13,6 +13,8 @@ import { z } from "zod";
 export const FAILURE_CLASSES = [
   "GITHUB_RATE_LIMIT",
   "GITHUB_NOT_FOUND",
+  "GITHUB_NETWORK",
+  "GITHUB_AUTH",
   "ARCHIVE_LIMIT",
   "ARCHIVE_UNSAFE",
   "ARCHIVE_INVALID",

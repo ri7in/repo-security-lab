@@ -4,7 +4,9 @@
  * conditional UPDATE require waiting + no owner, and generation increments in
  * the same SQLite write statement.
  */
-export const MAX_LEASE_ATTEMPTS = 3;
+import { MAX_LEASE_ATTEMPTS } from "@app/core";
+
+export { MAX_LEASE_ATTEMPTS };
 
 export const CLAIM_NEXT_SQL = `WITH candidate AS (
   SELECT repositories.request_id, repositories.repository_id

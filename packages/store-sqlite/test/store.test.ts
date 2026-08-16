@@ -17,7 +17,14 @@ import type {
   RepositoryRecord,
   SpecialistOutcomes,
 } from "@app/core";
-import { CLAIM_NEXT_SQL, MIGRATION_001, SqliteStore } from "@app/store-sqlite";
+import {
+  CLAIM_NEXT_SQL,
+  MIGRATION_001,
+  MIGRATION_002,
+  MIGRATION_003,
+  MIGRATION_004,
+  SqliteStore,
+} from "@app/store-sqlite";
 
 const temporaryDirectories: string[] = [];
 
@@ -414,6 +421,143 @@ describe("SQLite store ledger", () => {
     migrated.close();
   });
 
+  it("upgrades a populated version-four ledger without losing lease or publication state", async () => {
+    const filename = databasePath();
+    const legacy = new Database(filename);
+    legacy.exec(MIGRATION_001);
+    legacy
+      .prepare("INSERT INTO schema_migrations(version, applied_at_ms) VALUES (?, 1)")
+      .run(1);
+    legacy.exec(MIGRATION_002);
+    legacy
+      .prepare("INSERT INTO schema_migrations(version, applied_at_ms) VALUES (?, 1)")
+      .run(2);
+    legacy.exec(MIGRATION_003);
+    legacy
+      .prepare("INSERT INTO schema_migrations(version, applied_at_ms) VALUES (?, 1)")
+      .run(3);
+    legacy.exec(MIGRATION_004);
+    legacy
+      .prepare("INSERT INTO schema_migrations(version, applied_at_ms) VALUES (?, 1)")
+      .run(4);
+    const insertRequest = legacy.prepare(
+      `INSERT INTO scan_requests(
+        request_id, github_account_id, username, state, reason,
+        discovery_complete, ai_lane, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, NULL, 1, 'ai_not_run', 1, 1)`,
+    );
+    insertRequest.run("req_v4active001", 123, "ri7in", "scanning");
+    insertRequest.run("req_v4terminal1", 456, "finished-user", "complete");
+    const insertRepository = legacy.prepare(
+      `INSERT INTO repositories(
+        request_id, repository_id, name, commit_sha, state, reason,
+        attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
+        published_lease_generation, discovered_at_ms, updated_at_ms, is_fork
+      ) VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, 1, 1, 0)`,
+    );
+    insertRepository.run(
+      "req_v4active001", 10, "waiting-repo", "a".repeat(40), "waiting",
+      0, null, 0, null, null,
+    );
+    insertRepository.run(
+      "req_v4active001", 11, "leased-repo", "b".repeat(40), "leased",
+      1, "worker_legacy01", 1, 5_000, null,
+    );
+    insertRepository.run(
+      "req_v4terminal1", 12, "published-repo", "c".repeat(40), "complete",
+      1, null, 1, null, 1,
+    );
+    const insertCoverage = legacy.prepare(
+      `INSERT INTO repository_coverage(
+        request_id, repository_id, specialist, progress_state
+      ) VALUES (?, ?, ?, ?)`,
+    );
+    for (const [requestId, repositoryId, progress] of [
+      ["req_v4active001", 10, "waiting"],
+      ["req_v4active001", 11, "waiting"],
+      ["req_v4terminal1", 12, "complete"],
+    ] as const) {
+      for (const specialist of SPECIALISTS) {
+        insertCoverage.run(requestId, repositoryId, specialist, progress);
+      }
+    }
+    legacy
+      .prepare(
+        `INSERT INTO findings(
+          finding_id, request_id, repository_id, commit_sha, engine, rule_id,
+          category, severity, confidence, occurrence_bucket, remediation_key,
+          owner_detail_ref
+        ) VALUES (
+          'fnd_v4legacy001', 'req_v4terminal1', 12, ?, 'gitleaks',
+          'github-pat', 'secret', 'high', 'high', 'one', 'rotate-secret',
+          'detail_v4legacy'
+        )`,
+      )
+      .run("c".repeat(40));
+    legacy.close();
+
+    const store = new SqliteStore({ filename, migrationTimeMs: 2 });
+    expect(await store.getRequest("req_v4active001")).toMatchObject({
+      state: "scanning",
+      githubAccountId: 123,
+    });
+    const active = await store.listRepositories({
+      requestId: "req_v4active001",
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    expect(active.repositories[1]).toMatchObject({
+      state: "leased",
+      attemptCount: 1,
+      leaseGeneration: 1,
+    });
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_v4terminal1",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "complete",
+      publishedLeaseGeneration: 1,
+      coverage: outcomes(),
+    });
+    expect(
+      await store.listFindings({
+        requestId: "req_v4terminal1",
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: [{ finding_id: "fnd_v4legacy001" }] });
+    await expect(
+      store.createRequest({
+        requestId: "req_v5duplicate1",
+        username: "RI7IN",
+        nowMs: 3,
+      }),
+    ).rejects.toThrow("request creation failed");
+    expect(
+      await store.claimNext({
+        workerId: "worker_v5claim01",
+        nowMs: 2_000,
+        leaseDurationMs: 1_000,
+      }),
+    ).toMatchObject({ repositoryId: 10, attemptCount: 1, leaseGeneration: 1 });
+    store.close();
+
+    const migrated = new Database(filename);
+    migrated.pragma("foreign_keys = ON");
+    expect(migrated.pragma("foreign_key_check")).toEqual([]);
+    expect(
+      migrated
+        .prepare("SELECT version FROM schema_migrations ORDER BY version")
+        .all(),
+    ).toEqual([1, 2, 3, 4, 5].map((version) => ({ version })));
+    migrated.close();
+  });
+
   it("records zero-repository and no-default-branch accounts without omission", async () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     const emptyAccount = await createLedger(store, []);
@@ -494,6 +638,21 @@ describe("SQLite store ledger", () => {
 });
 
 describe("SQLite store leases", () => {
+  it("holds an exclusive runtime lock while preserving shared-mode tests", () => {
+    const filename = databasePath();
+    const first = new SqliteStore({ filename, migrationTimeMs: 1, exclusive: true });
+    expect(
+      () => new SqliteStore({ filename, migrationTimeMs: 1, exclusive: true }),
+    ).toThrow("store initialization failed");
+    first.close();
+    const reopened = new SqliteStore({
+      filename,
+      migrationTimeMs: 1,
+      exclusive: true,
+    });
+    reopened.close();
+  });
+
   it("atomically gives two independent connections different jobs", async () => {
     const filename = databasePath();
     const setup = new SqliteStore({ filename, migrationTimeMs: 1 });
@@ -686,6 +845,113 @@ describe("SQLite store leases", () => {
       }),
     ).toBe(true);
     expect(await store.release({ ...leaseRef(claim), nowMs: 1_102 })).toBe(false);
+    store.close();
+  });
+
+  it("requeues only the exact live cleaned lease and rejects expired or published rows", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const first = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 100,
+    });
+    if (first === null) throw new Error("test expected claim");
+    expect(await store.retryCleaned({ ...leaseRef(first), nowMs: 1_101 })).toBe(false);
+    expect(
+      await store.transition({
+        ...leaseRef(first),
+        expectedState: "leased",
+        nextState: "acquiring",
+        nowMs: 1_102,
+      }),
+    ).toBe(true);
+    expect(
+      await store.transition({
+        ...leaseRef(first),
+        expectedState: "acquiring",
+        nextState: "cleaning",
+        nowMs: 1_103,
+      }),
+    ).toBe(true);
+    expect(
+      await store.retryCleaned({
+        ...leaseRef(first),
+        generation: first.leaseGeneration + 1,
+        nowMs: 1_104,
+      }),
+    ).toBe(false);
+    expect(
+      await store.retryCleaned({
+        ...leaseRef(first),
+        workerId: "worker_00000002",
+        nowMs: 1_104,
+      }),
+    ).toBe(false);
+    expect(await store.retryCleaned({ ...leaseRef(first), nowMs: 1_200 })).toBe(false);
+    expect(await store.classifyExpiredLeases(1_200)).toMatchObject({
+      retryable: [{ generation: 1 }],
+    });
+    expect(
+      await store.requeueCleaned({
+        requestId: first.requestId,
+        repositoryId: first.repositoryId,
+        generation: first.leaseGeneration,
+        nowMs: 1_200,
+      }),
+    ).toBe(true);
+
+    const second = await store.claimNext({
+      workerId: "worker_00000002",
+      nowMs: 1_201,
+      leaseDurationMs: 1_000,
+    });
+    if (second === null) throw new Error("test expected second claim");
+    const publishLease = await advanceToWaitingToPublish(store, second, 1_202);
+    expect(await store.publish(publication(publishLease))).toBe("published");
+    expect(await store.retryCleaned({ ...leaseRef(second), nowMs: 1_203 })).toBe(false);
+    store.close();
+  });
+
+  it("refuses a live cleaned retry at the attempt ceiling", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      const claim = await store.claimNext({
+        workerId: `worker_0000000${attempt}`,
+        nowMs: 1_000 + attempt * 10,
+        leaseDurationMs: 1_000,
+      });
+      if (claim === null) throw new Error("test expected claim");
+      const lease = leaseRef(claim);
+      expect(
+        await store.transition({
+          ...lease,
+          expectedState: "leased",
+          nextState: "acquiring",
+          nowMs: 1_001 + attempt * 10,
+        }),
+      ).toBe(true);
+      expect(
+        await store.transition({
+          ...lease,
+          expectedState: "acquiring",
+          nextState: "cleaning",
+          nowMs: 1_002 + attempt * 10,
+        }),
+      ).toBe(true);
+      expect(
+        await store.retryCleaned({ ...lease, nowMs: 1_003 + attempt * 10 }),
+      ).toBe(attempt < 3);
+    }
+    const parked = (
+      await store.listRepositories({
+        requestId: "req_0000000001",
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(parked).toMatchObject({ state: "cleaning", attemptCount: 3 });
     store.close();
   });
 

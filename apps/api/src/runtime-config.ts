@@ -1,3 +1,4 @@
+import { lstat, mkdir, realpath } from "node:fs/promises";
 import path from "node:path";
 
 export interface RuntimeConfiguration {
@@ -40,6 +41,27 @@ function isInside(parent: string, candidate: string): boolean {
       relative !== ".." &&
       !path.isAbsolute(relative))
   );
+}
+
+/** Refuse shared or redirected storage before SQLite creates the database. */
+export async function ensurePrivateDatabaseParent(
+  databasePath: string,
+): Promise<void> {
+  const parent = path.dirname(path.resolve(databasePath));
+  await mkdir(parent, { recursive: true, mode: 0o700 });
+  const configured = await lstat(parent);
+  if (
+    !configured.isDirectory() ||
+    configured.isSymbolicLink() ||
+    (configured.mode & 0o077) !== 0
+  ) {
+    throw new Error("invalid database directory");
+  }
+  const resolved = await realpath(parent);
+  const metadata = await lstat(resolved);
+  if (!metadata.isDirectory() || (metadata.mode & 0o077) !== 0) {
+    throw new Error("invalid database directory");
+  }
 }
 
 export function parseRuntimeConfiguration(
