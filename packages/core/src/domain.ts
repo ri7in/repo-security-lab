@@ -9,6 +9,7 @@ import type {
   RepositoryState,
   RepositoryTerminalState,
   ScanRequestState,
+  ScanEngine,
   Specialist,
   SpecialistCoverageOutcome,
   SpecialistProgressState,
@@ -31,6 +32,8 @@ export interface ScanRequestRecord {
 
 export type SpecialistProgress = Readonly<Record<Specialist, SpecialistProgressState>>;
 export type SpecialistOutcomes = Readonly<Record<Specialist, SpecialistCoverageOutcome>>;
+/** Fixed, source-blind failure attribution for scan engines that actually ran. */
+export type SpecialistReasons = Readonly<Partial<Record<ScanEngine, FailureClass>>>;
 
 export interface LeaseIdentity {
   readonly workerId: OpaqueId;
@@ -51,6 +54,7 @@ export interface RepositoryRecord {
   readonly state: RepositoryState;
   readonly reason: FailureClass | null;
   readonly coverage: SpecialistProgress;
+  readonly specialistReasons: SpecialistReasons;
   readonly attemptCount: number;
   /** Monotonic counter retained even while no lease is active (ABA guard). */
   readonly leaseGeneration: number;
@@ -122,6 +126,7 @@ export interface TransitionInput extends LeaseRef {
 
 interface PublishInputBase extends LeaseRef {
   readonly coverage: SpecialistOutcomes;
+  readonly specialistReasons: SpecialistReasons;
   readonly findings: readonly BrokerDerivedFinding[];
   readonly nowMs: number;
 }

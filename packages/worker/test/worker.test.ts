@@ -22,6 +22,7 @@ import {
   RepositoryWorker,
   scratchPathFor,
   type ArchiveFetcher,
+  type AdditionalEngineRunner,
   type SecretScanner,
 } from "@app/worker";
 import * as applicability from "../src/applicability.js";
@@ -181,6 +182,32 @@ function scanner(assertSource?: (sourceDirectory: string) => Promise<void>): Sec
       };
     },
   };
+}
+
+function additionalEngine(
+  engine: AdditionalEngineRunner["engine"],
+  implementation: AdditionalEngineRunner["scanAndNormalize"],
+): AdditionalEngineRunner {
+  return {
+    engine,
+    broker: new SourceBlindBroker(engine, [
+      {
+        token: 1,
+        ruleId: `${engine}-fixture-rule`,
+        category: "code",
+        severity: "high",
+        confidence: "high",
+        remediationKey: "review-fixture",
+      },
+    ]),
+    scanAndNormalize: implementation,
+  };
+}
+
+function oneGroupPacket(): Uint8Array {
+  return new TextEncoder().encode(
+    JSON.stringify({ schemaVersion: 1, groups: [{ token: 1, bucket: 0 }] }),
+  );
 }
 
 function worker(
@@ -390,7 +417,7 @@ describe("leased repository worker", () => {
     store.close();
   });
 
-  it("converts unknown applicability to failed on a failed row", async () => {
+  it("keeps unknown unrun specialists unsupported on a failed row", async () => {
     vi.spyOn(applicability, "detectSpecialistApplicability").mockResolvedValueOnce(
       null,
     );
@@ -425,11 +452,102 @@ describe("leased repository worker", () => {
         snapshot: "complete",
         archive_guard: "complete",
         gitleaks: "failed",
-        osv: "failed",
-        zizmor: "failed",
-        opengrep: "failed",
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
       },
     });
+    store.close();
+  });
+
+  it("retains Gitleaks evidence when an applicable second engine fails", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const result = await worker(
+      store,
+      files.scratch,
+      archiveFetcher(mixedApplicabilityArchive()),
+      scanner(),
+      {
+        additionalEngines: [
+          additionalEngine("osv", async () => {
+            throw new ScannerError("SCANNER_TIMEOUT");
+          }),
+        ],
+      },
+    ).runOne();
+
+    expect(result).toBe("partial");
+    const repository = (
+      await store.listRepositories({
+        requestId: "req_0000000001",
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(repository).toMatchObject({
+      state: "partial",
+      reason: "SCANNER_TIMEOUT",
+      specialistReasons: { osv: "SCANNER_TIMEOUT" },
+      coverage: { gitleaks: "complete", osv: "failed" },
+    });
+    expect(
+      await store.listFindings({
+        requestId: "req_0000000001",
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: [{ engine: "gitleaks", rule_id: "github-pat" }] });
+    store.close();
+  });
+
+  it("retains second-engine evidence when Gitleaks fails", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const failingScanner: SecretScanner = {
+      scan() {
+        return Promise.reject(new ScannerError("SCANNER_TIMEOUT"));
+      },
+    };
+    expect(
+      await worker(
+        store,
+        files.scratch,
+        archiveFetcher(mixedApplicabilityArchive()),
+        failingScanner,
+        {
+          additionalEngines: [
+            additionalEngine("osv", async () => ({
+              packetBytes: oneGroupPacket(),
+              coverage: "complete",
+              reason: null,
+            })),
+          ],
+        },
+      ).runOne(),
+    ).toBe("partial");
+    const repository = (
+      await store.listRepositories({
+        requestId: "req_0000000001",
+        afterRepositoryId: null,
+        limit: 10,
+      })
+    ).repositories[0];
+    expect(repository).toMatchObject({
+      state: "partial",
+      reason: "SCANNER_TIMEOUT",
+      specialistReasons: { gitleaks: "SCANNER_TIMEOUT" },
+      coverage: { gitleaks: "failed", osv: "complete" },
+    });
+    expect(
+      await store.listFindings({
+        requestId: "req_0000000001",
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: [{ engine: "osv", rule_id: "osv-fixture-rule" }] });
     store.close();
   });
 
@@ -815,6 +933,34 @@ describe("leased repository worker", () => {
         })
       ).repositories[0]?.state,
     ).toBe("waiting");
+    store.close();
+  });
+
+  it("reports a late stale transition after successful scanning without rewriting coverage", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const transition = store.transition.bind(store);
+    vi.spyOn(store, "transition").mockImplementation(async (input) =>
+      input.nextState === "uploading" ? false : transition(input),
+    );
+
+    expect(
+      await worker(store, files.scratch, archiveFetcher(archive())).runOne(),
+    ).toBe("stale_lease");
+    expect(await readdir(files.scratch)).toEqual([]);
+    expect(
+      (
+        await store.listRepositories({
+          requestId: "req_0000000001",
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "cleaning",
+      coverage: { gitleaks: "waiting" },
+    });
     store.close();
   });
 

@@ -36,9 +36,12 @@ $("#tagline").textContent = branding.tagline;
 $("#footer-name").textContent = `${branding.productDisplayName} · free and open source.`;
 document.title = `${branding.productDisplayName} — public repository security`;
 
-$("#theme-toggle").addEventListener("click", () => {
+const themeToggle = $<HTMLButtonElement>("#theme-toggle");
+themeToggle.addEventListener("click", () => {
   const root = document.documentElement;
-  root.dataset["theme"] = root.dataset["theme"] === "dark" ? "light" : "dark";
+  const dark = root.dataset["theme"] !== "dark";
+  root.dataset["theme"] = dark ? "dark" : "light";
+  themeToggle.setAttribute("aria-pressed", String(dark));
 });
 
 function setScanState(state: "idle" | "scanning" | "complete" | "failed"): void {
@@ -51,10 +54,13 @@ function setScanState(state: "idle" | "scanning" | "complete" | "failed"): void 
   }[state];
 }
 
-function stateChip(state: string): HTMLElement {
+function stateChip(state: string, reason?: string): HTMLElement {
   const chip = document.createElement("span");
   chip.className = `state-chip ${state}`;
-  chip.textContent = state.replaceAll("_", " ");
+  chip.textContent = [state, reason]
+    .filter((value): value is string => value !== undefined)
+    .map((value) => value.replaceAll("_", " "))
+    .join(" · ");
   return chip;
 }
 
@@ -115,18 +121,18 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       const name = document.createElement("td");
       name.className = "repo-name";
       name.textContent = repository.name;
-      const states = [
-        repository.state,
-        repository.coverage.snapshot,
-        repository.coverage.archive_guard,
-        repository.coverage.gitleaks,
-        repository.coverage.osv,
-        repository.coverage.zizmor,
-        repository.coverage.opengrep,
+      const states: ReadonlyArray<readonly [string, string | undefined]> = [
+        [repository.state, repository.reason],
+        [repository.coverage.snapshot, undefined],
+        [repository.coverage.archive_guard, undefined],
+        [repository.coverage.gitleaks, repository.specialistReasons?.gitleaks],
+        [repository.coverage.osv, repository.specialistReasons?.osv],
+        [repository.coverage.zizmor, repository.specialistReasons?.zizmor],
+        [repository.coverage.opengrep, repository.specialistReasons?.opengrep],
       ];
-      row.append(name, ...states.map((state) => {
+      row.append(name, ...states.map(([state, reason]) => {
         const cell = document.createElement("td");
-        cell.append(stateChip(state));
+        cell.append(stateChip(state, reason));
         return cell;
       }));
       return row;

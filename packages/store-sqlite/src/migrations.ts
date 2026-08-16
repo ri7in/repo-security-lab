@@ -189,4 +189,14 @@ CREATE INDEX repositories_request_state
   ON repositories(request_id, state);
 `;
 
-export const SCHEMA_VERSION = 5;
+/**
+ * Persist canonical per-engine failure attribution beside repository state.
+ * The map stays source-blind: keys and values are closed contract enums.
+ */
+export const MIGRATION_006 = `
+ALTER TABLE repositories
+  ADD COLUMN specialist_reasons TEXT NOT NULL DEFAULT '{}'
+  CHECK (json_valid(specialist_reasons) AND json_type(specialist_reasons) = 'object');
+`;
+
+export const SCHEMA_VERSION = 6;

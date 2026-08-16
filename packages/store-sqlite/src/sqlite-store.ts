@@ -2,6 +2,7 @@
 import Database from "better-sqlite3";
 import {
   SPECIALISTS,
+  SCAN_ENGINES,
   brokerDerivedFindingSchema,
   commitShaSchema,
   failureClassSchema,
@@ -12,6 +13,7 @@ import {
   scanRequestStateSchema,
   specialistCoverageOutcomeSchema,
   specialistProgressStateSchema,
+  specialistReasonsSchema,
   type AiLaneState,
   type BrokerDerivedFinding,
   type FailureClass,
@@ -45,6 +47,7 @@ import {
   type RepositoryRecord,
   type ScanRequestRecord,
   type SpecialistProgress,
+  type SpecialistReasons,
   type Store,
   type TransitionInput,
 } from "@app/core";
@@ -54,6 +57,7 @@ import {
   MIGRATION_003,
   MIGRATION_004,
   MIGRATION_005,
+  MIGRATION_006,
   SCHEMA_VERSION,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
@@ -92,11 +96,41 @@ interface RepositoryRow {
   published_lease_generation: number | null;
   discovered_at_ms: number;
   updated_at_ms: number;
+  specialist_reasons: string;
 }
 
 interface CoverageRow {
   specialist: string;
   progress_state: string;
+}
+
+function parseSpecialistReasons(value: string): SpecialistReasons {
+  try {
+    const parsed = specialistReasonsSchema.parse(JSON.parse(value) as unknown);
+    return Object.freeze(
+      Object.fromEntries(
+        SCAN_ENGINES.flatMap((engine) =>
+          parsed[engine] === undefined ? [] : [[engine, parsed[engine]]],
+        ),
+      ),
+    );
+  } catch {
+    throw new Error("invalid specialist reasons");
+  }
+}
+
+function serializeSpecialistReasons(reasons: SpecialistReasons): string {
+  const parsed = specialistReasonsSchema.safeParse(reasons);
+  if (!parsed.success) throw new Error("invalid specialist reasons");
+  return JSON.stringify(
+    Object.fromEntries(
+      SCAN_ENGINES.flatMap((engine) =>
+        parsed.data[engine] === undefined
+          ? []
+          : [[engine, parsed.data[engine]]],
+      ),
+    ),
+  );
 }
 
 interface FindingRow {
@@ -271,6 +305,7 @@ function parseRepositoryRow(
     state: row.state as RepositoryState,
     reason: row.reason as FailureClass | null,
     coverage,
+    specialistReasons: parseSpecialistReasons(row.specialist_reasons),
     attemptCount: row.attempt_count,
     leaseGeneration: row.lease_generation,
     lease,
@@ -335,6 +370,13 @@ export class SqliteStore implements Store {
           .get() as { version: number } | undefined;
         if (versionFive === undefined) {
           this.#database.exec(MIGRATION_005);
+          recordMigration.run(5, migrationTimeMs);
+        }
+        const versionSix = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 6")
+          .get() as { version: number } | undefined;
+        if (versionSix === undefined) {
+          this.#database.exec(MIGRATION_006);
           recordMigration.run(SCHEMA_VERSION, migrationTimeMs);
         }
       });
@@ -697,7 +739,7 @@ export class SqliteStore implements Store {
     const result = this.#database
       .prepare(
         `UPDATE repositories
-         SET state = 'waiting', reason = NULL, lease_owner = NULL,
+         SET state = 'waiting', reason = NULL, specialist_reasons = '{}', lease_owner = NULL,
              lease_expires_at_ms = NULL, updated_at_ms = ?
          WHERE request_id = ? AND repository_id = ?
            AND lease_generation = ? AND attempt_count < ?
@@ -725,7 +767,7 @@ export class SqliteStore implements Store {
       const result = this.#database
         .prepare(
           `UPDATE repositories
-           SET state = 'failed', reason = 'LEASE_RETRY_EXHAUSTED',
+           SET state = 'failed', reason = 'LEASE_RETRY_EXHAUSTED', specialist_reasons = '{}',
                lease_owner = NULL, lease_expires_at_ms = NULL, updated_at_ms = ?
            WHERE request_id = ? AND repository_id = ?
              AND lease_generation = ? AND attempt_count >= ?
@@ -796,7 +838,7 @@ export class SqliteStore implements Store {
         this.#database
           .prepare(
             `UPDATE repositories
-             SET state = 'waiting', reason = NULL, lease_owner = NULL,
+             SET state = 'waiting', reason = NULL, specialist_reasons = '{}', lease_owner = NULL,
                  lease_expires_at_ms = NULL, updated_at_ms = ?
              WHERE request_id = ? AND repository_id = ?
                AND state = 'leased'
@@ -828,7 +870,7 @@ export class SqliteStore implements Store {
     const result = this.#database
       .prepare(
         `UPDATE repositories
-         SET state = 'waiting', reason = NULL, lease_owner = NULL,
+         SET state = 'waiting', reason = NULL, specialist_reasons = '{}', lease_owner = NULL,
              lease_expires_at_ms = NULL, updated_at_ms = ?
          WHERE request_id = ? AND repository_id = ?
            AND state = 'cleaning'
@@ -908,9 +950,13 @@ export class SqliteStore implements Store {
           const sameCoverage = SPECIALISTS.every(
             (specialist) => currentCoverage[specialist] === input.coverage[specialist],
           );
+          const sameSpecialistReasons =
+            row.specialist_reasons ===
+            serializeSpecialistReasons(input.specialistReasons);
           return row.state === input.terminalState &&
             row.reason === input.reason &&
             sameCoverage &&
+            sameSpecialistReasons &&
             this.#publicationFindingsMatch(input)
             ? "idempotent"
             : "idempotency_conflict";
@@ -974,7 +1020,7 @@ export class SqliteStore implements Store {
         const result = this.#database
           .prepare(
             `UPDATE repositories
-             SET state = ?, reason = ?, published_lease_generation = ?,
+             SET state = ?, reason = ?, specialist_reasons = ?, published_lease_generation = ?,
                  lease_owner = NULL, lease_expires_at_ms = NULL, updated_at_ms = ?
              WHERE request_id = ? AND repository_id = ?
                AND state = ? AND lease_owner = ? AND lease_generation = ?
@@ -983,6 +1029,7 @@ export class SqliteStore implements Store {
           .run(
             input.terminalState,
             input.reason,
+            serializeSpecialistReasons(input.specialistReasons),
             input.generation,
             input.nowMs,
             input.requestId,
@@ -1172,9 +1219,35 @@ export class SqliteStore implements Store {
   #validatePublishInput(input: PublishInput): void {
     this.#validateLeaseRef(input);
     assertTime(input.nowMs);
+    serializeSpecialistReasons(input.specialistReasons);
     const coverageValues = SPECIALISTS.map(
       (specialist) => input.coverage[specialist],
     );
+    const successfulEngines = SCAN_ENGINES.filter((engine) =>
+      ["complete", "partial"].includes(input.coverage[engine]),
+    );
+    const failedEngines = SCAN_ENGINES.filter(
+      (engine) => input.coverage[engine] === "failed",
+    );
+    const partialEngines = SCAN_ENGINES.filter(
+      (engine) => input.coverage[engine] === "partial",
+    );
+    const baseFailed =
+      input.coverage.snapshot === "failed" ||
+      input.coverage.archive_guard === "failed";
+    const reasonEntries = Object.entries(input.specialistReasons);
+    const reasonsMatchFailedEngines = reasonEntries.every(
+      ([engine, reason]) =>
+        SCAN_ENGINES.includes(engine as (typeof SCAN_ENGINES)[number]) &&
+        input.coverage[engine as (typeof SCAN_ENGINES)[number]] === "failed" &&
+        failureClassSchema.safeParse(reason).success,
+    );
+    const allFailedEnginesAttributed = failedEngines.every(
+      (engine) => input.specialistReasons[engine] !== undefined,
+    );
+    const firstFailedReason = failedEngines
+      .map((engine) => input.specialistReasons[engine])
+      .find((reason) => reason !== undefined);
     if (
       !["complete", "partial", "failed", "cancelled"].includes(
         input.terminalState,
@@ -1183,17 +1256,28 @@ export class SqliteStore implements Store {
       (input.terminalState !== "complete" && input.reason === null) ||
       (input.reason !== null && !failureClassSchema.safeParse(input.reason).success) ||
       (input.terminalState === "complete" &&
-        coverageValues.some(
+        (coverageValues.some(
           (outcome) => outcome === "partial" || outcome === "failed",
-        )) ||
+        ) || reasonEntries.length > 0)) ||
       (input.terminalState === "partial" &&
-        (input.reason !== "FINDING_LIMIT" ||
-          !coverageValues.includes("partial") ||
-          coverageValues.includes("failed"))) ||
+        (baseFailed ||
+          successfulEngines.length === 0 ||
+          (partialEngines.length === 0 && failedEngines.length === 0) ||
+          (failedEngines.length > 0
+            ? !allFailedEnginesAttributed || input.reason !== firstFailedReason
+            : input.reason !== "FINDING_LIMIT" || reasonEntries.length > 0))) ||
       (input.terminalState === "failed" &&
-        !coverageValues.includes("failed")) ||
+        (!coverageValues.includes("failed") ||
+          successfulEngines.length > 0 ||
+          (!baseFailed &&
+            reasonEntries.length > 0 &&
+            input.reason !== firstFailedReason))) ||
       (input.terminalState === "cancelled" &&
-        !["CANCELLED", "PRIVATE_SLICE_SCOPE"].includes(input.reason ?? "")) ||
+        (!["CANCELLED", "PRIVATE_SLICE_SCOPE"].includes(input.reason ?? "") ||
+          coverageValues.some((outcome) => outcome !== "not_applicable") ||
+          reasonEntries.length > 0)) ||
+      !reasonsMatchFailedEngines ||
+      (baseFailed && reasonEntries.length > 0) ||
       ((input.terminalState === "failed" ||
         input.terminalState === "cancelled") &&
         input.findings.length > 0)

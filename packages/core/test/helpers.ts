@@ -33,6 +33,7 @@ export function repository(
     state,
     reason: null,
     coverage: progress(),
+    specialistReasons: {},
     attemptCount,
     leaseGeneration: 0,
     lease: null,

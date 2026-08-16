@@ -61,6 +61,11 @@ configuration and ignores disabled. A clean JSON-v1 array is required. This is
 a repository self-scan only; hosted repository coverage remains explicitly
 `unsupported` until the source-blind zizmor adapter is integrated.
 
+The name-only applicability walk intentionally treats a stemless `.yml` or
+`.yaml` entry directly under `.github/workflows/` as workflow-relevant. This
+conservative bias can only produce `unsupported`; it cannot produce a false
+absence or a claim that zizmor ran.
+
 CI also downloads the provenance-checked, exact SHA-256-pinned OSV-Scanner
 2.5.0 binary and scans only this project's committed `pnpm-lock.yaml`, with
 dependency resolution disabled. Its JSON report must contain zero vulnerable

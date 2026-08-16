@@ -17,6 +17,10 @@ export const OSV_RELEVANT_DEPENDENCY_BASENAMES = [
   "package.json",
 ] as const;
 
+const OSV_RELEVANT_DEPENDENCY_NAMES = new Set<string>(
+  OSV_RELEVANT_DEPENDENCY_BASENAMES,
+);
+
 const OPENGREP_RELEVANT_EXTENSIONS = new Set([
   ".js",
   ".jsx",
@@ -110,7 +114,7 @@ export async function detectSpecialistApplicability(
   try {
     while (pending.length > 0) {
       const current = pending.pop();
-      if (current === undefined) break;
+      if (current === undefined) return null;
       const entries = await readdir(current.directory, { withFileTypes: true });
       for (const entry of entries) {
         observedEntries += 1;
@@ -130,11 +134,7 @@ export async function detectSpecialistApplicability(
         if (!entry.isFile()) return null;
 
         const basename = entry.name;
-        if (
-          OSV_RELEVANT_DEPENDENCY_BASENAMES.includes(
-            basename as (typeof OSV_RELEVANT_DEPENDENCY_BASENAMES)[number],
-          )
-        ) {
+        if (OSV_RELEVANT_DEPENDENCY_NAMES.has(basename)) {
           osv = true;
         }
         if (isWorkflow(segments)) zizmor = true;

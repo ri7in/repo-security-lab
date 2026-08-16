@@ -13,10 +13,12 @@ import { createHash } from "node:crypto";
 import { extractTarGzip, ArchiveError } from "@app/archive";
 import { BrokerError, type SourceBlindBroker } from "@app/broker";
 import {
+  SCAN_ENGINES,
   SPECIALISTS,
   type FailureClass,
   type OpaqueId,
   type RepositoryActiveState,
+  type ScanEngine,
 } from "@app/contracts";
 import {
   canTransition,
@@ -32,7 +34,11 @@ import {
   type ArchiveDownload,
   type ArchiveRef,
 } from "@app/github";
-import { normalizeGitleaks, NormalizationError } from "@app/normalize";
+import {
+  normalizeGitleaks,
+  NormalizationError,
+  type NormalizedResult,
+} from "@app/normalize";
 import {
   ScannerError,
   type GitleaksScanResult,
@@ -52,11 +58,21 @@ export interface SecretScanner {
   scan(sourceDirectory: string): Promise<GitleaksScanResult>;
 }
 
+export type AdditionalScanEngine = Exclude<ScanEngine, "gitleaks">;
+
+/** Hostile-domain adapter output is already reduced to the numeric packet. */
+export interface AdditionalEngineRunner {
+  readonly engine: AdditionalScanEngine;
+  readonly broker: SourceBlindBroker;
+  scanAndNormalize(sourceDirectory: string): Promise<NormalizedResult>;
+}
+
 export interface RepositoryWorkerOptions {
   readonly store: Store;
   readonly archiveFetcher: ArchiveFetcher;
   readonly gitleaks: SecretScanner;
   readonly gitleaksBroker: SourceBlindBroker;
+  readonly additionalEngines?: readonly AdditionalEngineRunner[];
   readonly workerId: OpaqueId;
   readonly scratchBase: string;
   readonly allowedGithubAccountIds: ReadonlySet<number>;
@@ -161,6 +177,7 @@ export class RepositoryWorker {
   readonly #archiveFetcher: ArchiveFetcher;
   readonly #gitleaks: SecretScanner;
   readonly #gitleaksBroker: SourceBlindBroker;
+  readonly #additionalEngines: readonly AdditionalEngineRunner[];
   readonly #workerId: OpaqueId;
   readonly #scratchBase: string;
   readonly #allowedGithubAccountIds: ReadonlySet<number>;
@@ -173,12 +190,20 @@ export class RepositoryWorker {
     this.#archiveFetcher = options.archiveFetcher;
     this.#gitleaks = options.gitleaks;
     this.#gitleaksBroker = options.gitleaksBroker;
+    this.#additionalEngines = Object.freeze([...(options.additionalEngines ?? [])]);
     this.#workerId = options.workerId;
     this.#scratchBase = path.resolve(options.scratchBase);
     this.#allowedGithubAccountIds = options.allowedGithubAccountIds;
     this.#leaseDurationMs = options.leaseDurationMs ?? DEFAULT_LEASE_DURATION_MS;
     this.#now = options.now ?? Date.now;
     this.#removeScratch = options.removeScratch ?? this.#defaultRemoveScratch;
+    const additionalNames = this.#additionalEngines.map((runner) => runner.engine);
+    if (
+      additionalNames.some((engine) => engine === ("gitleaks" as ScanEngine)) ||
+      new Set(additionalNames).size !== additionalNames.length
+    ) {
+      throw new Error("invalid additional engine configuration");
+    }
     if (
       !Number.isSafeInteger(this.#leaseDurationMs) ||
       this.#leaseDurationMs < 10 * 60 * 1_000 ||
@@ -268,6 +293,7 @@ export class RepositoryWorker {
       (typeof SPECIALISTS)[number],
       SpecialistOutcomes[(typeof SPECIALISTS)[number]]
     >;
+    const specialistReasons: Partial<Record<ScanEngine, FailureClass>> = {};
     const request = await this.#store.getRequest(repository.requestId);
     if (
       request?.githubAccountId === null ||
@@ -280,6 +306,7 @@ export class RepositoryWorker {
         terminalState: "cancelled",
         reason: "PRIVATE_SLICE_SCOPE",
         coverage,
+        specialistReasons,
         findings: [],
         nowMs: this.#now(),
       });
@@ -346,7 +373,52 @@ export class RepositoryWorker {
       ) {
         throw new Error("stale worker lease");
       }
-      const scanResult = await this.#gitleaks.scan(sourcePath);
+      const normalizedByEngine = new Map<
+        ScanEngine,
+        { readonly normalized: NormalizedResult; readonly broker: SourceBlindBroker }
+      >();
+      try {
+        const scanResult = await this.#gitleaks.scan(sourcePath);
+        const normalized = normalizeGitleaks(scanResult);
+        coverage.gitleaks = normalized.coverage;
+        normalizedByEngine.set("gitleaks", {
+          normalized,
+          broker: this.#gitleaksBroker,
+        });
+      } catch (error) {
+        coverage.gitleaks = "failed";
+        specialistReasons.gitleaks = fixedFailure(error);
+      }
+      for (const runner of this.#additionalEngines) {
+        if (detected?.[runner.engine] !== true) continue;
+        if (
+          !(await this.#store.heartbeat({
+            ...lease,
+            nowMs: this.#now(),
+            leaseDurationMs: this.#leaseDurationMs,
+          }))
+        ) {
+          throw new Error("stale worker lease");
+        }
+        try {
+          const normalized = await runner.scanAndNormalize(sourcePath);
+          if (
+            (normalized.coverage === "complete" && normalized.reason !== null) ||
+            (normalized.coverage === "partial" &&
+              normalized.reason !== "FINDING_LIMIT")
+          ) {
+            throw new NormalizationError();
+          }
+          coverage[runner.engine] = normalized.coverage;
+          normalizedByEngine.set(runner.engine, {
+            normalized,
+            broker: runner.broker,
+          });
+        } catch (error) {
+          coverage[runner.engine] = "failed";
+          specialistReasons[runner.engine] = fixedFailure(error);
+        }
+      }
       if (
         !(await this.#store.heartbeat({
           ...lease,
@@ -357,51 +429,100 @@ export class RepositoryWorker {
         throw new Error("stale worker lease");
       }
       await advance("normalizing");
-      const normalized = normalizeGitleaks(scanResult);
-      coverage.gitleaks = normalized.coverage;
       await advance("cleaning");
       sourceCleaned = await this.#removeScratch(jobRoot);
       if (!sourceCleaned) return "cleanup_pending";
       await advance("uploading");
-      const findings = this.#gitleaksBroker.accept(normalized.packetBytes, {
-        requestId: repository.requestId,
-        repositoryId: repository.repositoryId,
-        commitSha: repository.commitSha,
-        ownerDetailRef: fixedOwnerDetailRef(reference),
-      });
+      const findings = [];
+      for (const [engine, result] of normalizedByEngine) {
+        try {
+          const accepted = result.broker.accept(result.normalized.packetBytes, {
+            requestId: repository.requestId,
+            repositoryId: repository.repositoryId,
+            commitSha: repository.commitSha,
+            ownerDetailRef: fixedOwnerDetailRef(reference),
+          });
+          if (accepted.some((finding) => finding.engine !== engine)) {
+            throw new BrokerError();
+          }
+          findings.push(...accepted);
+        } catch {
+          coverage[engine] = "failed";
+          specialistReasons[engine] = "NORMALIZATION_REJECTED";
+        }
+      }
       await advance("waiting_to_publish");
+      const successfulEngines = SCAN_ENGINES.filter((engine) =>
+        ["complete", "partial"].includes(coverage[engine]),
+      );
+      const failedEngine = SCAN_ENGINES.find(
+        (engine) => coverage[engine] === "failed",
+      );
+      const hasPartialEngine = SCAN_ENGINES.some(
+        (engine) => coverage[engine] === "partial",
+      );
       let publication;
       try {
-        publication =
-          normalized.coverage === "partial"
-            ? await this.#store.publish({
-                ...lease,
-                terminalState: "partial",
-                reason: "FINDING_LIMIT",
-                coverage,
-                findings,
-                nowMs: this.#now(),
-              })
-            : await this.#store.publish({
-                ...lease,
-                terminalState: "complete",
-                reason: null,
-                coverage,
-                findings,
-                nowMs: this.#now(),
-              });
+        if (successfulEngines.length === 0) {
+          publication = await this.#store.publish({
+            ...lease,
+            terminalState: "failed",
+            reason:
+              (failedEngine === undefined
+                ? undefined
+                : specialistReasons[failedEngine]) ?? "SCANNER_INTERNAL",
+            coverage,
+            specialistReasons,
+            findings: [],
+            nowMs: this.#now(),
+          });
+        } else if (failedEngine !== undefined || hasPartialEngine) {
+          publication = await this.#store.publish({
+            ...lease,
+            terminalState: "partial",
+            reason:
+              (failedEngine === undefined
+                ? undefined
+                : specialistReasons[failedEngine]) ?? "FINDING_LIMIT",
+            coverage,
+            specialistReasons,
+            findings,
+            nowMs: this.#now(),
+          });
+        } else {
+          publication = await this.#store.publish({
+            ...lease,
+            terminalState: "complete",
+            reason: null,
+            coverage,
+            specialistReasons,
+            findings,
+            nowMs: this.#now(),
+          });
+        }
       } catch {
         return "publish_deferred";
       }
       if (publication !== "published" && publication !== "idempotent") {
         return publication === "stale_lease" ? "stale_lease" : "publish_deferred";
       }
-      return normalized.coverage === "partial" ? "partial" : "complete";
+      return successfulEngines.length === 0
+        ? "failed"
+        : failedEngine !== undefined || hasPartialEngine
+          ? "partial"
+          : "complete";
     } catch (error) {
       const reason = fixedFailure(error);
       if (coverage.snapshot !== "complete") coverage.snapshot = "failed";
-      if (reason.startsWith("SCANNER_")) coverage.gitleaks = "failed";
-      if (reason === "NORMALIZATION_REJECTED") coverage.gitleaks = "failed";
+      if (reason.startsWith("SCANNER_") && coverage.gitleaks === "not_applicable") {
+        coverage.gitleaks = "failed";
+      }
+      if (
+        reason === "NORMALIZATION_REJECTED" &&
+        coverage.gitleaks === "not_applicable"
+      ) {
+        coverage.gitleaks = "failed";
+      }
       if (!sourceCleaned) {
         if (canTransition(state, "cleaning")) {
           try {
@@ -436,6 +557,16 @@ export class RepositoryWorker {
           return "stale_lease";
         }
       }
+      if (
+        SCAN_ENGINES.some((engine) =>
+          ["complete", "partial"].includes(coverage[engine]),
+        )
+      ) {
+        // A late failed transition cannot truthfully turn already-successful
+        // engine coverage into a failed publication. Leave the exact lease
+        // generation for the janitor instead of entering that invalid state.
+        return "stale_lease";
+      }
       if (!canTransition(state, "failed")) return "stale_lease";
       if (coverage.archive_guard === "not_applicable") {
         coverage.archive_guard = "failed";
@@ -452,6 +583,7 @@ export class RepositoryWorker {
           terminalState: "failed",
           reason,
           coverage,
+          specialistReasons,
           findings: [],
           nowMs: this.#now(),
         });

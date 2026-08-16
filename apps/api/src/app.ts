@@ -371,6 +371,9 @@ export function createApi(options: ApiOptions): Hono {
         state: repository.state,
         ...(repository.reason === null ? {} : { reason: repository.reason }),
         coverage: repository.coverage,
+        ...(Object.keys(repository.specialistReasons).length === 0
+          ? {}
+          : { specialistReasons: repository.specialistReasons }),
         aiLane: request.aiLane,
       })),
       ...(page.nextRepositoryId === null

@@ -2,9 +2,10 @@
 
 **Status:** private end-to-end vertical slice. Discovery, durable scheduling,
 immutable archive acquisition, guarded extraction, real Gitleaks scanning,
-source-blind publication, the local API/worker runtime, responsive web UI, and
-the CI canary proof are implemented. Public deployment and third-party scans
-remain gated on Linux isolation and an approved deployment identity.
+engine-isolated source-blind publication, the local API/worker runtime,
+responsive web UI, and the CI canary proof are implemented. Public deployment
+and third-party scans remain gated on Linux isolation and an approved
+deployment identity.
 
 ## Product flow
 
@@ -32,12 +33,16 @@ remain gated on Linux isolation and an approved deployment identity.
    isolation required for public release. A separate bounded name/type-only
    walk reports an unintegrated specialist `not_applicable` only after proving
    whole-tree absence; relevant input or an incomplete walk is `unsupported`.
-7. The hostile normalization lane discards paths, matches, snippets, and all
-   other source strings. It emits only manifest-issued numeric rule tokens and
-   four count-bucket codes.
+7. Each hostile scanner/normalizer lane is independent. It discards paths,
+   matches, snippets, and all other source strings, then emits only
+   manifest-issued numeric rule tokens and four count-bucket codes. One lane's
+   scanner, normalizer, or broker failure cannot discard another lane's
+   already-valid evidence.
 8. The entire tuple-keyed scratch root is removed and absence is verified.
-   Only then can the trusted broker map numeric tokens to closed metadata and
-   publish findings with durable lease identity.
+   Only then can each trusted engine-bound broker map numeric tokens to closed
+   metadata and publish findings with durable lease identity. Mixed outcomes
+   publish `partial` plus a closed per-engine failure map; the map cannot carry
+   target text.
 9. The anonymous API exposes exhaustive status and coverage, never findings.
    A local operator endpoint is available only when explicitly enabled and
    bound to loopback. Operator mode automatically validates the literal `Host`
@@ -68,6 +73,12 @@ STRICT SQLite tables, normalized coverage, schema migrations, atomic
 `UPDATE ... RETURNING` claims, monotonic lease generations, exact idempotent
 publication, and generation-specific stale cleanup. A request is complete only
 when every ledger row is terminal.
+
+Repository publication persists canonical per-engine failure attribution next
+to the aggregate terminal reason. Complete rows have no failed lanes or reason
+map; partial rows preserve every successful lane and attribute every failed
+lane; failed rows have no successful lane. Exact publication retries compare
+coverage, the canonical reason map, and findings.
 
 ### Browser and anonymous API
 

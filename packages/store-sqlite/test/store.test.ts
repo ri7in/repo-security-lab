@@ -136,6 +136,7 @@ function publication(
       terminalState,
       reason: null,
       coverage: outcomes(),
+      specialistReasons: {},
       findings: [],
       nowMs: 1_500,
     };
@@ -148,6 +149,7 @@ function publication(
     terminalState,
     reason,
     coverage: outcomes(),
+    specialistReasons: {},
     findings: [],
     nowMs: 1_500,
   };
@@ -554,7 +556,7 @@ describe("SQLite store ledger", () => {
       migrated
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([1, 2, 3, 4, 5].map((version) => ({ version })));
+    ).toEqual([1, 2, 3, 4, 5, 6].map((version) => ({ version })));
     migrated.close();
   });
 
@@ -1096,6 +1098,83 @@ describe("SQLite store publication", () => {
       store.publish(publication(lease, "failed", "SCANNER_INTERNAL")),
     ).rejects.toThrow("invalid publication metadata");
     expect(await store.publish(publication(lease))).toBe("published");
+    store.close();
+  });
+
+  it("persists engine-scoped failure while retaining surviving evidence", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1]);
+    const claimed = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 1_000,
+    });
+    if (claimed === null) throw new Error("test expected claim");
+    const lease = await advanceToWaitingToPublish(store, claimed, 1_200);
+    const input: PublishInput = {
+      ...lease,
+      terminalState: "partial",
+      reason: "SCANNER_TIMEOUT",
+      coverage: {
+        ...outcomes(),
+        osv: "failed",
+        zizmor: "unsupported",
+        opengrep: "not_applicable",
+      },
+      specialistReasons: { osv: "SCANNER_TIMEOUT" },
+      findings: [
+        {
+          schema_version: 1,
+          finding_id: "fnd_0000000001",
+          request_id: lease.requestId,
+          repository_id: lease.repositoryId,
+          commit_sha: "a".repeat(40),
+          engine: "gitleaks",
+          rule_id: "github-pat",
+          category: "secret",
+          severity: "high",
+          confidence: "high",
+          occurrence_bucket: "one",
+          remediation_key: "rotate-secret",
+          owner_detail_ref: "chunk_000001",
+        },
+      ],
+      nowMs: 1_500,
+    };
+
+    await expect(
+      store.publish({ ...input, specialistReasons: {} }),
+    ).rejects.toThrow("invalid publication metadata");
+    expect(await store.publish(input)).toBe("published");
+    expect(await store.publish(input)).toBe("idempotent");
+    expect(
+      await store.publish({
+        ...input,
+        reason: "SCANNER_INTERNAL",
+        specialistReasons: { osv: "SCANNER_INTERNAL" },
+      }),
+    ).toBe("idempotency_conflict");
+    expect(
+      (
+        await store.listRepositories({
+          requestId: lease.requestId,
+          afterRepositoryId: null,
+          limit: 10,
+        })
+      ).repositories[0],
+    ).toMatchObject({
+      state: "partial",
+      reason: "SCANNER_TIMEOUT",
+      specialistReasons: { osv: "SCANNER_TIMEOUT" },
+      coverage: { gitleaks: "complete", osv: "failed" },
+    });
+    expect(
+      await store.listFindings({
+        requestId: lease.requestId,
+        afterFindingId: null,
+        limit: 10,
+      }),
+    ).toMatchObject({ findings: input.findings });
     store.close();
   });
 

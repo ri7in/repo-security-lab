@@ -11,6 +11,7 @@ import {
 } from "./states.js";
 import {
   aiLaneStateSchema,
+  scanEngineSchema,
   specialistProgressStateSchema,
   specialistSchema,
 } from "./coverage.js";
@@ -100,6 +101,13 @@ export const repositoryCoverageSchema = z.record(
 );
 export type RepositoryCoverage = z.infer<typeof repositoryCoverageSchema>;
 
+/** Optional fixed reasons for scan engines that ended in `failed`. */
+export const specialistReasonsSchema = z.partialRecord(
+  scanEngineSchema,
+  failureClassSchema,
+);
+export type SpecialistReasons = z.infer<typeof specialistReasonsSchema>;
+
 /** One row of `GET /api/scan-requests/:id/repositories`. No finding data. */
 export const repositoryRowSchema = z.strictObject({
   repositoryId: nonNegativeIntSchema,
@@ -109,6 +117,7 @@ export const repositoryRowSchema = z.strictObject({
   /** Present only when a fixed failure class explains the current state. */
   reason: failureClassSchema.optional(),
   coverage: repositoryCoverageSchema,
+  specialistReasons: specialistReasonsSchema.optional(),
   aiLane: aiLaneStateSchema,
 });
 export type RepositoryRow = z.infer<typeof repositoryRowSchema>;

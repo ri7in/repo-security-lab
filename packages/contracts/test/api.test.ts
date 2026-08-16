@@ -175,6 +175,24 @@ describe("repository ledger rows", () => {
     ).toBe(false);
   });
 
+  it("accepts only closed per-engine failure attribution", () => {
+    expect(
+      repositoryRowSchema.safeParse({
+        ...validRow,
+        specialistReasons: { osv: "SCANNER_TIMEOUT" },
+      }).success,
+    ).toBe(true);
+    for (const specialistReasons of [
+      { osv: "scanner printed /tmp/source" },
+      { snapshot: "SCANNER_TIMEOUT" },
+      { invented: "SCANNER_TIMEOUT" },
+    ]) {
+      expect(
+        repositoryRowSchema.safeParse({ ...validRow, specialistReasons }).success,
+      ).toBe(false);
+    }
+  });
+
   it("cannot express findings, paths, or snippets", () => {
     for (const hostile of [
       { ...validRow, findings: [{ rule: "x" }] },

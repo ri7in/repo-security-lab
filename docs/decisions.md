@@ -170,3 +170,23 @@ header matching its configured `127.0.0.1` or `[::1]` bind (with a valid port).
 The in-process app keeps this enforcement opt-in for unit embedding, while the
 real server always enables it. A Vite-proxy smoke proof returned 400 through
 the legitimate local host and fixed 404 for an attacker Host.
+
+## ADR-013: specialist failure is engine-scoped
+
+**Status:** accepted (2026-08-16, Fable/Codex review)
+
+A repository-level reason alone cannot represent mixed scanner outcomes. The
+worker therefore runs each applicable engine and its source-blind broker as an
+independent lane. A lane failure records only a closed `FailureClass` under
+that engine, while findings from successful lanes remain publishable. The
+aggregate repository is `partial` when at least one engine succeeded and
+another failed or hit its finding limit; it is `failed` only when no engine
+succeeded.
+
+The canonical reason map is stored on the repository rather than overloading
+coverage rows. Its keys are the fixed scan-engine enum and its values are the
+fixed failure enum, so neither scanner output nor target-controlled text can
+enter durable state or anonymous responses. Publication retries compare the
+canonical map for exact idempotency, and every requeue/release path clears it.
+Broker engine identity remains constructor-bound and is checked again before
+accepted findings join the publication.
