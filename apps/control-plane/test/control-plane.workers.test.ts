@@ -73,6 +73,20 @@ describe("control-plane boundary", () => {
     expect(await response.json()).toEqual({ reason: "PRIVATE_SLICE_SCOPE" });
   });
 
+  it("fails closed when owner OAuth secrets are not installed", async ({ expect }) => {
+    const response = await handleControlPlaneRequest(
+      new Request("https://product.test/auth/github/start?requestId=request_0001"),
+      environment({
+        GITHUB_OAUTH_CLIENT_ID: undefined,
+        GITHUB_OAUTH_CLIENT_SECRET: undefined,
+        OWNER_SESSION_SECRET: undefined,
+      }),
+      context,
+    );
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ reason: "OWNER_AUTH_UNAVAILABLE" });
+  });
+
   it("rate-limits the public worker edge before authentication reads", async ({ expect }) => {
     const response = await handleControlPlaneRequest(
       new Request("https://product.test/internal/v1/claim", {

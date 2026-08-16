@@ -27,10 +27,10 @@ export interface ControlPlaneEnvironment {
   readonly PRIVATE_SLICE_LOGINS: string;
   readonly PRIVATE_SLICE_ACCOUNT_IDS: string;
   readonly GITHUB_TOKEN?: string;
-  readonly WORKER_AUTH_MASTER_SECRET: string;
-  readonly GITHUB_OAUTH_CLIENT_ID: string;
-  readonly GITHUB_OAUTH_CLIENT_SECRET: string;
-  readonly OWNER_SESSION_SECRET: string;
+  readonly WORKER_AUTH_MASTER_SECRET?: string | undefined;
+  readonly GITHUB_OAUTH_CLIENT_ID?: string | undefined;
+  readonly GITHUB_OAUTH_CLIENT_SECRET?: string | undefined;
+  readonly OWNER_SESSION_SECRET?: string | undefined;
 }
 
 function csv(value: string): string[] {
@@ -123,7 +123,11 @@ export async function handleControlPlaneRequest(
         { status: 429, headers: { "cache-control": "no-store" } },
       ));
     }
-    return secured(await handleInternalRequest(request, environment));
+    return secured(await handleInternalRequest(request, {
+      DB: environment.DB,
+      WORKER_AUTH_MASTER_SECRET:
+        environment.WORKER_AUTH_MASTER_SECRET ?? "",
+    }));
   }
   if (
     url.pathname.startsWith("/auth/") ||
@@ -131,7 +135,12 @@ export async function handleControlPlaneRequest(
   ) {
     const ownerResponse = await handleOwnerRequest({
       request,
-      environment,
+      environment: {
+        GITHUB_OAUTH_CLIENT_ID: environment.GITHUB_OAUTH_CLIENT_ID ?? "",
+        GITHUB_OAUTH_CLIENT_SECRET:
+          environment.GITHUB_OAUTH_CLIENT_SECRET ?? "",
+        OWNER_SESSION_SECRET: environment.OWNER_SESSION_SECRET ?? "",
+      },
       store: new D1Store(environment.DB),
     });
     if (ownerResponse !== null) return secured(ownerResponse);
