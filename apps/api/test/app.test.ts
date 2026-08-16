@@ -2,7 +2,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createApi,
   resumePendingDiscoveries,
@@ -14,6 +14,7 @@ import {
   scanRequestSummarySchema,
 } from "@app/contracts";
 import { GithubClientError } from "@app/github";
+import { StoreWriteReserveError } from "@app/core";
 import { SqliteStore } from "@app/store-sqlite";
 
 const temporaryDirectories: string[] = [];
@@ -229,6 +230,60 @@ describe("anonymous-safe control-plane API", () => {
       expect(response.status).toBe(400);
       expect(await response.json()).toEqual({ reason: "INVALID_USERNAME" });
     }
+    database.close();
+  });
+
+  it("applies admission control only after strict input validation", async () => {
+    const database = await store();
+    const admitted: string[] = [];
+    const app = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: null,
+      allowedGithubAccountIds: null,
+      admitScanRequest: async (requestedUsername) => {
+        admitted.push(requestedUsername);
+        return false;
+      },
+    });
+    const invalid = await app.request("/api/scan-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "bad login" }),
+    });
+    expect(invalid.status).toBe(400);
+    const limited = await app.request("/api/scan-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "any-public-user" }),
+    });
+    expect(limited.status).toBe(429);
+    expect(await limited.json()).toEqual({ reason: "RATE_LIMITED" });
+    expect(admitted).toEqual(["any-public-user"]);
+    expect(await database.findActiveRequestByUsername("any-public-user")).toBeNull();
+    database.close();
+  });
+
+  it("returns a fixed retryable capacity response when the free write reserve is closed", async () => {
+    const database = await store();
+    vi.spyOn(database, "createRequest").mockRejectedValue(
+      new StoreWriteReserveError(),
+    );
+    const app = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: null,
+      allowedGithubAccountIds: null,
+      createRequestId: () => "req_capacity0001",
+    });
+    const response = await app.request("/api/scan-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "capacity-user" }),
+    });
+    expect(response.status).toBe(503);
+    expect(response.headers.get("retry-after")).toBe("3600");
+    expect(await response.json()).toEqual({ reason: "CAPACITY_EXHAUSTED" });
     database.close();
   });
 

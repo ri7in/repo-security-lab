@@ -97,13 +97,27 @@ jobs:
       - name: Test with coverage floor
         run: pnpm test:coverage
 
+      - name: Test Cloudflare runtime and D1 behavior
+        run: pnpm test:workers
+
+      - name: Apply D1 migrations to a fresh local database
+        shell: bash
+        run: |
+          set -euo pipefail
+          proof_dir="$(mktemp -d)"
+          trap 'rm -rf "$proof_dir"' EXIT
+          pnpm exec wrangler d1 migrations apply DB \
+            --local \
+            --config apps/control-plane/wrangler.jsonc \
+            --persist-to "$proof_dir"
+
       - name: Real-binary union-of-egress proof
         env:
           RUN_GITLEAKS_E2E: "1"
         run: pnpm vitest run apps/api/test/e2e.test.ts
 
-      - name: Build web application
-        run: pnpm build
+      - name: Build deployable web and control plane bundle
+        run: pnpm build:control-plane
 
       - name: Self-scan locked dependencies
         shell: bash

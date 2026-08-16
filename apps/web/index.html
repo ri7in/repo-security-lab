@@ -115,8 +115,9 @@
           </div>
           <p class="legend" id="finding-count"></p>
         </div>
-        <p class="findings-note">Local operator view. Secrets, paths, snippets, and raw matches never enter this report.</p>
-        <div class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
+        <p class="findings-note">Only the GitHub account owner can open findings. Tokens are discarded immediately after identity verification; secrets, paths, snippets, and raw matches never enter this report.</p>
+        <p id="owner-gate" class="owner-gate" hidden><a id="owner-auth-link" href="/">Verify ownership with GitHub</a></p>
+        <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
           <table>
             <thead>
               <tr><th>Repository</th><th>Engine</th><th>Rule</th><th>Severity</th><th>Occurrences</th><th>Action</th></tr>
@@ -134,7 +135,7 @@
     </main>
 
     <footer>
-      <p><strong>Development boundary:</strong> this private slice accepts only the operator’s account until enforced Linux isolation passes.</p>
+      <p><strong>Privacy boundary:</strong> public coverage is visible; vulnerability findings require proof of GitHub account ownership.</p>
       <p id="footer-name">Free and open source.</p>
     </footer>
   </body>

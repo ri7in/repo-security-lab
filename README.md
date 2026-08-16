@@ -10,8 +10,10 @@ repositories of a GitHub account. A visitor enters a GitHub username; a
 backend agent system attempts every owned public repository and returns one
 clear combined report with exact per-repository, per-specialist coverage.
 
-**Private development slice.** This repository is under private development
-and is not a released product. Current guarantees of the design:
+**Private production preview.** The deployable website/control plane and the
+authenticated pull worker are implemented, but public third-party scanning is
+still disabled until the account and isolation gates below are satisfied.
+Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
   no dependencies, scripts, tests, builds, or hooks of scanned repositories run.
@@ -21,7 +23,8 @@ and is not a released product. Current guarantees of the design:
   numeric tokens and four count-bucket codes cross the source-blind broker.
 - The AI lane currently exists only as typed contracts and deterministic
   fixture tagging. No model client exists in the dependency graph, and no
-  repository byte can reach any model.
+  repository byte can reach any model. The configured Groq and Gemini keys
+  have been tested only with fixed synthetic connectivity prompts.
 - Until enforced Linux isolation passes, scans are structurally refused for
   accounts outside the private-slice allowlist (`PRIVATE_SLICE_SCOPE`).
 
@@ -34,6 +37,11 @@ and is not a released product. Current guarantees of the design:
   the portable durable Store contract.
 - `packages/store-sqlite` — exercised STRICT SQLite adapter with atomic leases,
   generation-based stale rejection, and idempotent publication.
+- `packages/store-d1` — workerd-tested D1 adapter with atomic complete-ledger
+  installation, materialized totals, bounded finding chunks, and a conservative
+  daily free-tier write reserve.
+- `packages/worker-protocol` and `packages/store-http` — rotating,
+  generation-bound HMAC worker transport with bounded bodies and server time.
 - `packages/github` — complete public-repository discovery and exact-commit
   archive acquisition with redirect, size, pacing, and timeout guards.
 - `packages/archive` — streaming hostile tar.gz validation and private-mode
@@ -47,6 +55,9 @@ and is not a released product. Current guarantees of the design:
 - `packages/ai` — disabled-by-default two-scout fixture and grounding harness;
   no external model adapter.
 - `apps/api` — Hono control plane and loopback-only private runtime.
+- `apps/control-plane` — Cloudflare Workers, D1, Static Assets, rate limiting,
+  GitHub OAuth owner proof, cron recovery, and the signed worker API.
+- `apps/scan-worker` — external pull worker for trusted private-slice compute.
 - `apps/web` — responsive vanilla TypeScript report interface.
 - `docs/` — architecture, threat model, research record, maintenance,
   decisions, and private-slice retrospective.
@@ -57,8 +68,9 @@ Requires Node >= 24 and pnpm.
 
 ```sh
 pnpm install
-pnpm check   # typecheck + lint + tests
-pnpm build   # production web bundle
+pnpm check                 # typecheck + lint + Node and workerd tests
+pnpm test:coverage         # enforced Node coverage floor
+pnpm build:control-plane   # production web + Worker dry-run bundle
 ```
 
 The private local runtime requires an immutable GitHub account allowlist and
@@ -76,8 +88,12 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-This is a private proof, not a public deployment. Third-party accounts remain
-refused until the documented Linux isolation gate passes.
+The Cloudflare deployment is intentionally fail-closed by default:
+`PUBLIC_SCANNING_ENABLED=false`. Before it can be deployed, create the D1
+database, replace the placeholder database ID, configure Worker/OAuth secrets,
+and provision one worker identity. Third-party accounts remain refused until
+the documented isolated-compute gate passes. See `docs/maintenance.md` for the
+exact release runbook.
 `OPERATOR_MODE=true` enables the source-blind findings table only on loopback;
 without it, the browser receives coverage/status and the findings route is
 absent.

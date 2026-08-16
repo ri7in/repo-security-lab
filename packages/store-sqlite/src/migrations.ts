@@ -199,4 +199,89 @@ ALTER TABLE repositories
   CHECK (json_valid(specialist_reasons) AND json_type(specialist_reasons) = 'object');
 `;
 
-export const SCHEMA_VERSION = 6;
+const waitingCoverageJson = JSON.stringify(
+  Object.fromEntries(SPECIALISTS.map((specialist) => [specialist, "waiting"])),
+);
+
+const migratedCoverageObject = `json_object(${SPECIALISTS.flatMap(
+  (specialist) => [
+    `'${specialist}'`,
+    `COALESCE((SELECT progress_state FROM repository_coverage c WHERE c.request_id = repositories.request_id AND c.repository_id = repositories.repository_id AND c.specialist = '${specialist}'), 'waiting')`,
+  ],
+).join(", ")})`;
+
+const repositoryTotalsObject = `json_object(${REPOSITORY_STATES.flatMap(
+  (state) => [
+    `'${state}'`,
+    `(SELECT COUNT(*) FROM repositories r WHERE r.request_id = scan_requests.request_id AND r.state = '${state}')`,
+  ],
+).join(", ")})`;
+
+const coverageTotalsObject = `json_object(${SPECIALISTS.flatMap(
+  (specialist) => [
+    `'${specialist}'`,
+    `json_object(${SPECIALIST_PROGRESS_STATES.flatMap((state) => [
+      `'${state}'`,
+      `(SELECT COUNT(*) FROM repositories r WHERE r.request_id = scan_requests.request_id AND json_extract(r.coverage_json, '$.${specialist}') = '${state}')`,
+    ]).join(", ")})`,
+  ],
+).join(", ")})`;
+
+const repositoryTotalsAfterUpdate = `json_set(repository_totals, ${REPOSITORY_STATES.flatMap(
+  (state) => [
+    `'$.${state}'`,
+    `json_extract(repository_totals, '$.${state}') + CASE WHEN NEW.state = '${state}' THEN 1 ELSE 0 END - CASE WHEN OLD.state = '${state}' THEN 1 ELSE 0 END`,
+  ],
+).join(", ")})`;
+
+const coverageTotalsAfterUpdate = `json_set(coverage_totals, ${SPECIALISTS.flatMap(
+  (specialist) =>
+    SPECIALIST_PROGRESS_STATES.flatMap((state) => [
+      `'$.${specialist}.${state}'`,
+      `json_extract(coverage_totals, '$.${specialist}.${state}') + CASE WHEN json_extract(NEW.coverage_json, '$.${specialist}') = '${state}' THEN 1 ELSE 0 END - CASE WHEN json_extract(OLD.coverage_json, '$.${specialist}') = '${state}' THEN 1 ELSE 0 END`,
+    ]),
+).join(", ")})`;
+
+/**
+ * Collapse coverage into each repository row and add O(1) request totals.
+ * The update trigger keeps both closed counter maps in the same transaction
+ * as every repository state/coverage mutation.
+ */
+export const MIGRATION_007 = `
+ALTER TABLE repositories
+  ADD COLUMN coverage_json TEXT NOT NULL DEFAULT '${waitingCoverageJson}'
+  CHECK (json_valid(coverage_json) AND json_type(coverage_json) = 'object');
+
+UPDATE repositories SET coverage_json = ${migratedCoverageObject};
+
+CREATE TABLE request_totals (
+  request_id TEXT PRIMARY KEY REFERENCES scan_requests(request_id) ON DELETE CASCADE,
+  repository_totals TEXT NOT NULL
+    CHECK (json_valid(repository_totals) AND json_type(repository_totals) = 'object'),
+  coverage_totals TEXT NOT NULL
+    CHECK (json_valid(coverage_totals) AND json_type(coverage_totals) = 'object')
+) STRICT;
+
+INSERT INTO request_totals(request_id, repository_totals, coverage_totals)
+SELECT request_id, ${repositoryTotalsObject}, ${coverageTotalsObject}
+FROM scan_requests;
+
+DROP TABLE repository_coverage;
+
+CREATE TRIGGER request_totals_after_repository_update
+AFTER UPDATE OF state, coverage_json ON repositories
+WHEN OLD.state <> NEW.state OR OLD.coverage_json <> NEW.coverage_json
+BEGIN
+  UPDATE request_totals
+  SET repository_totals = ${repositoryTotalsAfterUpdate},
+      coverage_totals = ${coverageTotalsAfterUpdate}
+  WHERE request_id = NEW.request_id;
+END;
+`;
+
+export const SCHEMA_VERSION = 7;
+import {
+  REPOSITORY_STATES,
+  SPECIALISTS,
+  SPECIALIST_PROGRESS_STATES,
+} from "@app/contracts";

@@ -28,6 +28,9 @@ const progressBar = $<HTMLElement>("#progress-bar");
 const summaryGrid = $<HTMLElement>("#summary-grid");
 const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
+const findingTable = $<HTMLElement>("#finding-table");
+const ownerGate = $<HTMLElement>("#owner-gate");
+const ownerAuthLink = $<HTMLAnchorElement>("#owner-auth-link");
 const requestIdLabel = $<HTMLElement>("#request-id");
 const botCode = $<HTMLElement>("#bot-code");
 
@@ -170,6 +173,8 @@ function renderFindings(
       return row;
     }),
   );
+  ownerGate.hidden = true;
+  findingTable.hidden = false;
   findingsSection.hidden = false;
   $("#finding-count").textContent = `${findings.length} source-blind finding${findings.length === 1 ? "" : "s"}`;
 }
@@ -201,23 +206,32 @@ async function loadRepositories(requestId: string): Promise<RepositoryRow[]> {
   return repositories;
 }
 
-async function loadOperatorFindings(
+async function loadOwnerFindings(
   requestId: string,
-): Promise<BrokerDerivedFinding[] | null> {
+): Promise<BrokerDerivedFinding[] | "owner_auth_required"> {
   const findings: BrokerDerivedFinding[] = [];
   let cursor: string | undefined;
   do {
     const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
     const response = await fetch(
-      `/api/operator/requests/${requestId}/findings${query}`,
+      `/api/owner/requests/${requestId}/findings${query}`,
     );
-    if (response.status === 404 && cursor === undefined) return null;
+    if (response.status === 401) return "owner_auth_required";
     if (!response.ok) throw new Error("OWNER_REPORT_UNAVAILABLE");
     const page = operatorFindingPageSchema.parse(await response.json());
     findings.push(...page.findings);
     cursor = page.nextCursor;
   } while (cursor !== undefined);
   return findings;
+}
+
+function renderOwnerGate(requestId: string): void {
+  findingsSection.hidden = false;
+  ownerGate.hidden = false;
+  findingTable.hidden = true;
+  findingRows.replaceChildren();
+  ownerAuthLink.href = `/auth/github/start?requestId=${encodeURIComponent(requestId)}`;
+  $("#finding-count").textContent = "owner verification required";
 }
 
 async function poll(requestId: string): Promise<void> {
@@ -230,10 +244,9 @@ async function poll(requestId: string): Promise<void> {
     renderRepositories(repositories);
     ledgerSection.hidden = false;
     try {
-      const findings = await loadOperatorFindings(requestId);
-      if (findings === null) {
-        findingsSection.hidden = true;
-        findingRows.replaceChildren();
+      const findings = await loadOwnerFindings(requestId);
+      if (findings === "owner_auth_required") {
+        renderOwnerGate(requestId);
       } else {
         renderFindings(findings, repositories);
       }
@@ -258,6 +271,7 @@ form.addEventListener("submit", (event) => {
   }
   button.disabled = true;
   findingsSection.hidden = true;
+  ownerGate.hidden = true;
   findingRows.replaceChildren();
   setScanState("scanning");
   statusSection.hidden = false;

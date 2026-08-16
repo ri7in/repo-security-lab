@@ -11,9 +11,10 @@ import {
   opaqueIdSchema,
   repositoryStateSchema,
   scanRequestStateSchema,
-  specialistCoverageOutcomeSchema,
-  specialistProgressStateSchema,
   specialistReasonsSchema,
+  repositoryCoverageSchema,
+  repositoryStateTotalsSchema,
+  coverageTotalsSchema,
   type AiLaneState,
   type BrokerDerivedFinding,
   type FailureClass,
@@ -21,11 +22,12 @@ import {
   type OpaqueId,
   type RepositoryState,
   type ScanRequestState,
-  type Specialist,
   type SpecialistProgressState,
 } from "@app/contracts";
 import {
   canTransition,
+  emptyRequestTotals,
+  validatePublishInput,
   LEASED_REPOSITORY_STATES,
   type ClaimInput,
   type CompleteDiscoveryInput,
@@ -45,6 +47,7 @@ import {
   type RepositoryPageInput,
   type RepositoryPageRecord,
   type RepositoryRecord,
+  type RequestTotals,
   type ScanRequestRecord,
   type SpecialistProgress,
   type SpecialistReasons,
@@ -58,6 +61,7 @@ import {
   MIGRATION_004,
   MIGRATION_005,
   MIGRATION_006,
+  MIGRATION_007,
   SCHEMA_VERSION,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
@@ -97,11 +101,7 @@ interface RepositoryRow {
   discovered_at_ms: number;
   updated_at_ms: number;
   specialist_reasons: string;
-}
-
-interface CoverageRow {
-  specialist: string;
-  progress_state: string;
+  coverage_json: string;
 }
 
 function parseSpecialistReasons(value: string): SpecialistReasons {
@@ -132,6 +132,72 @@ function serializeSpecialistReasons(reasons: SpecialistReasons): string {
     ),
   );
 }
+
+function parseCoverage(value: string): SpecialistProgress {
+  try {
+    return repositoryCoverageSchema.parse(JSON.parse(value) as unknown);
+  } catch {
+    throw new Error("invalid coverage row");
+  }
+}
+
+function serializeCoverage(coverage: SpecialistProgress): string {
+  return JSON.stringify(repositoryCoverageSchema.parse(coverage));
+}
+
+function parseRequestTotals(row: {
+  repository_totals: string;
+  coverage_totals: string;
+}): RequestTotals {
+  try {
+    return {
+      repositoryTotals: repositoryStateTotalsSchema.parse(
+        JSON.parse(row.repository_totals) as unknown,
+      ),
+      coverageTotals: coverageTotalsSchema.parse(
+        JSON.parse(row.coverage_totals) as unknown,
+      ),
+    };
+  } catch {
+    throw new Error("invalid request totals");
+  }
+}
+
+function serializeRequestTotals(totals: RequestTotals): readonly [string, string] {
+  return [
+    JSON.stringify(repositoryStateTotalsSchema.parse(totals.repositoryTotals)),
+    JSON.stringify(coverageTotalsSchema.parse(totals.coverageTotals)),
+  ];
+}
+
+function uniformCoverage(state: SpecialistProgressState): SpecialistProgress {
+  return Object.fromEntries(
+    SPECIALISTS.map((specialist) => [specialist, state]),
+  ) as SpecialistProgress;
+}
+
+function discoveryTotals(
+  repositories: CompleteDiscoveryInput["repositories"],
+): RequestTotals {
+  const totals = emptyRequestTotals();
+  for (const repository of repositories) {
+    const repositoryState = repository.commitSha === null ? "empty" : "waiting";
+    const coverageState =
+      repository.commitSha === null ? "not_applicable" : "waiting";
+    totals.repositoryTotals[repositoryState] += 1;
+    for (const specialist of SPECIALISTS) {
+      totals.coverageTotals[specialist][coverageState] += 1;
+    }
+  }
+  return totals;
+}
+
+const FAIL_WAITING_COVERAGE_SQL = `json_object(${SPECIALISTS.flatMap(
+  (specialist) => [
+    `'${specialist}'`,
+    `CASE WHEN json_extract(coverage_json, '$.${specialist}') = 'waiting' THEN 'failed' ELSE json_extract(coverage_json, '$.${specialist}') END`,
+  ],
+).join(", ")})`;
 
 interface FindingRow {
   finding_id: string;
@@ -234,31 +300,7 @@ function parseRequestRow(row: RequestRow): ScanRequestRecord {
   };
 }
 
-function coverageFromRows(rows: readonly CoverageRow[]): SpecialistProgress {
-  if (rows.length !== SPECIALISTS.length) {
-    throw new Error("invalid coverage row count");
-  }
-  const entries = new Map<Specialist, SpecialistProgressState>();
-  for (const row of rows) {
-    if (
-      !SPECIALISTS.includes(row.specialist as Specialist) ||
-      !specialistProgressStateSchema.safeParse(row.progress_state).success ||
-      entries.has(row.specialist as Specialist)
-    ) {
-      throw new Error("invalid coverage row");
-    }
-    entries.set(
-      row.specialist as Specialist,
-      row.progress_state as SpecialistProgressState,
-    );
-  }
-  return Object.fromEntries(entries) as SpecialistProgress;
-}
-
-function parseRepositoryRow(
-  row: RepositoryRow,
-  coverage: SpecialistProgress,
-): RepositoryRecord {
+function parseRepositoryRow(row: RepositoryRow): RepositoryRecord {
   assertOpaqueId(row.request_id);
   if (
     !isSafeNonNegativeInteger(row.repository_id) ||
@@ -304,7 +346,7 @@ function parseRepositoryRow(
     commitSha: row.commit_sha,
     state: row.state as RepositoryState,
     reason: row.reason as FailureClass | null,
-    coverage,
+    coverage: parseCoverage(row.coverage_json),
     specialistReasons: parseSpecialistReasons(row.specialist_reasons),
     attemptCount: row.attempt_count,
     leaseGeneration: row.lease_generation,
@@ -377,6 +419,13 @@ export class SqliteStore implements Store {
           .get() as { version: number } | undefined;
         if (versionSix === undefined) {
           this.#database.exec(MIGRATION_006);
+          recordMigration.run(6, migrationTimeMs);
+        }
+        const versionSeven = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 7")
+          .get() as { version: number } | undefined;
+        if (versionSeven === undefined) {
+          this.#database.exec(MIGRATION_007);
           recordMigration.run(SCHEMA_VERSION, migrationTimeMs);
         }
       });
@@ -405,19 +454,31 @@ export class SqliteStore implements Store {
   async createRequest(input: CreateRequestInput): Promise<ScanRequestRecord> {
     this.#validateCreateInput(input);
     try {
-      this.#database
-        .prepare(
-          `INSERT INTO scan_requests(
-            request_id, github_account_id, username, state, reason,
-            discovery_complete, ai_lane, created_at_ms, updated_at_ms
-          ) VALUES (?, NULL, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?)`,
-        )
-        .run(
-          input.requestId,
-          input.username,
-          input.nowMs,
-          input.nowMs,
+      this.#database.transaction(() => {
+        this.#database
+          .prepare(
+            `INSERT INTO scan_requests(
+              request_id, github_account_id, username, state, reason,
+              discovery_complete, ai_lane, created_at_ms, updated_at_ms
+            ) VALUES (?, NULL, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?)`,
+          )
+          .run(
+            input.requestId,
+            input.username,
+            input.nowMs,
+            input.nowMs,
+          );
+        const [repositoryTotals, coverageTotals] = serializeRequestTotals(
+          emptyRequestTotals(),
         );
+        this.#database
+          .prepare(
+            `INSERT INTO request_totals(
+              request_id, repository_totals, coverage_totals
+            ) VALUES (?, ?, ?)`,
+          )
+          .run(input.requestId, repositoryTotals, coverageTotals);
+      })();
     } catch {
       throw new Error("request creation failed");
     }
@@ -464,13 +525,9 @@ export class SqliteStore implements Store {
           `INSERT INTO repositories(
             request_id, repository_id, name, is_fork, commit_sha, state, reason,
             attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
-            published_lease_generation, discovered_at_ms, updated_at_ms
-          ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?)`,
-        );
-        const insertCoverage = this.#database.prepare(
-          `INSERT INTO repository_coverage(
-            request_id, repository_id, specialist, progress_state
-          ) VALUES (?, ?, ?, ?)`,
+            published_lease_generation, discovered_at_ms, updated_at_ms,
+            coverage_json
+          ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?, ?)`,
         );
         for (const repository of input.repositories) {
           const state = repository.commitSha === null ? "empty" : "waiting";
@@ -483,15 +540,25 @@ export class SqliteStore implements Store {
             state,
             input.nowMs,
             input.nowMs,
+            serializeCoverage(
+              uniformCoverage(
+                repository.commitSha === null ? "not_applicable" : "waiting",
+              ),
+            ),
           );
-          for (const specialist of SPECIALISTS) {
-            insertCoverage.run(
-              input.requestId,
-              repository.repositoryId,
-              specialist,
-              state === "empty" ? "not_applicable" : "waiting",
-            );
-          }
+        }
+        const [repositoryTotals, coverageTotals] = serializeRequestTotals(
+          discoveryTotals(input.repositories),
+        );
+        const totalsResult = this.#database
+          .prepare(
+            `UPDATE request_totals
+             SET repository_totals = ?, coverage_totals = ?
+             WHERE request_id = ?`,
+          )
+          .run(repositoryTotals, coverageTotals, input.requestId);
+        if (totalsResult.changes !== 1) {
+          throw new Error("discovery totals missing");
         }
         const completeImmediately = input.repositories.every(
           (repository) => repository.commitSha === null,
@@ -547,6 +614,21 @@ export class SqliteStore implements Store {
       .prepare("SELECT * FROM scan_requests WHERE request_id = ?")
       .get(requestId) as RequestRow | undefined;
     return row === undefined ? null : parseRequestRow(row);
+  }
+
+  async getRequestTotals(requestId: OpaqueId): Promise<RequestTotals | null> {
+    assertOpaqueId(requestId);
+    if ((await this.getRequest(requestId)) === null) return null;
+    const row = this.#database
+      .prepare(
+        `SELECT repository_totals, coverage_totals FROM request_totals
+         WHERE request_id = ?`,
+      )
+      .get(requestId) as
+      | { repository_totals: string; coverage_totals: string }
+      | undefined;
+    if (row === undefined) throw new Error("request totals missing");
+    return parseRequestTotals(row);
   }
 
   async findActiveRequestByUsername(
@@ -768,7 +850,8 @@ export class SqliteStore implements Store {
         .prepare(
           `UPDATE repositories
            SET state = 'failed', reason = 'LEASE_RETRY_EXHAUSTED', specialist_reasons = '{}',
-               lease_owner = NULL, lease_expires_at_ms = NULL, updated_at_ms = ?
+               coverage_json = ${FAIL_WAITING_COVERAGE_SQL}, lease_owner = NULL,
+               lease_expires_at_ms = NULL, updated_at_ms = ?
            WHERE request_id = ? AND repository_id = ?
              AND lease_generation = ? AND attempt_count >= ?
              AND lease_expires_at_ms IS NOT NULL
@@ -788,15 +871,6 @@ export class SqliteStore implements Store {
       if (result.changes !== 1) {
         return false;
       }
-      this.#database
-        .prepare(
-          `UPDATE repository_coverage
-           SET progress_state = CASE
-             WHEN progress_state = 'waiting' THEN 'failed'
-             ELSE progress_state END
-           WHERE request_id = ? AND repository_id = ?`,
-        )
-        .run(input.requestId, input.repositoryId);
       this.#refreshRequestState(input.requestId, input.nowMs);
       return true;
     });
@@ -918,7 +992,8 @@ export class SqliteStore implements Store {
   }
 
   async publish(input: PublishInput): Promise<PublicationResult> {
-    this.#validatePublishInput(input);
+    validatePublishInput(input);
+    serializeSpecialistReasons(input.specialistReasons);
     const publishTransaction = this.#database.transaction(
       (): PublicationResult => {
         const row = this.#database
@@ -943,10 +1018,7 @@ export class SqliteStore implements Store {
           if (row.published_lease_generation !== input.generation) {
             return "idempotency_conflict";
           }
-          const currentCoverage = this.#readCoverage(
-            input.requestId,
-            input.repositoryId,
-          );
+          const currentCoverage = parseCoverage(row.coverage_json);
           const sameCoverage = SPECIALISTS.every(
             (specialist) => currentCoverage[specialist] === input.coverage[specialist],
           );
@@ -977,22 +1049,6 @@ export class SqliteStore implements Store {
           return "invalid_state";
         }
 
-        const updateCoverage = this.#database.prepare(
-          `UPDATE repository_coverage SET progress_state = ?
-           WHERE request_id = ? AND repository_id = ? AND specialist = ?`,
-        );
-        for (const specialist of SPECIALISTS) {
-          const result = updateCoverage.run(
-            input.coverage[specialist],
-            input.requestId,
-            input.repositoryId,
-            specialist,
-          );
-          if (result.changes !== 1) {
-            throw new Error("coverage publication failed");
-          }
-        }
-
         const insertFinding = this.#database.prepare(
           `INSERT INTO findings(
             finding_id, request_id, repository_id, commit_sha, engine,
@@ -1020,8 +1076,9 @@ export class SqliteStore implements Store {
         const result = this.#database
           .prepare(
             `UPDATE repositories
-             SET state = ?, reason = ?, specialist_reasons = ?, published_lease_generation = ?,
-                 lease_owner = NULL, lease_expires_at_ms = NULL, updated_at_ms = ?
+             SET state = ?, reason = ?, specialist_reasons = ?, coverage_json = ?,
+                 published_lease_generation = ?, lease_owner = NULL,
+                 lease_expires_at_ms = NULL, updated_at_ms = ?
              WHERE request_id = ? AND repository_id = ?
                AND state = ? AND lease_owner = ? AND lease_generation = ?
                AND lease_expires_at_ms > ?`,
@@ -1030,6 +1087,7 @@ export class SqliteStore implements Store {
             input.terminalState,
             input.reason,
             serializeSpecialistReasons(input.specialistReasons),
+            serializeCoverage(input.coverage),
             input.generation,
             input.nowMs,
             input.requestId,
@@ -1055,23 +1113,7 @@ export class SqliteStore implements Store {
 
   #hydrateRepository(row: RepositoryRow): RepositoryRecord {
     assertOpaqueId(row.request_id);
-    return parseRepositoryRow(
-      row,
-      this.#readCoverage(row.request_id, row.repository_id),
-    );
-  }
-
-  #readCoverage(
-    requestId: OpaqueId,
-    repositoryId: number,
-  ): SpecialistProgress {
-    const rows = this.#database
-      .prepare(
-        `SELECT specialist, progress_state FROM repository_coverage
-         WHERE request_id = ? AND repository_id = ? ORDER BY specialist`,
-      )
-      .all(requestId, repositoryId) as CoverageRow[];
-    return coverageFromRows(rows);
+    return parseRepositoryRow(row);
   }
 
   #publicationFindingsMatch(input: PublishInput): boolean {
@@ -1216,99 +1258,4 @@ export class SqliteStore implements Store {
     }
   }
 
-  #validatePublishInput(input: PublishInput): void {
-    this.#validateLeaseRef(input);
-    assertTime(input.nowMs);
-    serializeSpecialistReasons(input.specialistReasons);
-    const coverageValues = SPECIALISTS.map(
-      (specialist) => input.coverage[specialist],
-    );
-    const successfulEngines = SCAN_ENGINES.filter((engine) =>
-      ["complete", "partial"].includes(input.coverage[engine]),
-    );
-    const failedEngines = SCAN_ENGINES.filter(
-      (engine) => input.coverage[engine] === "failed",
-    );
-    const partialEngines = SCAN_ENGINES.filter(
-      (engine) => input.coverage[engine] === "partial",
-    );
-    const baseFailed =
-      input.coverage.snapshot === "failed" ||
-      input.coverage.archive_guard === "failed";
-    const reasonEntries = Object.entries(input.specialistReasons);
-    const reasonsMatchFailedEngines = reasonEntries.every(
-      ([engine, reason]) =>
-        SCAN_ENGINES.includes(engine as (typeof SCAN_ENGINES)[number]) &&
-        input.coverage[engine as (typeof SCAN_ENGINES)[number]] === "failed" &&
-        failureClassSchema.safeParse(reason).success,
-    );
-    const allFailedEnginesAttributed = failedEngines.every(
-      (engine) => input.specialistReasons[engine] !== undefined,
-    );
-    const firstFailedReason = failedEngines
-      .map((engine) => input.specialistReasons[engine])
-      .find((reason) => reason !== undefined);
-    if (
-      !["complete", "partial", "failed", "cancelled"].includes(
-        input.terminalState,
-      ) ||
-      (input.terminalState === "complete" && input.reason !== null) ||
-      (input.terminalState !== "complete" && input.reason === null) ||
-      (input.reason !== null && !failureClassSchema.safeParse(input.reason).success) ||
-      (input.terminalState === "complete" &&
-        (coverageValues.some(
-          (outcome) => outcome === "partial" || outcome === "failed",
-        ) || reasonEntries.length > 0)) ||
-      (input.terminalState === "partial" &&
-        (baseFailed ||
-          successfulEngines.length === 0 ||
-          (partialEngines.length === 0 && failedEngines.length === 0) ||
-          (failedEngines.length > 0
-            ? !allFailedEnginesAttributed || input.reason !== firstFailedReason
-            : input.reason !== "FINDING_LIMIT" || reasonEntries.length > 0))) ||
-      (input.terminalState === "failed" &&
-        (!coverageValues.includes("failed") ||
-          successfulEngines.length > 0 ||
-          (!baseFailed &&
-            reasonEntries.length > 0 &&
-            input.reason !== firstFailedReason))) ||
-      (input.terminalState === "cancelled" &&
-        (!["CANCELLED", "PRIVATE_SLICE_SCOPE"].includes(input.reason ?? "") ||
-          coverageValues.some((outcome) => outcome !== "not_applicable") ||
-          reasonEntries.length > 0)) ||
-      !reasonsMatchFailedEngines ||
-      (baseFailed && reasonEntries.length > 0) ||
-      ((input.terminalState === "failed" ||
-        input.terminalState === "cancelled") &&
-        input.findings.length > 0)
-    ) {
-      throw new Error("invalid publication metadata");
-    }
-    for (const specialist of SPECIALISTS) {
-      if (!specialistCoverageOutcomeSchema.safeParse(input.coverage[specialist]).success) {
-        throw new Error("invalid publication coverage");
-      }
-    }
-    if (input.findings.length > 1_024) {
-      throw new Error("invalid publication findings");
-    }
-    const findingIds = new Set<string>();
-    const engineRules = new Set<string>();
-    for (const finding of input.findings) {
-      const parsed = brokerDerivedFindingSchema.safeParse(finding);
-      const engineRule = `${finding.engine}\0${finding.rule_id}`;
-      if (
-        !parsed.success ||
-        finding.request_id !== input.requestId ||
-        finding.repository_id !== input.repositoryId ||
-        !["complete", "partial"].includes(input.coverage[finding.engine]) ||
-        findingIds.has(finding.finding_id) ||
-        engineRules.has(engineRule)
-      ) {
-        throw new Error("invalid publication findings");
-      }
-      findingIds.add(finding.finding_id);
-      engineRules.add(engineRule);
-    }
-  }
 }

@@ -20,8 +20,10 @@ Before opening a change, run:
 pnpm install --frozen-lockfile --ignore-scripts
 pnpm typecheck
 pnpm lint
+pnpm test:workers
 pnpm test:coverage
 pnpm build
+pnpm build:control-plane
 ```
 
 Changes to archive parsing, cleanup/publication ordering, scanner identity,

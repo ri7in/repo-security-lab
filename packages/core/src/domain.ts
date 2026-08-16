@@ -14,6 +14,8 @@ import type {
   SpecialistCoverageOutcome,
   SpecialistProgressState,
   BrokerDerivedFinding,
+  CoverageTotals,
+  RepositoryStateTotals,
 } from "@app/contracts";
 
 export interface ScanRequestRecord {
@@ -43,6 +45,14 @@ export interface LeaseIdentity {
 
 /** Closed retry budget shared by schedulers, stores, and workers. */
 export const MAX_LEASE_ATTEMPTS = 3;
+
+/** Fixed control-plane capacity signal; contains no database or target prose. */
+export class StoreWriteReserveError extends Error {
+  constructor() {
+    super("D1_WRITE_RESERVE");
+    this.name = "StoreWriteReserveError";
+  }
+}
 
 export interface RepositoryRecord {
   readonly schemaVersion: 1;
@@ -197,6 +207,12 @@ export interface RequestAggregate {
   readonly repositories: readonly RepositoryRecord[];
 }
 
+/** Source-blind materialized or SQL-derived totals for one complete ledger. */
+export interface RequestTotals {
+  readonly repositoryTotals: RepositoryStateTotals;
+  readonly coverageTotals: CoverageTotals;
+}
+
 /**
  * Durable storage port shared by the local SQLite and future D1 adapters.
  * Every mutating worker method is lease-bound. Implementations return closed
@@ -208,6 +224,7 @@ export interface Store {
   completeDiscovery(input: CompleteDiscoveryInput): Promise<DiscoveryCompletionResult>;
   failRequest(input: FailRequestInput): Promise<boolean>;
   getRequest(requestId: OpaqueId): Promise<ScanRequestRecord | null>;
+  getRequestTotals(requestId: OpaqueId): Promise<RequestTotals | null>;
   findActiveRequestByUsername(username: GithubLogin): Promise<ScanRequestRecord | null>;
   /** Startup recovery for requests durably accepted before discovery finished. */
   listPendingDiscoveryRequests(limit: number): Promise<readonly ScanRequestRecord[]>;
@@ -228,3 +245,17 @@ export interface Store {
   transition(input: TransitionInput): Promise<boolean>;
   publish(input: PublishInput): Promise<PublicationResult>;
 }
+
+/** Minimal durable surface used by isolated pull workers. */
+export type WorkerStorePort = Pick<
+  Store,
+  | "getRequest"
+  | "claimNext"
+  | "heartbeat"
+  | "classifyExpiredLeases"
+  | "requeueCleaned"
+  | "finalizeExhausted"
+  | "retryCleaned"
+  | "transition"
+  | "publish"
+>;

@@ -1,11 +1,10 @@
 # Architecture
 
-**Status:** private end-to-end vertical slice. Discovery, durable scheduling,
-immutable archive acquisition, guarded extraction, real Gitleaks scanning,
-engine-isolated source-blind publication, the local API/worker runtime,
-responsive web UI, and the CI canary proof are implemented. Public deployment
-and third-party scans remain gated on Linux isolation and an approved
-deployment identity.
+**Status:** private production preview. The local vertical slice plus a
+Cloudflare Workers/D1 control plane, same-origin static site, owner OAuth, and
+an authenticated external pull worker are implemented and exercised. Public
+deployment awaits Cloudflare/GitHub application setup; third-party scans remain
+disabled until isolated scan compute is proven.
 
 ## Product flow
 
@@ -17,8 +16,10 @@ deployment identity.
 2. Authenticated GraphQL discovery enumerates every owned public repository,
    including forks and empty repositories, and binds non-empty work to the
    default branch's immutable commit SHA. A slower REST path is available.
-3. SQLite atomically installs the complete repository ledger. Workers claim
-   rows with generation-bearing leases and stable ordering.
+3. SQLite (local) or D1 (hosted) atomically installs the complete repository
+   ledger. D1 materializes request totals, stores findings in bounded JSON
+   chunks, and reserves conservative modeled writes before admitting work.
+   Workers claim rows with generation-bearing leases and stable ordering.
 4. A worker requests the exact commit archive, manually validates the GitHub
    codeload redirect, strips authorization before codeload, streams through a
    compressed-size limit, and writes into a private tuple-keyed scratch root.
@@ -111,10 +112,19 @@ also terminalizes forks as
 operator-authored. The web development server proxies `/api` to this loopback
 runtime.
 
-The production web bundle is static and deployable, but a public frontend alone
-is not the scanner backend. No deployment has been made because the available
-Vercel identity is not authenticated and therefore cannot yet be proven to be
-the owner's personal account rather than the excluded organization account.
+`apps/control-plane` serves the production web bundle and API from one
+Cloudflare Worker. It uses D1, two public admission rate limits, a separate
+worker-edge limit, cron discovery recovery, security headers, and a default-off
+public scanning switch. Owner findings use no-scope GitHub OAuth with signed
+PKCE state; the short-lived access token is actively revoked after `/user` and
+is never stored. `apps/scan-worker` uses a narrowed HTTPS store adapter and
+rotating HMAC identity. The server supplies all mutation timestamps, and every
+lease mutation remains generation-bound and idempotent.
+
+Vercel is authenticated as the owner's personal account and remains an
+isolated-compute candidate because Sandbox provides Firecracker microVMs and
+network policy. It is not wired into the release: exact $0 allowance, snapshot,
+deny-all scan phase, source-blind output, and lifecycle proof remain required.
 
 ## Verification layers
 
@@ -130,14 +140,17 @@ the owner's personal account rather than the excluded organization account.
   Gitleaks Linux archive and verifies both archive and binary hashes, runs the
   full gate and real-binary canary proof, builds the web app, and self-scans the
   repository tree plus full Git history.
+- Workerd tests apply the real D1 migration and prove atomic discovery,
+  materialized totals, write-reserve refusal, lease ABA protection, chunked
+  publication, signed-worker rotation/revocation, owner OAuth identity matching,
+  OAuth token revocation, and default-off public admission.
 
 ## Known release gates
 
 - Enforced Linux privilege separation, no-network sandboxing, cgroups, tmpfs,
   crash/reboot cleanup, and swap policy.
-- Deployed control-plane semantics and abuse/rate-limit controls.
-- Owner authentication for finding detail, public disclosure UX, and privacy
-  review.
+- Live Cloudflare account/D1 creation and exact deployed-SHA smoke proof.
+- GitHub OAuth application registration and callback proof on the live origin.
 - Project-attested scanner build provenance; a release hash pin is identity,
   not provenance.
 - OSV, workflow, and source-rule specialists remain unintegrated; relevant

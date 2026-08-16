@@ -1,7 +1,9 @@
 # Security policy
 
-This repository is a private development slice and has no supported public
-release yet. Security reports are still welcome.
+This repository is a private production preview and has no supported public
+release yet. The Worker/D1 control plane is implemented and tested, but public
+third-party scan compute and AI source processing remain disabled. Security
+reports are still welcome.
 
 Use GitHub's private vulnerability-reporting or Security Advisory flow for this
 repository. Do not place secrets, access tokens, exploit payloads, or vulnerable

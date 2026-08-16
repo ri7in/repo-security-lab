@@ -1,4 +1,3 @@
-import { createHash, randomBytes } from "node:crypto";
 import { Hono } from "hono";
 import {
   createScanRequestBodySchema,
@@ -10,7 +9,7 @@ import {
   type GithubLogin,
   type OpaqueId,
 } from "@app/contracts";
-import { aggregateLedger, type Store } from "@app/core";
+import { StoreWriteReserveError, type Store } from "@app/core";
 import {
   GithubClientError,
   type DiscoveryResult,
@@ -66,11 +65,16 @@ export interface DiscoveryPort {
 export interface ApiOptions {
   readonly store: Store;
   readonly discovery: DiscoveryPort;
-  readonly allowedRequestedLogins: ReadonlySet<string>;
-  readonly allowedGithubAccountIds: ReadonlySet<number>;
+  /** Null is the public service; a set retains the private-slice safety gate. */
+  readonly allowedRequestedLogins: ReadonlySet<string> | null;
+  readonly allowedGithubAccountIds: ReadonlySet<number> | null;
   readonly dispatch?: (task: () => Promise<void>) => void;
   readonly now?: () => number;
   readonly createRequestId?: () => string;
+  readonly admitScanRequest?: (
+    username: GithubLogin,
+    request: Request,
+  ) => Promise<boolean>;
   readonly operatorMode?: boolean;
   readonly bindHost?: string;
   readonly enforceHostHeader?: boolean;
@@ -79,12 +83,32 @@ export interface ApiOptions {
 export interface DiscoveryProcessingOptions {
   readonly store: Store;
   readonly discovery: DiscoveryPort;
-  readonly allowedRequestedLogins: ReadonlySet<string>;
-  readonly allowedGithubAccountIds: ReadonlySet<number>;
+  readonly allowedRequestedLogins: ReadonlySet<string> | null;
+  readonly allowedGithubAccountIds: ReadonlySet<number> | null;
   readonly now?: () => number;
 }
 
+function randomRequestId(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  const value = [...bytes]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `req_${value}`;
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)),
+  );
+  return [...bytes]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function discoveryFailure(error: unknown) {
+  if (error instanceof StoreWriteReserveError) {
+    return "D1_WRITE_RESERVE" as const;
+  }
   if (error instanceof GithubClientError) {
     if (error.code === "RATE_LIMITED") return "GITHUB_RATE_LIMIT" as const;
     if (error.code === "ACCOUNT_NOT_FOUND") return "GITHUB_NOT_FOUND" as const;
@@ -137,6 +161,7 @@ async function processDiscovery(
   if (!(await options.store.startDiscovery(requestId, now()))) return;
   const requestedKey = username.toLowerCase();
   if (
+    options.allowedRequestedLogins !== null &&
     ![...options.allowedRequestedLogins].some(
       (login) => login.toLowerCase() === requestedKey,
     )
@@ -150,7 +175,10 @@ async function processDiscovery(
   }
   try {
     const result = await options.discovery.discover(username);
-    if (!options.allowedGithubAccountIds.has(result.account.githubAccountId)) {
+    if (
+      options.allowedGithubAccountIds !== null &&
+      !options.allowedGithubAccountIds.has(result.account.githubAccountId)
+    ) {
       await options.store.failRequest({
         requestId,
         reason: "PRIVATE_SLICE_SCOPE",
@@ -205,7 +233,7 @@ export async function resumePendingDiscoveries(
 export function createApi(options: ApiOptions): Hono {
   const now = options.now ?? Date.now;
   const createRequestId =
-    options.createRequestId ?? (() => `req_${randomBytes(16).toString("hex")}`);
+    options.createRequestId ?? randomRequestId;
   const dispatch =
     options.dispatch ??
     ((task: () => Promise<void>) => {
@@ -261,8 +289,15 @@ export function createApi(options: ApiOptions): Hono {
     if (!parsed.success) {
       return context.json({ reason: "INVALID_USERNAME" as const }, 400);
     }
+    if (
+      options.admitScanRequest !== undefined &&
+      !(await options.admitScanRequest(parsed.data.username, context.req.raw))
+    ) {
+      return context.json({ reason: "RATE_LIMITED" as const }, 429);
+    }
     const requestedKey = parsed.data.username.toLowerCase();
     if (
+      options.allowedRequestedLogins !== null &&
       ![...options.allowedRequestedLogins].some(
         (login) => login.toLowerCase() === requestedKey,
       )
@@ -287,6 +322,10 @@ export function createApi(options: ApiOptions): Hono {
         nowMs: now(),
       });
     } catch (error) {
+      if (error instanceof StoreWriteReserveError) {
+        context.header("Retry-After", "3600");
+        return context.json({ reason: "CAPACITY_EXHAUSTED" as const }, 503);
+      }
       const concurrent = await options.store.findActiveRequestByUsername(
         parsed.data.username,
       );
@@ -315,33 +354,21 @@ export function createApi(options: ApiOptions): Hono {
     }
     const request = await options.store.getRequest(requestId);
     if (request === null) return context.json({ reason: "NOT_FOUND" }, 404);
-    const repositories = [];
-    let cursor: number | null = null;
-    do {
-      const page = await options.store.listRepositories({
-        requestId: request.requestId,
-        afterRepositoryId: cursor,
-        limit: 100,
-      });
-      repositories.push(...page.repositories);
-      cursor = page.nextRepositoryId;
-    } while (cursor !== null);
-    const aggregate = aggregateLedger(request, repositories);
+    const totals = await options.store.getRequestTotals(request.requestId);
+    if (totals === null) return context.json({ reason: "NOT_FOUND" }, 404);
     const summary = scanRequestSummarySchema.parse({
       schemaVersion: 1,
       requestId: request.requestId,
       username: request.username,
-      state: aggregate.requestState,
+      state: request.state,
       ...(request.reason === null ? {} : { reason: request.reason }),
-      repositoryTotals: aggregate.repositoryTotals,
-      coverageTotals: aggregate.coverageTotals,
+      repositoryTotals: totals.repositoryTotals,
+      coverageTotals: totals.coverageTotals,
       aiLane: request.aiLane,
-      retryAfterSeconds: aggregate.requestState === "complete" ? 60 : 2,
+      retryAfterSeconds: request.state === "complete" ? 60 : 2,
       updatedAt: new Date(request.updatedAtMs).toISOString(),
     });
-    const etag = `"${createHash("sha256")
-      .update(JSON.stringify(summary))
-      .digest("hex")}"`;
+    const etag = `"${await sha256Hex(JSON.stringify(summary))}"`;
     context.header("ETag", etag);
     if (context.req.header("If-None-Match") === etag) {
       return context.body(null, 304);

@@ -12,20 +12,25 @@
     "build": "pnpm --filter @app/web build",
     "dev:api": "tsx apps/api/src/server.ts",
     "dev:web": "pnpm --filter @app/web dev",
+    "dev:worker": "pnpm --filter @app/scan-worker start",
+    "build:control-plane": "pnpm --filter @app/control-plane build",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:workers": "vitest run --config apps/control-plane/vitest.config.ts",
     "test:coverage": "vitest run --coverage",
-    "check": "pnpm typecheck && pnpm lint && pnpm test"
+    "check": "pnpm typecheck && pnpm lint && pnpm test && pnpm test:workers"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "0.21.3",
     "@eslint/js": "^9.0.0",
     "@types/node": "^24.0.0",
     "@vitest/coverage-v8": "^4.0.0",
     "eslint": "^9.0.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0",
-    "tsx": "^4.23.12",
-    "vitest": "^4.0.0"
+    "vitest": "^4.0.0",
+    "wrangler": "4.123.0"
   }
 }

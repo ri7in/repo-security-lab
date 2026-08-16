@@ -50,10 +50,29 @@ pnpm install          # resolves/checks the committed lockfile
 pnpm typecheck        # strict TypeScript over all packages and tests
 pnpm lint             # ESLint flat config, type-checked rules
 pnpm test             # Vitest, includes the rename guard and contract suites
+pnpm test:workers     # workerd-backed Worker, D1, OAuth, and internal API tests
 pnpm test:coverage    # same suite plus the enforced aggregate coverage floor
 pnpm check            # all of the above
 pnpm build            # production web bundle
+pnpm build:control-plane # Cloudflare Worker dry-run bundle and binding check
 ```
+
+Before a control-plane release, also apply the D1 migration to a fresh local
+database and build the Worker from the committed tree:
+
+```sh
+proof_dir="$(mktemp -d)"
+pnpm exec wrangler d1 migrations apply DB --local \
+  --config apps/control-plane/wrangler.jsonc --persist-to "$proof_dir"
+pnpm build:control-plane
+```
+
+Production deployment remains fail-closed until `wrangler login` identifies
+Rivin's Cloudflare account, the placeholder D1 database ID is replaced, GitHub
+OAuth is registered with the exact deployed callback, required secrets are
+installed through Wrangler, and public scope is deliberately enabled. Never
+commit those values. The trusted scan worker uses the signed internal protocol;
+the current implementation is not a public multi-tenant sandbox.
 
 CI additionally downloads the exact SHA-256-pinned zizmor 1.29.0 release and
 audits this repository's workflow/config definitions offline with target

@@ -1,0 +1,17 @@
+{
+  "name": "@app/scan-worker",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@app/broker": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/github": "workspace:*",
+    "@app/scanners": "workspace:*",
+    "@app/store-http": "workspace:*",
+    "@app/worker": "workspace:*"
+  }
+}

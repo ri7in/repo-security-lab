@@ -1,0 +1,22 @@
+{
+  "name": "@app/control-plane",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "pnpm --filter @app/web build && wrangler deploy --dry-run --config wrangler.jsonc",
+    "dev": "wrangler dev --config wrangler.jsonc",
+    "migrate:local": "wrangler d1 migrations apply DB --local --config wrangler.jsonc"
+  },
+  "dependencies": {
+    "@app/api": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/core": "workspace:*",
+    "@app/github": "workspace:*",
+    "@app/store-d1": "workspace:*",
+    "@app/store-http": "workspace:*",
+    "@app/worker-protocol": "workspace:*",
+    "hono": "^4.9.0",
+    "zod": "^4.0.0"
+  }
+}

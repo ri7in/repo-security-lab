@@ -27,7 +27,7 @@ import {
   type LeaseRef,
   type RepositoryRecord,
   type SpecialistOutcomes,
-  type Store,
+  type WorkerStorePort,
 } from "@app/core";
 import {
   GithubClientError,
@@ -68,14 +68,15 @@ export interface AdditionalEngineRunner {
 }
 
 export interface RepositoryWorkerOptions {
-  readonly store: Store;
+  readonly store: WorkerStorePort;
   readonly archiveFetcher: ArchiveFetcher;
   readonly gitleaks: SecretScanner;
   readonly gitleaksBroker: SourceBlindBroker;
   readonly additionalEngines?: readonly AdditionalEngineRunner[];
   readonly workerId: OpaqueId;
   readonly scratchBase: string;
-  readonly allowedGithubAccountIds: ReadonlySet<number>;
+  /** Null enables the isolated public worker; a set retains private-slice scope. */
+  readonly allowedGithubAccountIds: ReadonlySet<number> | null;
   readonly leaseDurationMs?: number;
   readonly now?: () => number;
   readonly removeScratch?: (jobRoot: string) => Promise<boolean>;
@@ -173,14 +174,14 @@ async function* webStreamChunks(
 }
 
 export class RepositoryWorker {
-  readonly #store: Store;
+  readonly #store: WorkerStorePort;
   readonly #archiveFetcher: ArchiveFetcher;
   readonly #gitleaks: SecretScanner;
   readonly #gitleaksBroker: SourceBlindBroker;
   readonly #additionalEngines: readonly AdditionalEngineRunner[];
   readonly #workerId: OpaqueId;
   readonly #scratchBase: string;
-  readonly #allowedGithubAccountIds: ReadonlySet<number>;
+  readonly #allowedGithubAccountIds: ReadonlySet<number> | null;
   readonly #leaseDurationMs: number;
   readonly #now: () => number;
   readonly #removeScratch: (jobRoot: string) => Promise<boolean>;
@@ -298,7 +299,8 @@ export class RepositoryWorker {
     if (
       request?.githubAccountId === null ||
       request === null ||
-      !this.#allowedGithubAccountIds.has(request.githubAccountId) ||
+      (this.#allowedGithubAccountIds !== null &&
+        !this.#allowedGithubAccountIds.has(request.githubAccountId)) ||
       repository.isFork
     ) {
       const publication = await this.#store.publish({

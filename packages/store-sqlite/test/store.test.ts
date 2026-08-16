@@ -17,6 +17,7 @@ import type {
   RepositoryRecord,
   SpecialistOutcomes,
 } from "@app/core";
+import { aggregateLedger } from "@app/core";
 import {
   CLAIM_NEXT_SQL,
   MIGRATION_001,
@@ -75,6 +76,26 @@ async function createLedger(
   const completed = await store.getRequest(requestId);
   if (completed === null) throw new Error("test expected request");
   return completed;
+}
+
+async function expectMaterializedTotals(
+  store: SqliteStore,
+  requestId = "req_0000000001" as OpaqueId,
+): Promise<void> {
+  const request = await store.getRequest(requestId);
+  if (request === null) throw new Error("test expected request");
+  const repositories = (
+    await store.listRepositories({
+      requestId,
+      afterRepositoryId: null,
+      limit: 100,
+    })
+  ).repositories;
+  const aggregate = aggregateLedger(request, repositories);
+  expect(await store.getRequestTotals(requestId)).toEqual({
+    repositoryTotals: aggregate.repositoryTotals,
+    coverageTotals: aggregate.coverageTotals,
+  });
 }
 
 function outcomes(
@@ -156,6 +177,25 @@ function publication(
 }
 
 describe("SQLite store ledger", () => {
+  it("keeps O(1) materialized totals exact across lease and publication states", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    await createLedger(store, [1, 2]);
+    await expectMaterializedTotals(store);
+    const claimed = await store.claimNext({
+      workerId: "worker_00000001",
+      nowMs: 1_100,
+      leaseDurationMs: 1_000,
+    });
+    if (claimed === null) throw new Error("test expected claim");
+    await expectMaterializedTotals(store);
+    const lease = await advanceToWaitingToPublish(store, claimed, 1_200);
+    await expectMaterializedTotals(store);
+    expect(await store.publish(publication(lease))).toBe("published");
+    await expectMaterializedTotals(store);
+    expect(await store.getRequestTotals("missing_request")).toBeNull();
+    store.close();
+  });
+
   it("lists accepted and interrupted-discovery rows for startup recovery", async () => {
     const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
     await store.createRequest({
@@ -556,7 +596,7 @@ describe("SQLite store ledger", () => {
       migrated
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([1, 2, 3, 4, 5, 6].map((version) => ({ version })));
+    ).toEqual([1, 2, 3, 4, 5, 6, 7].map((version) => ({ version })));
     migrated.close();
   });
 

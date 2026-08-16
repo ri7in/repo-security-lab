@@ -1,8 +1,10 @@
 # Threat model
 
-**Scope:** private vertical slice. This document describes the implemented
-local path and the gates that still prevent public third-party scanning. It is
-not a claim that macOS process boundaries provide production sandboxing.
+**Scope:** private production preview. This document covers both the proven
+local scanner slice and the implemented Cloudflare Worker + D1 control plane.
+Public third-party scanning remains disabled until the separate scan-compute
+isolation gate is closed. It is not a claim that macOS process boundaries
+provide production sandboxing.
 
 ## Assets and security objectives
 
@@ -35,8 +37,24 @@ project-attested scanner provenance described below.
 
 ### Control plane
 
-The API validates a closed GitHub-login grammar, creates the request durably
-before discovery, and admits only configured logins. On restart, the local
+The public Worker validates a closed GitHub-login grammar, applies Cloudflare
+rate limits, and creates each request durably before discovery. Public scope is
+off by default. Owner detail requires a GitHub OAuth PKCE session bound to the
+immutable GitHub account ID; the short-lived OAuth access token is revoked
+immediately after identity lookup and is never persisted. Signed internal
+worker requests use bounded bodies, server-authoritative time, rotating HMAC
+generations, and revocation. Security headers apply to API and static assets.
+
+D1 records the exhaustive ledger, materialized request totals, bounded finding
+chunks, lease generations, and modeled daily write reservations. Request and
+discovery reservations are atomic with their corresponding writes, and the
+service fails closed with an explicit capacity response before it can exceed
+the configured free-tier write budget. Workerd integration tests exercise the
+real migration, transactions/batches, conflicts, lease ABA resistance,
+idempotency, rate limiting, OAuth boundaries, and response headers.
+
+The local API validates the same GitHub-login grammar and admits only configured
+logins. On restart, the local
 runtime replays durable accepted/discovering rows under the current login and
 account-ID allowlists before it begins serving. Discovery then binds the
 request to GitHub's immutable account ID and refuses IDs outside the private
@@ -97,9 +115,10 @@ If a lease expires after local source exists but before the durable cleaning
 transition, the worker removes that exact generation immediately; the janitor
 then performs the later durable compare-and-swap against the absent path.
 
-SQLite persists only control-plane repository names, closed coverage/failure
-states, and broker-derived finding metadata. Raw source, paths, snippets,
-matches, scanner stderr, and secret values are absent from its schema.
+SQLite and D1 persist only control-plane repository names, closed
+coverage/failure states, and broker-derived finding metadata. Raw source,
+paths, snippets, matches, scanner stderr, and secret values are absent from
+their schemas. D1 detail rows are bounded to 100 normalized findings per chunk.
 
 On a failed repository row, specialist `failed` means no reliable result was
 available; it does not claim that specialist executed. The row-level fixed
@@ -119,21 +138,27 @@ throws. No model client or repository-to-provider route exists in this slice.
 
 ## Abuse and privacy limits
 
-The private runtime is intentionally single-operator and sequentially paced.
-It does not yet claim public multi-tenant abuse resistance, deployed queue
-fairness, or owner authorization. Forks are represented but refused before
-download because owned forks can contain third-party source. Logs carry fixed
-event/result codes only.
+The local runtime is intentionally single-operator and sequentially paced. The
+deployed control-plane code has owner authorization, durable capacity
+reservations, and public/internal rate-limit boundaries, but no public scan
+worker is attached. Forks are represented but refused before download because
+owned forks can contain third-party source. Logs carry fixed event/result codes
+only.
 
 ## Public-release gates
 
 - Run acquisition, parsing, scanning, and cleanup under a non-root Linux
   identity with no network, read-only trusted tools, tmpfs, cgroup/rlimit
   ceilings, process-count limits, swap policy, and crash/reboot cleanup proofs.
-- Prove the deployed queue/store's lease, idempotency, rate-limit, and burst
-  behavior; local SQLite evidence is not deployed D1 evidence.
-- Add owner authentication and explicit source-processing disclosure before
-  exposing finding detail or enabling any future AI source lane.
+- Deploy the already-tested Worker/D1 control plane under Rivin's Cloudflare
+  account, create the production D1 database, install secrets, and verify the
+  exact deployed OAuth callback and free-tier capacity alarms.
+- Attach a non-root Linux or microVM scan-compute boundary with no target-code
+  execution, default-deny egress after acquisition, resource ceilings, trusted
+  read-only scanners, tuple cleanup, and crash/reboot proofs.
+- Keep AI source submission disabled until owner consent/provider disclosure,
+  source sanitization and opaque code mapping, Groq ZDR verification, and the
+  grounded two-scout-plus-judge benchmark all pass.
 - Add project-attested/reproducible scanner provenance. A release archive hash
   proves identity, not that the upstream build is trustworthy.
 - Integrate and test dependency, workflow, and source-rule specialists;

@@ -15,6 +15,25 @@ export interface LedgerAggregation {
   readonly coverageTotals: CoverageTotals;
 }
 
+export function emptyRequestTotals(): Pick<
+  LedgerAggregation,
+  "repositoryTotals" | "coverageTotals"
+> {
+  return {
+    repositoryTotals: Object.fromEntries(
+      REPOSITORY_STATES.map((state) => [state, 0]),
+    ) as RepositoryStateTotals,
+    coverageTotals: Object.fromEntries(
+      SPECIALISTS.map((specialist) => [
+        specialist,
+        Object.fromEntries(
+          SPECIALIST_PROGRESS_STATES.map((state) => [state, 0]),
+        ),
+      ]),
+    ) as CoverageTotals,
+  };
+}
+
 export function deriveRequestState(
   request: ScanRequestRecord,
   repositories: readonly RepositoryRecord[],
@@ -37,15 +56,7 @@ export function aggregateLedger(
   request: ScanRequestRecord,
   repositories: readonly RepositoryRecord[],
 ): LedgerAggregation {
-  const repositoryTotals = Object.fromEntries(
-    REPOSITORY_STATES.map((state) => [state, 0]),
-  ) as RepositoryStateTotals;
-  const coverageTotals = Object.fromEntries(
-    SPECIALISTS.map((specialist) => [
-      specialist,
-      Object.fromEntries(SPECIALIST_PROGRESS_STATES.map((state) => [state, 0])),
-    ]),
-  ) as CoverageTotals;
+  const { repositoryTotals, coverageTotals } = emptyRequestTotals();
 
   for (const repository of repositories) {
     repositoryTotals[repository.state] += 1;

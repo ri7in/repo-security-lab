@@ -47,6 +47,8 @@ export const apiRejectionReasonSchema = z.enum([
   "INVALID_USERNAME",
   "PRIVATE_SLICE_SCOPE",
   "DUPLICATE_ACTIVE_REQUEST",
+  "RATE_LIMITED",
+  "CAPACITY_EXHAUSTED",
 ]);
 export type ApiRejectionReason = z.infer<typeof apiRejectionReasonSchema>;
 

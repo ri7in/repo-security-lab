@@ -6,6 +6,7 @@ export {
   MIGRATION_004,
   MIGRATION_005,
   MIGRATION_006,
+  MIGRATION_007,
   SCHEMA_VERSION,
 } from "./migrations.js";
 export { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
