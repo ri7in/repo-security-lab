@@ -37,6 +37,15 @@ function scannerFailure(error: unknown): FailureClass {
   return "SCANNER_INTERNAL";
 }
 
+function recordScannerFailure(
+  engine: "gitleaks" | "zizmor",
+  error: unknown,
+): FailureClass {
+  const detail = error instanceof ScannerError ? error.code : "UNEXPECTED";
+  process.stderr.write(`SCAN_FAILURE:${engine}:${detail}\n`);
+  return scannerFailure(error);
+}
+
 async function emit(value: unknown): Promise<void> {
   await writeFile(OUTPUT_FILE, JSON.stringify(value), {
     encoding: "utf8",
@@ -161,7 +170,7 @@ async function scan(): Promise<void> {
       packet: parseJsonPacket(normalized.packetBytes),
     });
   } catch (error) {
-    engineFailures.gitleaks = scannerFailure(error);
+    engineFailures.gitleaks = recordScannerFailure("gitleaks", error);
   }
   const zizmorSha256 = process.env["ZIZMOR_SHA256"];
   if (zizmorSha256 !== undefined && applicability.zizmor) {
@@ -179,7 +188,7 @@ async function scan(): Promise<void> {
         packet: parseJsonPacket(normalized.packetBytes),
       });
     } catch (error) {
-      engineFailures.zizmor = scannerFailure(error);
+      engineFailures.zizmor = recordScannerFailure("zizmor", error);
     }
   }
   await emit(
