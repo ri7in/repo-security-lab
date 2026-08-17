@@ -197,6 +197,7 @@ describePosix("bounded scanner command runner", () => {
       code: "SCANNER_EXIT_FAILURE",
       message: "SCANNER_EXIT_FAILURE",
       exitCode: 7,
+      diagnosticHint: "OTHER",
     });
   });
 

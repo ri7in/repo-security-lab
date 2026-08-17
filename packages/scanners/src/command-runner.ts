@@ -1,5 +1,9 @@
 import { spawn } from "node:child_process";
-import { ScannerError, type ScannerErrorCode } from "./types.js";
+import {
+  ScannerError,
+  type ScannerDiagnosticHint,
+  type ScannerErrorCode,
+} from "./types.js";
 
 const CLOSE_GRACE_MS = 1_000;
 
@@ -32,6 +36,20 @@ function isErrnoCode(error: unknown, code: string): boolean {
     "code" in error &&
     error.code === code
   );
+}
+
+function fixedDiagnosticHint(stderr: Buffer): ScannerDiagnosticHint {
+  const value = stderr.toString("utf8");
+  if (/read-only file system/iu.test(value)) return "READ_ONLY_FILESYSTEM";
+  if (/permission denied|operation not permitted/iu.test(value)) {
+    return "PERMISSION_DENIED";
+  }
+  if (/no such file or directory|not found/iu.test(value)) return "MISSING_PATH";
+  if (/resource temporarily unavailable|cannot allocate memory/iu.test(value)) {
+    return "RESOURCE_LIMIT";
+  }
+  if (/panicked/iu.test(value)) return "PANIC";
+  return "OTHER";
 }
 
 /**
@@ -77,11 +95,15 @@ export const runScannerCommand: ScannerCommandRunner = async (
       if (timers.runtime !== undefined) clearTimeout(timers.runtime);
       if (timers.close !== undefined) clearTimeout(timers.close);
     };
-    const fail = (code: ScannerErrorCode, exitCode?: number): void => {
+    const fail = (
+      code: ScannerErrorCode,
+      exitCode?: number,
+      diagnosticHint?: ScannerDiagnosticHint,
+    ): void => {
       if (settled) return;
       settled = true;
       clearTimers();
-      reject(new ScannerError(code, exitCode));
+      reject(new ScannerError(code, exitCode, diagnosticHint));
     };
     const succeed = (result: ScannerCommandResult): void => {
       if (settled) return;
@@ -199,7 +221,11 @@ export const runScannerCommand: ScannerCommandRunner = async (
       ) {
         fail("SCANNER_INTERNAL");
       } else if (!acceptedExits.has(code)) {
-        fail("SCANNER_EXIT_FAILURE", code);
+        fail(
+          "SCANNER_EXIT_FAILURE",
+          code,
+          fixedDiagnosticHint(Buffer.concat(stderr)),
+        );
       } else {
         succeed({
           stdout: Buffer.concat(stdout),

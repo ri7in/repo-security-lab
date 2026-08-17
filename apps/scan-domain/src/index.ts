@@ -43,7 +43,9 @@ function recordScannerFailure(
 ): FailureClass {
   const detail =
     error instanceof ScannerError
-      ? `${error.code}${error.exitCode === null ? "" : `_${error.exitCode}`}`
+      ? `${error.code}${error.exitCode === null ? "" : `_${error.exitCode}`}${
+          error.diagnosticHint === null ? "" : `_${error.diagnosticHint}`
+        }`
       : "UNEXPECTED";
   process.stderr.write(`SCAN_FAILURE:${engine}:${detail}\n`);
   return scannerFailure(error);

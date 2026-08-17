@@ -12,12 +12,27 @@ export const SCANNER_ERROR_CODES = [
 
 export type ScannerErrorCode = (typeof SCANNER_ERROR_CODES)[number];
 
+export const SCANNER_DIAGNOSTIC_HINTS = [
+  "READ_ONLY_FILESYSTEM",
+  "PERMISSION_DENIED",
+  "MISSING_PATH",
+  "RESOURCE_LIMIT",
+  "PANIC",
+  "OTHER",
+] as const;
+export type ScannerDiagnosticHint = (typeof SCANNER_DIAGNOSTIC_HINTS)[number];
+
 /** Fixed non-echoing scanner failure; child output never becomes error text. */
 export class ScannerError extends Error {
   readonly code: ScannerErrorCode;
   readonly exitCode: number | null;
+  readonly diagnosticHint: ScannerDiagnosticHint | null;
 
-  constructor(code: ScannerErrorCode, exitCode?: number) {
+  constructor(
+    code: ScannerErrorCode,
+    exitCode?: number,
+    diagnosticHint?: ScannerDiagnosticHint,
+  ) {
     super(code);
     this.name = "ScannerError";
     this.code = code;
@@ -28,6 +43,10 @@ export class ScannerError extends Error {
       exitCode >= 0 &&
       exitCode <= 255
         ? exitCode
+        : null;
+    this.diagnosticHint =
+      code === "SCANNER_EXIT_FAILURE" && diagnosticHint !== undefined
+        ? diagnosticHint
         : null;
   }
 }
