@@ -67,14 +67,12 @@ pnpm exec wrangler d1 migrations apply DB --local \
 pnpm build:control-plane
 ```
 
-The private production preview is deployed at
-`https://repo-security-lab.rivinsand.workers.dev` under Rivin's Cloudflare
-account, with D1 migrated and `PUBLIC_SCANNING_ENABLED=false`. The exact GitHub
-OAuth callback is
-`https://repo-security-lab.rivinsand.workers.dev/auth/github/callback`.
-Install GitHub credentials only through Wrangler secrets; never commit them.
-The trusted scan worker uses the signed internal protocol, and the current
-implementation is not a public multi-tenant sandbox.
+The private production preview URL is published in `README.md`. It runs under
+Rivin's Cloudflare account with D1 migrated and
+`PUBLIC_SCANNING_ENABLED=false`. The exact GitHub OAuth callback is that origin
+plus `/auth/github/callback`. Install GitHub credentials only through Wrangler
+secrets; never commit them. The trusted scan worker uses the signed internal
+protocol, and the current implementation is not a public multi-tenant sandbox.
 
 CI additionally downloads the exact SHA-256-pinned zizmor 1.29.0 release and
 audits this repository's workflow/config definitions offline with target

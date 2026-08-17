@@ -122,10 +122,9 @@ is never stored. `apps/scan-worker` uses a narrowed HTTPS store adapter and
 rotating HMAC identity. The server supplies all mutation timestamps, and every
 lease mutation remains generation-bound and idempotent.
 
-The current deployment is
-`https://repo-security-lab.rivinsand.workers.dev`, backed by the APAC D1
-database recorded in `wrangler.jsonc`. Static assets run through the Worker
-before the Assets binding so the same CSP, HSTS, frame, referrer, and
+The current deployment URL is published in `README.md` and is backed by the
+APAC D1 database recorded in `wrangler.jsonc`. Static assets run through the
+Worker before the Assets binding so the same CSP, HSTS, frame, referrer, and
 cross-origin policies cover the homepage and API. A live private-scope smoke
 test proved third-party admission returns `PRIVATE_SLICE_SCOPE`; GitHub's
 anonymous REST path failed from the Worker, so discovery stays visibly failed
