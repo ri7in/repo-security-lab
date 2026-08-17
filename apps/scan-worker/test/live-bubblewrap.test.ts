@@ -31,7 +31,7 @@ const diagnosticRunner: ScannerCommandRunner = async (executable, args, options)
     const result = await runScannerCommand(executable, args, options);
     if (args.at(-1) === "scan" && result.stderr.byteLength > 0) {
       const diagnostics = result.stderr.toString("utf8").trim();
-      if (!/^(SCAN_FAILURE:(gitleaks|zizmor):[A-Z_]+\n?)+$/u.test(diagnostics)) {
+      if (!/^(SCAN_FAILURE:(gitleaks|zizmor):[A-Z_0-9]+\n?)+$/u.test(diagnostics)) {
         throw new Error("unsafe Linux scan diagnostic");
       }
       process.stderr.write(`fixed Linux scan diagnostic: ${diagnostics}\n`);

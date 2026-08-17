@@ -77,11 +77,11 @@ export const runScannerCommand: ScannerCommandRunner = async (
       if (timers.runtime !== undefined) clearTimeout(timers.runtime);
       if (timers.close !== undefined) clearTimeout(timers.close);
     };
-    const fail = (code: ScannerErrorCode): void => {
+    const fail = (code: ScannerErrorCode, exitCode?: number): void => {
       if (settled) return;
       settled = true;
       clearTimers();
-      reject(new ScannerError(code));
+      reject(new ScannerError(code, exitCode));
     };
     const succeed = (result: ScannerCommandResult): void => {
       if (settled) return;
@@ -199,7 +199,7 @@ export const runScannerCommand: ScannerCommandRunner = async (
       ) {
         fail("SCANNER_INTERNAL");
       } else if (!acceptedExits.has(code)) {
-        fail("SCANNER_EXIT_FAILURE");
+        fail("SCANNER_EXIT_FAILURE", code);
       } else {
         succeed({
           stdout: Buffer.concat(stdout),

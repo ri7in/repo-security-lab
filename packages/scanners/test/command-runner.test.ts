@@ -196,6 +196,7 @@ describePosix("bounded scanner command runner", () => {
     await expect(setup.result).rejects.toMatchObject({
       code: "SCANNER_EXIT_FAILURE",
       message: "SCANNER_EXIT_FAILURE",
+      exitCode: 7,
     });
   });
 

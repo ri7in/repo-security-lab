@@ -41,7 +41,10 @@ function recordScannerFailure(
   engine: "gitleaks" | "zizmor",
   error: unknown,
 ): FailureClass {
-  const detail = error instanceof ScannerError ? error.code : "UNEXPECTED";
+  const detail =
+    error instanceof ScannerError
+      ? `${error.code}${error.exitCode === null ? "" : `_${error.exitCode}`}`
+      : "UNEXPECTED";
   process.stderr.write(`SCAN_FAILURE:${engine}:${detail}\n`);
   return scannerFailure(error);
 }

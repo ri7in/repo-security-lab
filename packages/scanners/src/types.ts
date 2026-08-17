@@ -15,11 +15,20 @@ export type ScannerErrorCode = (typeof SCANNER_ERROR_CODES)[number];
 /** Fixed non-echoing scanner failure; child output never becomes error text. */
 export class ScannerError extends Error {
   readonly code: ScannerErrorCode;
+  readonly exitCode: number | null;
 
-  constructor(code: ScannerErrorCode) {
+  constructor(code: ScannerErrorCode, exitCode?: number) {
     super(code);
     this.name = "ScannerError";
     this.code = code;
+    this.exitCode =
+      code === "SCANNER_EXIT_FAILURE" &&
+      exitCode !== undefined &&
+      Number.isSafeInteger(exitCode) &&
+      exitCode >= 0 &&
+      exitCode <= 255
+        ? exitCode
+        : null;
   }
 }
 
