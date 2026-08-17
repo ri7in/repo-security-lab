@@ -15,7 +15,7 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out exact revision
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
@@ -71,8 +71,10 @@ jobs:
           echo "dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839  $archive" | sha256sum --check --strict
           mkdir --mode=0700 "$tool_dir"
           tar --extract --gzip --file "$archive" --directory "$tool_dir" zizmor
+          echo "a3331b0a69fc0d8bf8087b0d74d5424602c5a0f2fc2770afe2e908a1295692b5  $tool_dir/zizmor" | sha256sum --check --strict
           chmod 0700 "$tool_dir/zizmor"
           echo "ZIZMOR_BINARY=$tool_dir/zizmor" >> "$GITHUB_ENV"
+          echo "ZIZMOR_SHA256=a3331b0a69fc0d8bf8087b0d74d5424602c5a0f2fc2770afe2e908a1295692b5" >> "$GITHUB_ENV"
 
       - name: Download pinned OSV-Scanner
         shell: bash
@@ -117,7 +119,25 @@ jobs:
         run: pnpm vitest run apps/api/test/e2e.test.ts
 
       - name: Build deployable web and control plane bundle
-        run: pnpm build:control-plane
+        run: pnpm build:all
+
+      - name: Install Linux scan-isolation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends bubblewrap
+          test "$(stat --format='%U:%G:%a' /usr/bin/bwrap)" = "root:root:755"
+          echo "BUBBLEWRAP_BINARY=/usr/bin/bwrap" >> "$GITHUB_ENV"
+          echo "SCAN_DOMAIN_BUNDLE=$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" >> "$GITHUB_ENV"
+          echo "SCAN_RUNTIME_LIBRARY_PATHS=/lib/x86_64-linux-gnu,/usr/lib/x86_64-linux-gnu,/lib64" >> "$GITHUB_ENV"
+
+      - name: Prove credential-free no-network Linux scan domain
+        env:
+          RUN_BWRAP_E2E: "1"
+          WORKER_SECRET: "must-not-enter-the-scan-domain-000000000000000000000000"
+          GITHUB_TOKEN: "must-not-enter-the-scan-domain"
+        run: pnpm vitest run apps/scan-worker/test/live-bubblewrap.test.ts
 
       - name: Self-scan locked dependencies
         shell: bash

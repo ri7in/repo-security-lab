@@ -1,0 +1,16 @@
+{
+  "name": "@app/scan-domain",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/scan-domain.mjs"
+  },
+  "dependencies": {
+    "@app/archive": "workspace:*",
+    "@app/contracts": "workspace:*",
+    "@app/normalize": "workspace:*",
+    "@app/scanners": "workspace:*",
+    "@app/worker": "workspace:*"
+  }
+}

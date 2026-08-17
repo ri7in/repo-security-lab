@@ -101,6 +101,18 @@ describe("scan request DTOs", () => {
         token: "ghp_abcdef",
       }).success,
     ).toBe(false);
+    expect(
+      createScanRequestBodySchema.parse({
+        username: "ri7in",
+        email: " Person@Example.COM ",
+      }).email,
+    ).toBe("person@example.com");
+    expect(
+      createScanRequestBodySchema.safeParse({
+        username: "ri7in",
+        email: "not-an-email",
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps error responses fixed and non-echoing", () => {
@@ -120,7 +132,10 @@ describe("scan request DTOs", () => {
 
   it("accepts a valid accepted response", () => {
     expect(
-      scanRequestAcceptedSchema.safeParse({ requestId: "req_0000000001" })
+      scanRequestAcceptedSchema.safeParse({
+        requestId: "req_0000000001",
+        notification: "not_requested",
+      })
         .success,
     ).toBe(true);
   });

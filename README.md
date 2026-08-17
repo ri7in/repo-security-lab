@@ -14,7 +14,8 @@ clear combined report with exact per-repository, per-specialist coverage.
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
 Authenticated discovery and the pull worker are implemented and live-proven
 against Rivin's account. Public third-party scanning is still disabled until
-the owner-proof and isolated-compute gates below are satisfied.
+the prepared zero-cost OCI/Linux worker is provisioned and its real isolation
+gate passes.
 Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
@@ -23,6 +24,13 @@ Current guarantees:
   declare a repository safe.
 - Hosted scan egress carries no archive-derived strings: only manifest-issued
   numeric tokens and four count-bucket codes cross the source-blind broker.
+- Gitleaks and Zizmor have exact version/hash pins, strict adapters, and
+  source-blind manifests. Zizmor remains runtime-default-off outside the Linux
+  scan domain and cannot silently claim coverage.
+- Optional report email uses an encrypted one-shot queue. The no-domain Gmail
+  adapter stays hidden until its owner secrets are configured.
+- Public reports expire 30 days after their terminal update; privacy and
+  acceptable-use policies ship with the site.
 - The AI lane currently exists only as typed contracts and deterministic
   fixture tagging. No model client exists in the dependency graph, and no
   repository byte can reach any model. The configured Groq and Gemini keys
@@ -48,8 +56,8 @@ Current guarantees:
   archive acquisition with redirect, size, pacing, and timeout guards.
 - `packages/archive` — streaming hostile tar.gz validation and private-mode
   extraction without executing repository content.
-- `packages/scanners` — verified Gitleaks adapter plus explicit fail-closed
-  placeholders for specialists that are not integrated yet.
+- `packages/scanners` — verified Gitleaks and Zizmor adapters plus explicit
+  fail-closed placeholders for specialists that are not integrated yet.
 - `packages/normalize` and `packages/broker` — the hostile-domain numeric
   result encoder and source-blind trusted decoder.
 - `packages/worker` — lease-bound fetch, guard, scan, cleanup, broker, publish,
@@ -60,7 +68,12 @@ Current guarantees:
 - `apps/control-plane` — Cloudflare Workers, D1, Static Assets, rate limiting,
   cron recovery, public source-blind reports, and the signed worker API.
 - `apps/scan-worker` — external pull worker for trusted private-slice compute.
+- `apps/scan-domain` — bundled credential-free extraction/scanning process with
+  a strict numeric result contract.
 - `apps/web` — responsive vanilla TypeScript report interface.
+- `deploy/oci` — ARM64 Always Free bootstrap, hardened systemd service, and
+  local-to-host deployment runbook.
+- `integrations/google-apps-script` — optional no-domain report-email relay.
 - `docs/` — architecture, threat model, research record, maintenance,
   decisions, and private-slice retrospective.
 
@@ -72,7 +85,7 @@ Requires Node >= 24 and pnpm.
 pnpm install
 pnpm check                 # typecheck + lint + Node and workerd tests
 pnpm test:coverage         # enforced Node coverage floor
-pnpm build:control-plane   # production web + Worker dry-run bundle
+pnpm build:all             # scan-domain/worker + production Worker bundles
 ```
 
 The private local runtime requires an immutable GitHub account allowlist and
@@ -97,8 +110,9 @@ through the same security-header boundary. The dedicated discovery credential,
 signed worker identity, and first 22-repository live proof are installed. The
 source-blind finding report is public and requires no login. It cannot express
 paths, snippets, matches, secret values, or internal detail references. The
-remaining release gate is a continuously available, terms-compatible isolated
-worker, so third-party scan creation stays refused until that compute boundary
-passes. See `docs/maintenance.md` for the release runbook.
+remaining release gate is provisioning the prepared continuously available,
+terms-compatible OCI worker and passing its exact Linux proof, so third-party
+scan creation stays refused until that compute boundary passes. See
+`docs/maintenance.md` and `deploy/oci/README.md` for the release runbook.
 `OPERATOR_MODE=true` additionally enables the full broker record on loopback;
 the public browser receives only the reduced public finding schema.

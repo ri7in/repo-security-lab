@@ -5,6 +5,7 @@
  *  - `packages/branding/src/index.ts` (the single branding source),
  *  - `README.md` (explicit README allowance),
  *  - `pnpm-lock.yaml` (lock metadata, if a lockfile entry is ever unavoidable).
+ *  - `apps/control-plane/wrangler.jsonc` (external deployment resource names).
  *
  * This test never states the placeholder literal itself; it reads the current
  * value from the branding module, so the guard survives renames unchanged.
@@ -34,6 +35,7 @@ const ALLOWED_FILES = new Set([
   "README.md",
   "pnpm-lock.yaml",
   path.join("packages", "branding", "src", "index.ts"),
+  path.join("apps", "control-plane", "wrangler.jsonc"),
 ]);
 
 /**
@@ -47,6 +49,7 @@ const TEXT_EXTENSIONS = new Set([
   ".html",
   ".js",
   ".json",
+  ".jsonc",
   ".jsx",
   ".md",
   ".mjs",

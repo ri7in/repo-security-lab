@@ -14,6 +14,16 @@ export interface ScanWorkerConfiguration {
   readonly pollIntervalMs: number;
   readonly maxJobsPerTick: number;
   readonly runOnce: boolean;
+  readonly zizmor: null | {
+    readonly binaryPath: string;
+    readonly sha256: string;
+  };
+  readonly isolation: null | {
+    readonly bubblewrapPath: string;
+    readonly nodePath: string;
+    readonly applicationBundlePath: string;
+    readonly runtimeLibraryPaths: readonly string[];
+  };
 }
 
 function required(environment: NodeJS.ProcessEnv, key: string): string {
@@ -73,6 +83,57 @@ export function parseScanWorkerConfiguration(
   ) {
     throw new Error("worker filesystem configuration is invalid");
   }
+  const publicWorker = environment["PUBLIC_WORKER"] === "true";
+  const isolationMode = environment["SCAN_ISOLATION_MODE"] ?? "inline";
+  if (publicWorker && isolationMode !== "bubblewrap") {
+    throw new Error("public worker requires bubblewrap isolation");
+  }
+  if (!publicWorker && !["inline", "bubblewrap"].includes(isolationMode)) {
+    throw new Error("SCAN_ISOLATION_MODE is invalid");
+  }
+  let isolation: ScanWorkerConfiguration["isolation"] = null;
+  if (isolationMode === "bubblewrap") {
+    const runtimeLibraryPaths = required(
+      environment,
+      "SCAN_RUNTIME_LIBRARY_PATHS",
+    )
+      .split(",")
+      .map((entry) => path.resolve(entry.trim()))
+      .filter((entry) => entry !== "");
+    if (
+      runtimeLibraryPaths.length < 1 ||
+      runtimeLibraryPaths.some((entry) => entry === path.parse(entry).root)
+    ) {
+      throw new Error("SCAN_RUNTIME_LIBRARY_PATHS is invalid");
+    }
+    isolation = {
+      bubblewrapPath: path.resolve(required(environment, "BUBBLEWRAP_BINARY")),
+      nodePath: path.resolve(environment["SCAN_NODE_BINARY"] ?? process.execPath),
+      applicationBundlePath: path.resolve(
+        required(environment, "SCAN_DOMAIN_BUNDLE"),
+      ),
+      runtimeLibraryPaths,
+    };
+  }
+  const zizmorEnabled = environment["ZIZMOR_ENABLED"] === "true";
+  const hasZizmorValues =
+    environment["ZIZMOR_BINARY"] !== undefined ||
+    environment["ZIZMOR_SHA256"] !== undefined;
+  if (!zizmorEnabled && hasZizmorValues) {
+    throw new Error("disabled zizmor configuration is invalid");
+  }
+  if (zizmorEnabled && isolationMode !== "bubblewrap") {
+    throw new Error("zizmor requires bubblewrap isolation");
+  }
+  const zizmor = zizmorEnabled
+    ? {
+        binaryPath: path.resolve(required(environment, "ZIZMOR_BINARY")),
+        sha256: required(environment, "ZIZMOR_SHA256"),
+      }
+    : null;
+  if (zizmor !== null && !/^[a-f0-9]{64}$/u.test(zizmor.sha256)) {
+    throw new Error("ZIZMOR_SHA256 is invalid");
+  }
   return {
     controlPlaneUrl: required(environment, "CONTROL_PLANE_URL"),
     workerId,
@@ -98,5 +159,7 @@ export function parseScanWorkerConfiguration(
       50,
     ),
     runOnce: environment["RUN_ONCE"] === "true",
+    zizmor,
+    isolation,
   };
 }

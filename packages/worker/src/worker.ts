@@ -58,21 +58,39 @@ export interface SecretScanner {
   scan(sourceDirectory: string): Promise<GitleaksScanResult>;
 }
 
+export interface ScanDomainEngineResult {
+  readonly engine: ScanEngine;
+  readonly normalized: NormalizedResult;
+}
+
+export interface RepositoryScanDomain {
+  /** True only after the implementation's startup escape probes pass. */
+  readonly enforcedIsolation: boolean;
+  guardAndExtract(archivePath: string, sourcePath: string): Promise<void>;
+  scan(sourcePath: string): Promise<{
+    readonly applicability: SpecialistApplicability;
+    readonly engineResults: readonly ScanDomainEngineResult[];
+    readonly engineFailures: Readonly<Partial<Record<ScanEngine, FailureClass>>>;
+  }>;
+}
+
 export type AdditionalScanEngine = Exclude<ScanEngine, "gitleaks">;
 
 /** Hostile-domain adapter output is already reduced to the numeric packet. */
 export interface AdditionalEngineRunner {
   readonly engine: AdditionalScanEngine;
   readonly broker: SourceBlindBroker;
-  scanAndNormalize(sourceDirectory: string): Promise<NormalizedResult>;
+  /** Omitted when normalization runs wholly inside an isolated scan domain. */
+  scanAndNormalize?(sourceDirectory: string): Promise<NormalizedResult>;
 }
 
 export interface RepositoryWorkerOptions {
   readonly store: WorkerStorePort;
   readonly archiveFetcher: ArchiveFetcher;
-  readonly gitleaks: SecretScanner;
+  readonly gitleaks?: SecretScanner;
   readonly gitleaksBroker: SourceBlindBroker;
   readonly additionalEngines?: readonly AdditionalEngineRunner[];
+  readonly scanDomain?: RepositoryScanDomain;
   readonly workerId: OpaqueId;
   readonly scratchBase: string;
   /** Null enables the isolated public worker; a set retains private-slice scope. */
@@ -135,6 +153,7 @@ function fixedFailure(error: unknown): FailureClass {
   if (error instanceof BrokerError) return "NORMALIZATION_REJECTED";
   if (error instanceof ScannerError) {
     if (error.code === "SCANNER_TIMEOUT") return "SCANNER_TIMEOUT";
+    if (error.code === "SCANNER_MEMORY_LIMIT") return "SCANNER_MEMORY_LIMIT";
     if (error.code === "SCANNER_OUTPUT_LIMIT") return "SCANNER_OUTPUT_LIMIT";
     return "SCANNER_INTERNAL";
   }
@@ -176,9 +195,10 @@ async function* webStreamChunks(
 export class RepositoryWorker {
   readonly #store: WorkerStorePort;
   readonly #archiveFetcher: ArchiveFetcher;
-  readonly #gitleaks: SecretScanner;
+  readonly #gitleaks: SecretScanner | null;
   readonly #gitleaksBroker: SourceBlindBroker;
   readonly #additionalEngines: readonly AdditionalEngineRunner[];
+  readonly #scanDomain: RepositoryScanDomain | null;
   readonly #workerId: OpaqueId;
   readonly #scratchBase: string;
   readonly #allowedGithubAccountIds: ReadonlySet<number> | null;
@@ -189,9 +209,10 @@ export class RepositoryWorker {
   constructor(options: RepositoryWorkerOptions) {
     this.#store = options.store;
     this.#archiveFetcher = options.archiveFetcher;
-    this.#gitleaks = options.gitleaks;
+    this.#gitleaks = options.gitleaks ?? null;
     this.#gitleaksBroker = options.gitleaksBroker;
     this.#additionalEngines = Object.freeze([...(options.additionalEngines ?? [])]);
+    this.#scanDomain = options.scanDomain ?? null;
     this.#workerId = options.workerId;
     this.#scratchBase = path.resolve(options.scratchBase);
     this.#allowedGithubAccountIds = options.allowedGithubAccountIds;
@@ -204,6 +225,15 @@ export class RepositoryWorker {
       new Set(additionalNames).size !== additionalNames.length
     ) {
       throw new Error("invalid additional engine configuration");
+    }
+    if (this.#scanDomain === null && this.#gitleaks === null) {
+      throw new Error("missing scan domain");
+    }
+    if (
+      this.#allowedGithubAccountIds === null &&
+      (this.#scanDomain === null || !this.#scanDomain.enforcedIsolation)
+    ) {
+      throw new Error("public worker requires enforced scan isolation");
     }
     if (
       !Number.isSafeInteger(this.#leaseDurationMs) ||
@@ -357,14 +387,12 @@ export class RepositoryWorker {
       );
       coverage.snapshot = "complete";
       await advance("guarding");
-      await extractTarGzip(createReadStream(archivePath), sourcePath);
+      if (this.#scanDomain === null) {
+        await extractTarGzip(createReadStream(archivePath), sourcePath);
+      } else {
+        await this.#scanDomain.guardAndExtract(archivePath, sourcePath);
+      }
       coverage.archive_guard = "complete";
-      detected = await detectSpecialistApplicability(sourcePath);
-      coverage.osv = detected?.osv === false ? "not_applicable" : "unsupported";
-      coverage.zizmor =
-        detected?.zizmor === false ? "not_applicable" : "unsupported";
-      coverage.opengrep =
-        detected?.opengrep === false ? "not_applicable" : "unsupported";
       await advance("scanning");
       if (
         !(await this.#store.heartbeat({
@@ -379,46 +407,92 @@ export class RepositoryWorker {
         ScanEngine,
         { readonly normalized: NormalizedResult; readonly broker: SourceBlindBroker }
       >();
-      try {
-        const scanResult = await this.#gitleaks.scan(sourcePath);
-        const normalized = normalizeGitleaks(scanResult);
-        coverage.gitleaks = normalized.coverage;
-        normalizedByEngine.set("gitleaks", {
-          normalized,
-          broker: this.#gitleaksBroker,
-        });
-      } catch (error) {
-        coverage.gitleaks = "failed";
-        specialistReasons.gitleaks = fixedFailure(error);
-      }
-      for (const runner of this.#additionalEngines) {
-        if (detected?.[runner.engine] !== true) continue;
-        if (
-          !(await this.#store.heartbeat({
-            ...lease,
-            nowMs: this.#now(),
-            leaseDurationMs: this.#leaseDurationMs,
-          }))
-        ) {
-          throw new Error("stale worker lease");
-        }
-        try {
-          const normalized = await runner.scanAndNormalize(sourcePath);
-          if (
-            (normalized.coverage === "complete" && normalized.reason !== null) ||
-            (normalized.coverage === "partial" &&
-              normalized.reason !== "FINDING_LIMIT")
-          ) {
+      if (this.#scanDomain !== null) {
+        const result = await this.#scanDomain.scan(sourcePath);
+        detected = result.applicability;
+        coverage.osv = detected.osv === false ? "not_applicable" : "unsupported";
+        coverage.zizmor =
+          detected.zizmor === false ? "not_applicable" : "unsupported";
+        coverage.opengrep =
+          detected.opengrep === false ? "not_applicable" : "unsupported";
+        for (const engineResult of result.engineResults) {
+          const broker =
+            engineResult.engine === "gitleaks"
+              ? this.#gitleaksBroker
+              : this.#additionalEngines.find(
+                  (runner) => runner.engine === engineResult.engine,
+                )?.broker;
+          if (broker === undefined || normalizedByEngine.has(engineResult.engine)) {
             throw new NormalizationError();
           }
-          coverage[runner.engine] = normalized.coverage;
-          normalizedByEngine.set(runner.engine, {
+          coverage[engineResult.engine] = engineResult.normalized.coverage;
+          normalizedByEngine.set(engineResult.engine, {
+            normalized: engineResult.normalized,
+            broker,
+          });
+        }
+        for (const [engine, reason] of Object.entries(result.engineFailures)) {
+          const scanEngine = engine as ScanEngine;
+          coverage[scanEngine] = "failed";
+          specialistReasons[scanEngine] = reason;
+        }
+        if (
+          !normalizedByEngine.has("gitleaks") &&
+          specialistReasons.gitleaks === undefined
+        ) {
+          throw new NormalizationError();
+        }
+      } else {
+        detected = await detectSpecialistApplicability(sourcePath);
+        coverage.osv = detected?.osv === false ? "not_applicable" : "unsupported";
+        coverage.zizmor =
+          detected?.zizmor === false ? "not_applicable" : "unsupported";
+        coverage.opengrep =
+          detected?.opengrep === false ? "not_applicable" : "unsupported";
+        try {
+          const scanResult = await this.#gitleaks!.scan(sourcePath);
+          const normalized = normalizeGitleaks(scanResult);
+          coverage.gitleaks = normalized.coverage;
+          normalizedByEngine.set("gitleaks", {
             normalized,
-            broker: runner.broker,
+            broker: this.#gitleaksBroker,
           });
         } catch (error) {
-          coverage[runner.engine] = "failed";
-          specialistReasons[runner.engine] = fixedFailure(error);
+          coverage.gitleaks = "failed";
+          specialistReasons.gitleaks = fixedFailure(error);
+        }
+        for (const runner of this.#additionalEngines) {
+          if (
+            detected?.[runner.engine] !== true ||
+            runner.scanAndNormalize === undefined
+          ) continue;
+          if (
+            !(await this.#store.heartbeat({
+              ...lease,
+              nowMs: this.#now(),
+              leaseDurationMs: this.#leaseDurationMs,
+            }))
+          ) {
+            throw new Error("stale worker lease");
+          }
+          try {
+            const normalized = await runner.scanAndNormalize(sourcePath);
+            if (
+              (normalized.coverage === "complete" && normalized.reason !== null) ||
+              (normalized.coverage === "partial" &&
+                normalized.reason !== "FINDING_LIMIT")
+            ) {
+              throw new NormalizationError();
+            }
+            coverage[runner.engine] = normalized.coverage;
+            normalizedByEngine.set(runner.engine, {
+              normalized,
+              broker: runner.broker,
+            });
+          } catch (error) {
+            coverage[runner.engine] = "failed";
+            specialistReasons[runner.engine] = fixedFailure(error);
+          }
         }
       }
       if (

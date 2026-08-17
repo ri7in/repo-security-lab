@@ -6,7 +6,11 @@ import {
 } from "@app/contracts";
 import {
   gitleaksRuleToken,
+  zizmorVariantToken,
   type GitleaksScanResult,
+  type ZizmorConfidence,
+  type ZizmorScanResult,
+  type ZizmorSeverity,
 } from "@app/scanners";
 
 const encoder = new TextEncoder();
@@ -32,6 +36,19 @@ function bucket(count: number): CountBucketCode {
   if (count <= 20) return 2;
   return 3;
 }
+
+const ZIZMOR_FINDING_LIMIT = 1_000;
+const ZIZMOR_SEVERITY_RANK: Readonly<Record<ZizmorSeverity, number>> = {
+  Informational: 0,
+  Low: 1,
+  Medium: 2,
+  High: 3,
+};
+const ZIZMOR_CONFIDENCE_RANK: Readonly<Record<ZizmorConfidence, number>> = {
+  Low: 0,
+  Medium: 1,
+  High: 2,
+};
 
 export function normalizeGitleaks(result: GitleaksScanResult): NormalizedResult {
   try {
@@ -60,6 +77,82 @@ export function normalizeGitleaks(result: GitleaksScanResult): NormalizedResult 
       groups: [...counts.entries()]
         .toSorted(([left], [right]) => left - right)
         .map(([token, count]) => ({ token, bucket: bucket(count) })),
+    };
+    if (!brokerResultPacketSchema.safeParse(packet).success) {
+      throw new NormalizationError();
+    }
+    return {
+      packetBytes: encoder.encode(JSON.stringify(packet)),
+      coverage: result.findingLimitExceeded ? "partial" : "complete",
+      reason: result.findingLimitExceeded ? "FINDING_LIMIT" : null,
+    };
+  } catch {
+    throw new NormalizationError();
+  }
+}
+
+export function normalizeZizmor(result: ZizmorScanResult): NormalizedResult {
+  try {
+    if (
+      !Number.isSafeInteger(result.rawFindingCount) ||
+      result.rawFindingCount !== result.findings.length ||
+      result.findingLimitExceeded !==
+        (result.rawFindingCount > ZIZMOR_FINDING_LIMIT)
+    ) {
+      throw new NormalizationError();
+    }
+
+    const groups = new Map<
+      string,
+      {
+        readonly token: number;
+        readonly severity: ZizmorSeverity;
+        readonly confidence: ZizmorConfidence;
+        count: number;
+      }
+    >();
+    for (const finding of result.findings) {
+      const token = zizmorVariantToken(
+        finding.ident,
+        finding.severity,
+        finding.confidence,
+      );
+      if (token === null) throw new NormalizationError();
+      const existing = groups.get(finding.ident);
+      if (existing === undefined) {
+        groups.set(finding.ident, {
+          token,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          count: 1,
+        });
+        continue;
+      }
+      existing.count += 1;
+      const strongerSeverity =
+        ZIZMOR_SEVERITY_RANK[finding.severity] >
+        ZIZMOR_SEVERITY_RANK[existing.severity];
+      const strongerConfidence =
+        finding.severity === existing.severity &&
+        ZIZMOR_CONFIDENCE_RANK[finding.confidence] >
+          ZIZMOR_CONFIDENCE_RANK[existing.confidence];
+      if (strongerSeverity || strongerConfidence) {
+        groups.set(finding.ident, {
+          token,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          count: existing.count,
+        });
+      }
+    }
+    if (groups.size > MAX_BROKER_GROUPS_PER_ENGINE_REPOSITORY) {
+      throw new NormalizationError();
+    }
+    const packet: BrokerResultPacket = {
+      schemaVersion: 1,
+      groups: [...groups.values()]
+        .toSorted((left, right) => left.token - right.token)
+        .map((group) => ({ token: group.token, bucket: bucket(group.count) })),
     };
     if (!brokerResultPacketSchema.safeParse(packet).success) {
       throw new NormalizationError();

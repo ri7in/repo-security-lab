@@ -1,0 +1,47 @@
+[Unit]
+Description=Isolated public repository security worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=repo-security
+Group=repo-security
+WorkingDirectory=/opt/repository-security/app
+EnvironmentFile=/etc/repository-security/worker.env
+ExecStart=/opt/repository-security/node/bin/node /opt/repository-security/app/apps/scan-worker/dist/server.mjs
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectHostname=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectProc=invisible
+ProcSubset=pid
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+SystemCallArchitectures=native
+ReadWritePaths=/var/lib/repository-security/scratch
+MemoryMax=2G
+MemorySwapMax=0
+CPUQuota=150%
+TasksMax=128
+LimitNOFILE=1024
+
+[Install]
+WantedBy=multi-user.target

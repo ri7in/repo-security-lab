@@ -1,6 +1,7 @@
 import { branding } from "@app/branding";
 import {
   opaqueIdSchema,
+  publicCapabilitiesSchema,
   publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
@@ -19,6 +20,9 @@ const $ = <T extends Element>(selector: string): T => {
 
 const form = $<HTMLFormElement>("#scan-form");
 const username = $<HTMLInputElement>("#username");
+const email = $<HTMLInputElement>("#email");
+const emailOption = $<HTMLElement>("#email-option");
+const serviceNote = $<HTMLElement>("#service-note");
 const button = $<HTMLButtonElement>("#scan-button");
 const statusSection = $<HTMLElement>("#status-section");
 const ledgerSection = $<HTMLElement>("#ledger-section");
@@ -30,6 +34,9 @@ const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
 const requestIdLabel = $<HTMLElement>("#request-id");
 const botCode = $<HTMLElement>("#bot-code");
+const ledgerNote = $<HTMLElement>("#ledger-note");
+let emailEnabled = false;
+let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limited" = "not_requested";
 
 $("#product-name").textContent = branding.productDisplayName;
 $("#tagline").textContent = branding.tagline;
@@ -110,6 +117,14 @@ function renderSummary(summary: ScanRequestSummary): void {
       : summary.state === "complete"
         ? `Coverage ledger complete · ${terminal}/${total} repositories terminal.`
         : `Scanning immutable snapshots · ${terminal}/${total} repositories terminal.`;
+  if (notificationStatus === "queued") {
+    liveStatus.textContent += " · report email queued.";
+  } else if (notificationStatus === "rate_limited") {
+    liveStatus.textContent += " · email quota reached; keep this report link.";
+  } else if (notificationStatus === "unavailable") {
+    liveStatus.textContent += " · email unavailable; keep this report link.";
+  }
+  liveStatus.textContent += ` · updated ${new Date(summary.updatedAt).toLocaleString()}`;
   setScanState(summary.state === "complete" ? "complete" : summary.state === "failed" ? "failed" : "scanning");
 }
 
@@ -187,7 +202,10 @@ async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
   return body;
 }
 
-async function loadRepositories(requestId: string): Promise<RepositoryRow[]> {
+async function loadRepositories(
+  requestId: string,
+  full: boolean,
+): Promise<RepositoryRow[]> {
   const repositories: RepositoryRow[] = [];
   let cursor: string | undefined;
   do {
@@ -197,7 +215,11 @@ async function loadRepositories(requestId: string): Promise<RepositoryRow[]> {
     );
     repositories.push(...page.repositories);
     cursor = page.nextCursor;
-  } while (cursor !== undefined);
+  } while (full && cursor !== undefined);
+  ledgerNote.textContent =
+    !full && cursor !== undefined
+      ? "Showing the first 100 repositories while scanning. The complete ledger loads when the request finishes."
+      : "";
   return repositories;
 }
 
@@ -216,23 +238,38 @@ async function loadFindings(requestId: string): Promise<PublicFinding[]> {
 }
 
 async function poll(requestId: string): Promise<void> {
+  let etag: string | undefined;
+  let retryAfterSeconds = 3;
   while (true) {
-    const summary = scanRequestSummarySchema.parse(
-      await requestJson(`/api/scan-requests/${requestId}`),
-    );
+    const response = await fetch(`/api/scan-requests/${requestId}`, {
+      headers: etag === undefined ? {} : { "if-none-match": etag },
+    });
+    if (response.status === 304) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, retryAfterSeconds * 1_000),
+      );
+      continue;
+    }
+    if (!response.ok) throw new Error("REQUEST_FAILED");
+    const summary = scanRequestSummarySchema.parse(await response.json());
+    retryAfterSeconds = summary.retryAfterSeconds;
+    etag = response.headers.get("etag") ?? undefined;
     renderSummary(summary);
-    const repositories = await loadRepositories(requestId);
+    const terminal = summary.state === "complete" || summary.state === "failed";
+    const repositories = await loadRepositories(requestId, terminal);
     renderRepositories(repositories);
     ledgerSection.hidden = false;
-    try {
-      renderFindings(await loadFindings(requestId), repositories);
-    } catch {
-      // Finding detail is a separate public-safe plane. Its failure must never
-      // relabel a valid coverage request as failed.
-      findingsSection.hidden = true;
-      findingRows.replaceChildren();
+    if (terminal) {
+      try {
+        renderFindings(await loadFindings(requestId), repositories);
+      } catch {
+        // Finding detail is a separate public-safe plane. Its failure must never
+        // relabel a valid coverage request as failed.
+        findingsSection.hidden = true;
+        findingRows.replaceChildren();
+      }
     }
-    if (summary.state === "complete" || summary.state === "failed") return;
+    if (terminal) return;
     await new Promise((resolve) =>
       setTimeout(resolve, summary.retryAfterSeconds * 1_000),
     );
@@ -243,6 +280,10 @@ form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (!username.checkValidity()) {
     username.reportValidity();
+    return;
+  }
+  if (emailEnabled && email.value !== "" && !email.checkValidity()) {
+    email.reportValidity();
     return;
   }
   button.disabled = true;
@@ -257,9 +298,15 @@ form.addEventListener("submit", (event) => {
         await requestJson("/api/scan-requests", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ username: username.value.trim() }),
+          body: JSON.stringify({
+            username: username.value.trim(),
+            ...(emailEnabled && email.value.trim() !== ""
+              ? { email: email.value.trim() }
+              : {}),
+          }),
         }),
       );
+      notificationStatus = accepted.notification;
       requestIdLabel.textContent = accepted.requestId;
       history.replaceState(null, "", `?request=${accepted.requestId}`);
       await poll(accepted.requestId);
@@ -271,6 +318,21 @@ form.addEventListener("submit", (event) => {
     }
   })();
 });
+
+void requestJson("/api/capabilities")
+  .then((value) => {
+    const capabilities = publicCapabilitiesSchema.parse(value);
+    emailEnabled = capabilities.emailNotifications;
+    emailOption.hidden = !emailEnabled;
+    const eta = `${capabilities.scanEtaMinutes.min}–${capabilities.scanEtaMinutes.max}`;
+    serviceNote.textContent =
+      capabilities.scanCreation === "public"
+        ? `No install. No card. No target code is executed. Typical 20-repository scans take about ${eta} minutes when a worker is available.`
+        : `Private production preview: scan creation is currently limited to the operator account while the public isolation worker is commissioned. Existing report links remain public.`;
+  })
+  .catch(() => {
+    emailOption.hidden = true;
+  });
 
 const existingRequest = new URLSearchParams(location.search).get("request");
 if (existingRequest !== null) {

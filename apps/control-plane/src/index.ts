@@ -3,6 +3,13 @@ import type { GithubLogin } from "@app/contracts";
 import { GithubDiscoveryClient } from "@app/github";
 import { D1Store, type D1Database } from "@app/store-d1";
 import { handleInternalRequest } from "./internal-api.js";
+import {
+  deliverOneNotification,
+  notificationConfiguration,
+  registerNotification,
+  type NotificationEnvironment,
+} from "./notifications.js";
+import { purgeExpiredReports } from "./retention.js";
 
 interface ExecutionContextPort {
   waitUntil(promise: Promise<unknown>): void;
@@ -16,10 +23,11 @@ interface AssetPort {
   fetch(request: Request): Promise<Response>;
 }
 
-export interface ControlPlaneEnvironment {
+export interface ControlPlaneEnvironment extends NotificationEnvironment {
   readonly DB: D1Database;
   readonly ASSETS: AssetPort;
   readonly REQUESTER_RATE_LIMITER: RateLimitPort;
+  readonly READ_RATE_LIMITER: RateLimitPort;
   readonly USERNAME_RATE_LIMITER: RateLimitPort;
   readonly INTERNAL_RATE_LIMITER: RateLimitPort;
   readonly PUBLIC_SCANNING_ENABLED: string;
@@ -137,7 +145,22 @@ export async function handleControlPlaneRequest(
     );
   }
   if (url.pathname.startsWith("/api/")) {
+    if (request.method === "GET" && url.pathname !== "/api/capabilities") {
+      const requester = request.headers.get("cf-connecting-ip") ?? "unknown";
+      const admitted = await environment.READ_RATE_LIMITER.limit({
+        key: `read:${requester}`,
+      });
+      if (!admitted.success) {
+        return secured(
+          Response.json(
+            { reason: "RATE_LIMITED" },
+            { status: 429, headers: { "cache-control": "no-store" } },
+          ),
+        );
+      }
+    }
     const configuredScope = scope(environment);
+    const configuredNotifications = notificationConfiguration(environment);
     const app = createApi({
       store: new D1Store(environment.DB),
       discovery: discovery(environment),
@@ -146,6 +169,18 @@ export async function handleControlPlaneRequest(
       dispatch: (task) => context.waitUntil(task()),
       admitScanRequest: (username, rawRequest) =>
         admitScanRequest(environment, username, rawRequest),
+      ...(configuredNotifications === null
+        ? {}
+        : {
+            registerNotification: (input) =>
+              registerNotification(environment.DB, configuredNotifications, input),
+          }),
+      publicCapabilities: {
+        scanCreation:
+          configuredScope.requestedLogins === null ? "public" : "private_preview",
+        emailNotifications: configuredNotifications !== null,
+        scanEtaMinutes: { min: 2, max: 5 },
+      },
     });
     return secured(await app.fetch(request));
   }
@@ -167,6 +202,23 @@ async function recoverPendingDiscoveries(
   );
 }
 
+async function runScheduledMaintenance(
+  environment: ControlPlaneEnvironment,
+): Promise<void> {
+  const configuration = notificationConfiguration(environment);
+  const tasks: Promise<unknown>[] = [
+    recoverPendingDiscoveries(environment),
+    purgeExpiredReports(environment.DB),
+  ];
+  if (configuration !== null) {
+    tasks.push(deliverOneNotification(environment.DB, configuration));
+  }
+  const results = await Promise.allSettled(tasks);
+  if (results.some((result) => result.status === "rejected")) {
+    throw new Error("scheduled maintenance failed");
+  }
+}
+
 export default {
   fetch(
     request: Request,
@@ -180,6 +232,6 @@ export default {
     environment: ControlPlaneEnvironment,
     context: ExecutionContextPort,
   ): void {
-    context.waitUntil(recoverPendingDiscoveries(environment));
+    context.waitUntil(runScheduledMaintenance(environment));
   },
 };

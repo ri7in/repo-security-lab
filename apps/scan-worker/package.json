@@ -4,12 +4,15 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "build": "esbuild src/server.ts --bundle --platform=node --format=esm --target=node24 --outfile=dist/server.mjs",
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@app/archive": "workspace:*",
     "@app/broker": "workspace:*",
     "@app/contracts": "workspace:*",
     "@app/github": "workspace:*",
+    "@app/normalize": "workspace:*",
     "@app/scanners": "workspace:*",
     "@app/store-http": "workspace:*",
     "@app/worker": "workspace:*"

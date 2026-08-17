@@ -142,16 +142,20 @@ throws. No model client or repository-to-provider route exists in this slice.
 
 The local runtime is intentionally single-operator and sequentially paced. The
 deployed control-plane code has public source-blind reports, durable capacity
-reservations, and public/internal rate-limit boundaries, but no public scan
-worker is attached. Forks are represented but refused before download because
+reservations, bounded read/write/internal rate limits, encrypted one-shot email,
+and automatic 30-day terminal-report deletion, but no public scan worker is
+attached. The application does not persist requester IPs. Email ciphertext is
+erased after delivery or final failure; a keyed abuse-control hash disappears
+with the retained report. Forks are represented but refused before download because
 owned forks can contain third-party source. Logs carry fixed event/result codes
 only.
 
 ## Public-release gates
 
-- Run acquisition, parsing, scanning, and cleanup under a non-root Linux
-  identity with no network, read-only trusted tools, tmpfs, cgroup/rlimit
-  ceilings, process-count limits, swap policy, and crash/reboot cleanup proofs.
+- Prove the committed bubblewrap scan-domain bundle on Linux and the owner OCI
+  host: no network, hidden credentials, denied outside writes, clean environment,
+  read-only pinned tools, private scratch, systemd memory/CPU/task ceilings, no
+  swap, and crash/reboot cleanup.
 - Maintain the deployed Worker/D1 control plane under Rivin's Cloudflare
   account and verify free-tier capacity alarms before third-party admission.
 - Attach a non-root Linux or microVM scan-compute boundary with no target-code
@@ -162,5 +166,6 @@ only.
   grounded two-scout-plus-judge benchmark all pass.
 - Add project-attested/reproducible scanner provenance. A release archive hash
   proves identity, not that the upstream build is trustworthy.
-- Integrate and test dependency, workflow, and source-rule specialists;
-  relevant or conservatively unknown inputs remain explicitly `unsupported`.
+- Integrate and test dependency and source-rule specialists. The workflow lane
+  is implemented but remains explicitly `unsupported` until its Linux proof and
+  runtime enablement pass.

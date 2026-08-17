@@ -113,6 +113,64 @@ describe("source-blind runtime broker", () => {
     }
   });
 
+  it("allows variant manifests but rejects two tokens decoding to one rule", () => {
+    const variants: readonly EngineManifestEntry[] = [
+      {
+        token: 1,
+        ruleId: "template-injection",
+        category: "workflow-security",
+        severity: "low",
+        confidence: "high",
+        remediationKey: "harden-workflow",
+      },
+      {
+        token: 2,
+        ruleId: "template-injection",
+        category: "workflow-security",
+        severity: "high",
+        confidence: "high",
+        remediationKey: "harden-workflow",
+      },
+    ];
+    const broker = new SourceBlindBroker("zizmor", variants);
+    expect(
+      broker.accept(
+        encoder.encode(
+          JSON.stringify({ schemaVersion: 1, groups: [{ token: 2, bucket: 0 }] }),
+        ),
+        context,
+      )[0],
+    ).toMatchObject({ rule_id: "template-injection", severity: "high" });
+    expect(() =>
+      broker.accept(
+        encoder.encode(
+          JSON.stringify({
+            schemaVersion: 1,
+            groups: [
+              { token: 1, bucket: 0 },
+              { token: 2, bucket: 0 },
+            ],
+          }),
+        ),
+        context,
+      ),
+    ).toThrowError(expect.objectContaining({ code: "BROKER_REJECTED" }));
+  });
+
+  it("requires duplicate-rule variants to share structural metadata", () => {
+    expect(
+      () =>
+        new SourceBlindBroker("zizmor", [
+          manifest[0] as EngineManifestEntry,
+          {
+            ...(manifest[0] as EngineManifestEntry),
+            token: 2,
+            remediationKey: "different-remediation",
+          },
+        ]),
+    ).toThrowError("invalid broker manifest");
+  });
+
   it("derives stable finding ids from lease identity, never packet strings", () => {
     const packet = encoder.encode(
       JSON.stringify({

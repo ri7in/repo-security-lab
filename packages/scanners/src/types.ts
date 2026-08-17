@@ -1,6 +1,7 @@
 export const SCANNER_ERROR_CODES = [
   "SCANNER_BINARY_MISMATCH",
   "SCANNER_TIMEOUT",
+  "SCANNER_MEMORY_LIMIT",
   "SCANNER_OUTPUT_LIMIT",
   "SCANNER_INVALID_OUTPUT",
   "SCANNER_INTERNAL",
@@ -25,6 +26,30 @@ export interface ScannerRuleFinding {
 
 export interface GitleaksScanResult {
   readonly findings: readonly ScannerRuleFinding[];
+  readonly rawFindingCount: number;
+  readonly findingLimitExceeded: boolean;
+}
+
+export const ZIZMOR_SEVERITIES = [
+  "Informational",
+  "Low",
+  "Medium",
+  "High",
+] as const;
+export type ZizmorSeverity = (typeof ZIZMOR_SEVERITIES)[number];
+
+export const ZIZMOR_CONFIDENCES = ["Low", "Medium", "High"] as const;
+export type ZizmorConfidence = (typeof ZIZMOR_CONFIDENCES)[number];
+
+/** The only string-bearing facts retained inside the hostile scan domain. */
+export interface ZizmorRuleFinding {
+  readonly ident: string;
+  readonly severity: ZizmorSeverity;
+  readonly confidence: ZizmorConfidence;
+}
+
+export interface ZizmorScanResult {
+  readonly findings: readonly ZizmorRuleFinding[];
   readonly rawFindingCount: number;
   readonly findingLimitExceeded: boolean;
 }

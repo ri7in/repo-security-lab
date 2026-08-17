@@ -1,11 +1,38 @@
 import { SourceBlindBroker } from "@app/broker";
 import { GithubArchiveClient } from "@app/github";
-import { GITLEAKS_BROKER_MANIFEST, GitleaksScanner } from "@app/scanners";
+import {
+  GITLEAKS_BROKER_MANIFEST,
+  GitleaksScanner,
+  ZIZMOR_BROKER_MANIFEST,
+} from "@app/scanners";
 import { HttpWorkerStore } from "@app/store-http";
 import { RepositoryWorker } from "@app/worker";
 import { parseScanWorkerConfiguration } from "./runtime-config.js";
+import { BubblewrapRepositoryScanDomain } from "./bubblewrap-domain.js";
+import { fileURLToPath } from "node:url";
 
 const configuration = parseScanWorkerConfiguration(process.env);
+const scanDomain =
+  configuration.isolation === null
+    ? null
+    : new BubblewrapRepositoryScanDomain({
+        ...configuration.isolation,
+        gitleaksBinaryPath: configuration.gitleaksBinary,
+        gitleaksConfigPath: fileURLToPath(
+          new URL("../../../packages/scanners/config/gitleaks.toml", import.meta.url),
+        ),
+        gitleaksIgnorePath: fileURLToPath(
+          new URL("../../../packages/scanners/config/gitleaks.ignore", import.meta.url),
+        ),
+        gitleaksSha256: configuration.gitleaksSha256,
+        ...(configuration.zizmor === null
+          ? {}
+          : {
+              zizmorBinaryPath: configuration.zizmor.binaryPath,
+              zizmorSha256: configuration.zizmor.sha256,
+            }),
+      });
+if (scanDomain !== null) await scanDomain.verify();
 const store = new HttpWorkerStore({
   baseUrl: configuration.controlPlaneUrl,
   workerId: configuration.workerId,
@@ -19,11 +46,25 @@ const repositoryWorker = new RepositoryWorker({
       ? {}
       : { token: configuration.githubToken }),
   }),
-  gitleaks: new GitleaksScanner({
-    binaryPath: configuration.gitleaksBinary,
-    expectedBinarySha256: configuration.gitleaksSha256,
-  }),
+  ...(scanDomain === null
+    ? {
+        gitleaks: new GitleaksScanner({
+          binaryPath: configuration.gitleaksBinary,
+          expectedBinarySha256: configuration.gitleaksSha256,
+        }),
+      }
+    : { scanDomain }),
   gitleaksBroker: new SourceBlindBroker("gitleaks", GITLEAKS_BROKER_MANIFEST),
+  ...(configuration.zizmor === null
+    ? {}
+    : {
+        additionalEngines: [
+          {
+            engine: "zizmor" as const,
+            broker: new SourceBlindBroker("zizmor", ZIZMOR_BROKER_MANIFEST),
+          },
+        ],
+      }),
   workerId: configuration.workerId,
   scratchBase: configuration.scratchPath,
   allowedGithubAccountIds: configuration.allowedGithubAccountIds,

@@ -18,3 +18,9 @@ repository is safe.
 Public-service testing, third-party repository scans, model-provider source
 submission, and attempts to bypass the private account/fork/loopback gates are
 out of scope until the corresponding release gates are explicitly opened.
+
+When public scanning opens, ordinary use of the published username form is in
+scope under `docs/acceptable-use.md`. Do not place source, secrets, private
+report details, or personal email addresses in a report. Public source-blind
+reports expire after 30 days; removal/privacy requests may include the opaque
+report ID only. See `docs/privacy.md` for the complete data boundary.

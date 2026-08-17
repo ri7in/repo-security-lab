@@ -209,3 +209,57 @@ through to static assets. The full broker record remains loopback-only for
 operator proofs. This report-visibility decision is separate from scan
 admission: third-party scan creation stays disabled until the isolated compute
 gate is satisfied.
+
+## ADR-015: OCI Always Free is the public compute target
+
+**Status:** accepted implementation, live provisioning pending (2026-08-17)
+
+The continuously available $0 path is one OCI Always Free A1 Ubuntu worker.
+The credentialed host process acquires exact GitHub snapshots and speaks the
+signed control-plane protocol. Archive extraction and scanners run in a bundled
+bubblewrap domain with no network, ambient environment, or credential mounts;
+tools are read-only and output is a strict numeric result file. A startup probe
+must prove no network, hidden credential paths, denied outside writes, and an
+exact environment allowlist before the public-worker constructor can exist.
+The prepared systemd unit adds a non-root identity, read-only host filesystem,
+no capabilities or swap, and memory/CPU/task ceilings. Public admission remains
+off until the owner provisions the VM and private/public synthetic gates pass.
+
+## ADR-016: Zizmor is the next source-blind specialist
+
+**Status:** accepted, default-off until Linux proof (2026-08-17)
+
+Zizmor 1.29.0 is pinned by source commit plus Linux archive/binary hashes. The
+adapter copies only bounded workflow YAML into a renamed staging tree, forces
+offline/no-config/no-ignore regular-persona JSON mode, closes exit semantics,
+and discards every description, URL, location, fix, and ignored field. Only a
+reviewed 40-rule/67-variant numeric vocabulary crosses the broker. Multiple
+severity/confidence variants for one audit are legal in the manifest, but two
+variants for one audit in one packet reject. OSV and Opengrep remain deferred
+until their offline database/rules, memory, provenance, and Linux gates pass.
+
+## ADR-017: no-domain email is an optional encrypted one-shot queue
+
+**Status:** accepted implementation, owner setup pending (2026-08-17)
+
+Scanning and report viewing never depend on email. When three notification
+secrets are configured together, the API accepts one optional normalized
+address, encrypts it with AES-GCM, enforces one recipient and 80 total messages
+per rolling day in code and D1, and sends only after a request is terminal. The
+fixed HMAC-signed relay carries one recipient and public report URL. The
+no-domain adapter uses a dedicated consumer Gmail account via Apps Script
+MailApp; its 100-recipient quota leaves a 20-message reserve. Ciphertext and IV
+are erased after success or final failure. Resend remains dormant because its
+test domain cannot deliver arbitrary recipients.
+
+## ADR-018: public reports have bounded reads and 30-day retention
+
+**Status:** accepted (2026-08-17)
+
+Summary polling uses ETags and a three-second backoff; active scans fetch at
+most the first 100 ledger rows, while terminal reports paginate the complete
+ledger. Public reads have a dedicated edge rate limit. A bounded cron batch
+deletes terminal requests older than 30 days, cascading to ledgers, findings,
+reservations, and notification metadata. The site exposes the last update plus
+plain privacy and acceptable-use pages. Active jobs are not age-deleted because
+lease recovery must terminalize them first.

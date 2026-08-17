@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "repo-security-lab",
   "main": "src/index.ts",
-  "compatibility_date": "2026-08-16",
+  "compatibility_date": "2026-08-17",
   "workers_dev": true,
   "preview_urls": true,
   "assets": {
@@ -27,6 +27,11 @@
       "simple": { "limit": 5, "period": 60 }
     },
     {
+      "name": "READ_RATE_LIMITER",
+      "namespace_id": "1004",
+      "simple": { "limit": 120, "period": 60 }
+    },
+    {
       "name": "USERNAME_RATE_LIMITER",
       "namespace_id": "1002",
       "simple": { "limit": 2, "period": 60 }
@@ -41,6 +46,7 @@
     "crons": ["*/5 * * * *"]
   },
   "vars": {
+    "PUBLIC_APP_ORIGIN": "https://repo-security-lab.rivinsand.workers.dev",
     "PUBLIC_SCANNING_ENABLED": "false",
     "PRIVATE_SLICE_LOGINS": "ri7in",
     "PRIVATE_SLICE_ACCOUNT_IDS": "121791882"

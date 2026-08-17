@@ -19,6 +19,9 @@ function environment(
     REQUESTER_RATE_LIMITER: {
       limit: () => Promise.resolve({ success: true }),
     },
+    READ_RATE_LIMITER: {
+      limit: () => Promise.resolve({ success: true }),
+    },
     USERNAME_RATE_LIMITER: {
       limit: () => Promise.resolve({ success: true }),
     },
@@ -102,5 +105,27 @@ describe("control-plane boundary", () => {
     );
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({ reason: "RATE_LIMITED" });
+  });
+
+  it("rate-limits public report reads without affecting capabilities", async ({ expect }) => {
+    const blocked = environment({
+      READ_RATE_LIMITER: {
+        limit: () => Promise.resolve({ success: false }),
+      },
+    });
+    const report = await handleControlPlaneRequest(
+      new Request("https://product.test/api/scan-requests/req_missing0001"),
+      blocked,
+      context,
+    );
+    expect(report.status).toBe(429);
+    expect(await report.json()).toEqual({ reason: "RATE_LIMITED" });
+
+    const capabilities = await handleControlPlaneRequest(
+      new Request("https://product.test/api/capabilities"),
+      blocked,
+      context,
+    );
+    expect(capabilities.status).toBe(200);
   });
 });

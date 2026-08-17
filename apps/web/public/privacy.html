@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Privacy · repository security service</title>
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body>
+    <nav><a href="/">← scanner</a></nav>
+    <main>
+      <h1>Privacy</h1>
+      <p class="meta">Last updated: 17 August 2026</p>
+      <p>This service scans public GitHub repositories and publishes a source-blind coverage report. It requires no account, sets no cookies, and runs no analytics.</p>
+      <h2>Data handled</h2>
+      <ul>
+        <li>The submitted GitHub username, public repository names and identifiers, and immutable commit hashes are stored with the report.</li>
+        <li>Public repository archives are kept only in private worker scratch storage, are never executed, and are deleted before findings are published. Source is not stored in the report database.</li>
+        <li>Reports cannot contain source paths, snippets, raw matches, secret values, or scanner prose.</li>
+        <li>If optional email is enabled, the address is encrypted at rest and erased after delivery or final failure. A keyed abuse-control hash remains only until report deletion.</li>
+        <li>Cloudflare may process IP addresses for transport and rate limiting; the application does not persist them.</li>
+      </ul>
+      <p>GitHub receives normal API and archive requests. Optional email uses Google Apps Script and Gmail to send the address one public report URL. No repository source is sent to an email or AI provider. The AI source lane is disabled.</p>
+      <h2>Retention and visibility</h2>
+      <p>Anyone with a report URL can view it. Terminal reports and related metadata are automatically deleted 30 days after their last update. Active work remains until terminal so interrupted jobs can recover safely.</p>
+      <p>For removal or privacy requests, contact the operator through <a href="https://github.com/ri7in">the public GitHub profile</a> and include only the report ID. Never post secrets or vulnerable source details publicly.</p>
+    </main>
+  </body>
+</html>

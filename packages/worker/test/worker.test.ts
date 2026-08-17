@@ -23,6 +23,7 @@ import {
   scratchPathFor,
   type ArchiveFetcher,
   type AdditionalEngineRunner,
+  type RepositoryScanDomain,
   type SecretScanner,
 } from "@app/worker";
 import * as applicability from "../src/applicability.js";
@@ -186,7 +187,7 @@ function scanner(assertSource?: (sourceDirectory: string) => Promise<void>): Sec
 
 function additionalEngine(
   engine: AdditionalEngineRunner["engine"],
-  implementation: AdditionalEngineRunner["scanAndNormalize"],
+  implementation: NonNullable<AdditionalEngineRunner["scanAndNormalize"]>,
 ): AdditionalEngineRunner {
   return {
     engine,
@@ -230,6 +231,35 @@ function worker(
 }
 
 describe("leased repository worker", () => {
+  it("requires a verified isolation domain before public construction", async () => {
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    expect(() =>
+      worker(store, files.scratch, archiveFetcher(archive()), scanner(), {
+        allowedGithubAccountIds: null,
+      }),
+    ).toThrow("public worker requires enforced scan isolation");
+
+    const unverifiedDomain: RepositoryScanDomain = {
+      enforcedIsolation: false,
+      async guardAndExtract() {},
+      async scan() {
+        return {
+          applicability: { osv: false, zizmor: false, opengrep: false },
+          engineResults: [],
+          engineFailures: {},
+        };
+      },
+    };
+    expect(() =>
+      worker(store, files.scratch, archiveFetcher(archive()), scanner(), {
+        allowedGithubAccountIds: null,
+        scanDomain: unverifiedDomain,
+      }),
+    ).toThrow("public worker requires enforced scan isolation");
+    store.close();
+  });
+
   it("refuses a configured scratch root that is itself a symlink", async () => {
     const files = await workspace();
     const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });

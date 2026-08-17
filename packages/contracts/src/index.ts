@@ -14,3 +14,4 @@ export * from "./failure.js";
 export * from "./broker.js";
 export * from "./api.js";
 export * from "./ai.js";
+export * from "./scan-domain.js";

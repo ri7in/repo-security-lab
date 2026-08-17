@@ -2,11 +2,12 @@
 
 **Status:** private production preview. The local vertical slice plus a live
 Cloudflare Workers/D1 control plane, same-origin static site, public
-source-blind report, and an authenticated external pull worker are implemented
-and exercised. The deployed preview remains bound to `ri7in`; GitHub discovery and
-the authenticated pull worker are live-proven. Reports are public and require
-no login; third-party scan creation remains disabled until isolated scan
-compute is proven.
+source-blind report, authenticated external pull worker, credential-free Linux
+scan-domain bundle, optional encrypted email queue, and report retention are
+implemented and exercised. The deployed preview remains bound to `ri7in`;
+GitHub discovery and the authenticated private pull worker are live-proven.
+Reports are public and require no login; third-party scan creation remains
+disabled until the prepared OCI worker passes the real Linux proof.
 
 ## Product flow
 
@@ -28,9 +29,14 @@ compute is proven.
 5. The archive guard validates tar structure, paths, entry types, checksums,
    Unicode, PAX metadata, sizes, counts, and expansion ratio while extracting
    regular files only. Repository code is never executed.
-6. The exact hash-verified Gitleaks 8.30.1 binary runs with project-owned
+6. In public-worker mode, archive extraction and scanners run inside a
+   bubblewrap namespace with no network, no ambient credentials, read-only
+   trusted binaries, fixed mounts, and a startup escape probe. The exact
+   hash-verified Gitleaks 8.30.1 binary runs with project-owned
    configuration, target configuration disabled, bounded process output and
-   time, and full secret redaction. Each POSIX command owns a process group
+   time, and full secret redaction. Zizmor 1.29.0 scans only worker-staged
+   workflow bytes with offline/config/ignore overrides forced off and closed
+   exit semantics. Each POSIX command owns a process group
    that is terminated on leader exit, timeout, output overflow, or process
    error. This descendant cleanup is defense in depth, not the Linux cgroup
    isolation required for public release. A separate bounded name/type-only
@@ -117,13 +123,18 @@ operator-authored. The web development server proxies `/api` to this loopback
 runtime.
 
 `apps/control-plane` serves the production web bundle and API from one
-Cloudflare Worker. It uses D1, two public admission rate limits, a separate
-worker-edge limit, cron discovery recovery, security headers, and a default-off
+Cloudflare Worker. It uses D1, public write/read admission limits, a separate
+worker-edge limit, cron discovery recovery, 30-day terminal-report deletion,
+security headers, an optional encrypted one-shot email queue, and a default-off
 public scanning switch. Completed source-blind reports require no identity or
 session. Legacy `/auth/` and `/api/owner/` routes return fixed 404 responses.
 `apps/scan-worker` uses a narrowed HTTPS store adapter and rotating HMAC
-identity. The server supplies all mutation timestamps, and every lease mutation
-remains generation-bound and idempotent.
+identity. Its host process owns acquisition/control-plane egress; `apps/scan-domain`
+receives only a fixed archive/source mount and emits strict numeric packets.
+The server supplies all mutation timestamps, and every lease mutation remains
+generation-bound and idempotent. `deploy/oci` pins ARM64 Node/Gitleaks/Zizmor,
+installs a hardened non-root systemd service, and keeps public mode off until
+the startup probe and synthetic job pass.
 
 The current deployment URL is published in `README.md` and is backed by the
 APAC D1 database recorded in `wrangler.jsonc`. Static assets run through the
@@ -161,13 +172,11 @@ deny-all scan phase, source-blind output, and lifecycle proof remain required.
 
 ## Known release gates
 
-- Enforced Linux privilege separation, no-network sandboxing, cgroups, tmpfs,
-  crash/reboot cleanup, and swap policy.
-- Continuously available, terms-compatible zero-cost isolated scan compute;
-  the manual Actions proof is not a production backend.
+- Provision and verify the prepared OCI Always Free worker; CI proves the same
+  no-network scan-domain boundary, but the live host remains an owner action.
 - Project-attested scanner build provenance; a release hash pin is identity,
   not provenance.
-- OSV, workflow, and source-rule specialists remain unintegrated; relevant
-  input or input whose presence was not ruled out stays explicit
-  `unsupported`.
+- OSV and source-rule specialists remain unintegrated. Zizmor is integrated but
+  stays `unsupported` unless its pinned lane is enabled inside the proven Linux
+  domain.
 - Public accessibility, load, cross-platform, and release-security audits.

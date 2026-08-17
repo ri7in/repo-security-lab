@@ -79,6 +79,11 @@ h1 span { color: var(--muted); font-weight: 520; }
 .input-row button:hover { filter: brightness(.92); }
 .input-row button:disabled { background: var(--muted); cursor: wait; }
 .form-note { margin: 14px 0 0; color: var(--muted); font: 500 11px var(--mono); }
+.email-option { max-width: 700px; margin-top: 20px; padding: 14px 16px; border: 1px solid var(--line); background: var(--paper-raised); }
+.email-option label { margin-bottom: 8px; }
+.email-option label span { color: var(--muted); font-weight: 500; }
+.email-option input { width: 100%; min-height: 42px; border: 1px solid var(--line); color: var(--ink); background: var(--paper); padding: 9px 11px; font: 600 13px var(--mono); }
+.email-option p { margin: 8px 0 0; color: var(--muted); font: 500 10px/1.5 var(--mono); }
 
 .bot-panel { align-self: stretch; min-height: 390px; max-height: 460px; position: relative; border: 1px solid var(--line); background-color: var(--paper-raised); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M0 0H24M0 0V24' fill='none' stroke='%23d8d9d3' stroke-width='1'/%3E%3C/svg%3E"); background-size: 24px 24px; overflow: hidden; }
 .panel-label { display: flex; justify-content: space-between; padding: 13px 15px; background: var(--paper-raised); border-bottom: 1px solid var(--line); font: 700 10px var(--mono); letter-spacing: .1em; }
@@ -134,6 +139,7 @@ tbody tr[data-active="true"] { background: var(--signal-soft); }
 .principles h3 { margin: 18px 0 9px; font-size: 1.05rem; }
 .principles p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.6; }
 footer { max-width: 1180px; margin: 0 auto; padding: 26px 28px 50px; color: var(--muted); display: flex; justify-content: space-between; gap: 30px; font: 500 10px/1.6 var(--mono); }
+footer a { color: inherit; text-underline-offset: 3px; }
 footer p { max-width: 720px; margin: 0; }
 
 @media (max-width: 1050px) {

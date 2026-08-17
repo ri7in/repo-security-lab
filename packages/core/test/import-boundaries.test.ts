@@ -127,6 +127,7 @@ const policies: Readonly<Record<string, BoundaryPolicy>> = {
       "node:crypto",
       "node:fs",
       "node:fs/promises",
+      "node:path",
       "node:url",
     ]),
     minimumFiles: 4,

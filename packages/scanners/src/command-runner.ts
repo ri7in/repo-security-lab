@@ -6,6 +6,8 @@ const CLOSE_GRACE_MS = 1_000;
 export interface ScannerCommandResult {
   readonly stdout: Buffer;
   readonly stderr: Buffer;
+  /** Always present for the real runner; optional for existing injected doubles. */
+  readonly exitCode?: number;
 }
 
 export interface ScannerCommandOptions {
@@ -13,6 +15,8 @@ export interface ScannerCommandOptions {
   readonly timeoutMs: number;
   readonly stdoutLimitBytes: number;
   readonly stderrLimitBytes: number;
+  /** Closed set of successful process exits. Defaults to only zero. */
+  readonly acceptedExitCodes?: readonly number[];
 }
 
 export type ScannerCommandRunner = (
@@ -42,6 +46,18 @@ export const runScannerCommand: ScannerCommandRunner = async (
   if (process.platform === "win32") {
     throw new ScannerError("SCANNER_INTERNAL");
   }
+
+  const acceptedExitCodes = options.acceptedExitCodes ?? [0];
+  if (
+    acceptedExitCodes.length === 0 ||
+    new Set(acceptedExitCodes).size !== acceptedExitCodes.length ||
+    acceptedExitCodes.some(
+      (code) => !Number.isSafeInteger(code) || code < 0 || code > 255,
+    )
+  ) {
+    throw new ScannerError("SCANNER_INTERNAL");
+  }
+  const acceptedExits = new Set(acceptedExitCodes);
 
   return await new Promise((resolve, reject) => {
     let settled = false;
@@ -177,12 +193,17 @@ export const runScannerCommand: ScannerCommandRunner = async (
         fail("SCANNER_TIMEOUT");
       } else if (outputLimited) {
         fail("SCANNER_OUTPUT_LIMIT");
-      } else if (internalFailure || code !== 0) {
+      } else if (
+        internalFailure ||
+        code === null ||
+        !acceptedExits.has(code)
+      ) {
         fail("SCANNER_INTERNAL");
       } else {
         succeed({
           stdout: Buffer.concat(stdout),
           stderr: Buffer.concat(stderr),
+          exitCode: code,
         });
       }
     });

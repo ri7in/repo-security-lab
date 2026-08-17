@@ -23,6 +23,8 @@ describe("scan worker configuration", () => {
     );
     expect(parsed.workerSecret).toHaveLength(43);
     expect(parsed.runOnce).toBe(false);
+    expect(parsed.isolation).toBeNull();
+    expect(parsed.zizmor).toBeNull();
   });
 
   it("supports a bounded one-shot process for hosted CI compute", () => {
@@ -38,9 +40,42 @@ describe("scan worker configuration", () => {
     const input = environment();
     input["PUBLIC_WORKER"] = "true";
     delete input["PRIVATE_SLICE_ACCOUNT_IDS"];
-    expect(
-      parseScanWorkerConfiguration(input).allowedGithubAccountIds,
-    ).toBeNull();
+    expect(() => parseScanWorkerConfiguration(input)).toThrow(
+      "public worker requires bubblewrap isolation",
+    );
+    input["SCAN_ISOLATION_MODE"] = "bubblewrap";
+    input["BUBBLEWRAP_BINARY"] = "/usr/bin/bwrap";
+    input["SCAN_DOMAIN_BUNDLE"] = "/opt/app/scan-domain.mjs";
+    input["SCAN_RUNTIME_LIBRARY_PATHS"] =
+      "/lib/aarch64-linux-gnu,/usr/lib/aarch64-linux-gnu";
+    const parsed = parseScanWorkerConfiguration(input);
+    expect(parsed.allowedGithubAccountIds).toBeNull();
+    expect(parsed.isolation).toMatchObject({
+      bubblewrapPath: "/usr/bin/bwrap",
+      applicationBundlePath: "/opt/app/scan-domain.mjs",
+    });
+    input["ZIZMOR_ENABLED"] = "true";
+    input["ZIZMOR_BINARY"] = "/opt/tools/zizmor";
+    input["ZIZMOR_SHA256"] = "b".repeat(64);
+    expect(parseScanWorkerConfiguration(input).zizmor).toEqual({
+      binaryPath: "/opt/tools/zizmor",
+      sha256: "b".repeat(64),
+    });
+  });
+
+  it("keeps the zizmor lane all-or-none and isolation-only", () => {
+    const disabled = environment();
+    disabled["ZIZMOR_BINARY"] = "/opt/tools/zizmor";
+    expect(() => parseScanWorkerConfiguration(disabled)).toThrow(
+      "disabled zizmor configuration is invalid",
+    );
+    const inline = environment();
+    inline["ZIZMOR_ENABLED"] = "true";
+    inline["ZIZMOR_BINARY"] = "/opt/tools/zizmor";
+    inline["ZIZMOR_SHA256"] = "b".repeat(64);
+    expect(() => parseScanWorkerConfiguration(inline)).toThrow(
+      "zizmor requires bubblewrap isolation",
+    );
   });
 
   it("rejects missing secrets, roots, and malformed identities", () => {

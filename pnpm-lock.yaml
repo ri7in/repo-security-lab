@@ -20,6 +20,9 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^4.0.0
         version: 4.1.10(vitest@4.1.10)
+      esbuild:
+        specifier: 0.28.2
+        version: 0.28.2
       eslint:
         specifier: ^9.0.0
         version: 9.39.5
@@ -103,8 +106,29 @@ importers:
         specifier: ^4.0.0
         version: 4.4.3
 
+  apps/scan-domain:
+    dependencies:
+      '@app/archive':
+        specifier: workspace:*
+        version: link:../../packages/archive
+      '@app/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@app/normalize':
+        specifier: workspace:*
+        version: link:../../packages/normalize
+      '@app/scanners':
+        specifier: workspace:*
+        version: link:../../packages/scanners
+      '@app/worker':
+        specifier: workspace:*
+        version: link:../../packages/worker
+
   apps/scan-worker:
     dependencies:
+      '@app/archive':
+        specifier: workspace:*
+        version: link:../../packages/archive
       '@app/broker':
         specifier: workspace:*
         version: link:../../packages/broker
@@ -114,6 +138,9 @@ importers:
       '@app/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@app/normalize':
+        specifier: workspace:*
+        version: link:../../packages/normalize
       '@app/scanners':
         specifier: workspace:*
         version: link:../../packages/scanners

@@ -3,6 +3,7 @@ import {
   createScanRequestBodySchema,
   opaqueIdSchema,
   operatorFindingPageSchema,
+  publicCapabilitiesSchema,
   publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
@@ -76,6 +77,16 @@ export interface ApiOptions {
     username: GithubLogin,
     request: Request,
   ) => Promise<boolean>;
+  readonly registerNotification?: (input: {
+    readonly requestId: OpaqueId;
+    readonly email: string;
+    readonly nowMs: number;
+  }) => Promise<"queued" | "rate_limited" | "unavailable">;
+  readonly publicCapabilities?: {
+    readonly scanCreation: "private_preview" | "public";
+    readonly emailNotifications: boolean;
+    readonly scanEtaMinutes: { readonly min: number; readonly max: number };
+  };
   readonly operatorMode?: boolean;
   readonly bindHost?: string;
   readonly enforceHostHeader?: boolean;
@@ -279,6 +290,24 @@ export function createApi(options: ApiOptions): Hono {
     });
   }
 
+  app.get("/api/capabilities", (context) =>
+    context.json(
+      publicCapabilitiesSchema.parse(
+        {
+          schemaVersion: 1,
+          ...(options.publicCapabilities ?? {
+            scanCreation:
+              options.allowedRequestedLogins === null
+                ? "public"
+                : "private_preview",
+            emailNotifications: options.registerNotification !== undefined,
+            scanEtaMinutes: { min: 2, max: 5 },
+          }),
+        },
+      ),
+    ),
+  );
+
   app.post("/api/scan-requests", async (context) => {
     let body: unknown;
     try {
@@ -289,6 +318,12 @@ export function createApi(options: ApiOptions): Hono {
     const parsed = createScanRequestBodySchema.safeParse(body);
     if (!parsed.success) {
       return context.json({ reason: "INVALID_USERNAME" as const }, 400);
+    }
+    if (
+      parsed.data.email !== undefined &&
+      options.registerNotification === undefined
+    ) {
+      return context.json({ reason: "EMAIL_UNAVAILABLE" as const }, 503);
     }
     if (
       options.admitScanRequest !== undefined &&
@@ -345,7 +380,26 @@ export function createApi(options: ApiOptions): Hono {
         parsed.data.username,
       ),
     );
-    return context.json(scanRequestAcceptedSchema.parse({ requestId }), 202);
+    let notification:
+      | "not_requested"
+      | "queued"
+      | "rate_limited"
+      | "unavailable" = "not_requested";
+    if (parsed.data.email !== undefined && options.registerNotification !== undefined) {
+      try {
+        notification = await options.registerNotification({
+          requestId: accepted.requestId,
+          email: parsed.data.email,
+          nowMs: now(),
+        });
+      } catch {
+        notification = "unavailable";
+      }
+    }
+    return context.json(
+      scanRequestAcceptedSchema.parse({ requestId, notification }),
+      202,
+    );
   });
 
   app.get("/api/scan-requests/:requestId", async (context) => {
@@ -366,7 +420,7 @@ export function createApi(options: ApiOptions): Hono {
       repositoryTotals: totals.repositoryTotals,
       coverageTotals: totals.coverageTotals,
       aiLane: request.aiLane,
-      retryAfterSeconds: request.state === "complete" ? 60 : 2,
+      retryAfterSeconds: request.state === "complete" ? 60 : 3,
       updatedAt: new Date(request.updatedAtMs).toISOString(),
     });
     const etag = `"${await sha256Hex(JSON.stringify(summary))}"`;

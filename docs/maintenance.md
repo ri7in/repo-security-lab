@@ -12,6 +12,8 @@ and fails if the slug or display name literal appears anywhere except:
 1. `packages/branding/src/index.ts` (the single branding source),
 2. `README.md` (explicit README allowance),
 3. `pnpm-lock.yaml` (lock metadata, only if ever unavoidable).
+4. `apps/control-plane/wrangler.jsonc` (Cloudflare Worker, D1, and live-origin
+   resource names, which cannot import the TypeScript branding module).
 
 To rename the product:
 
@@ -55,6 +57,7 @@ pnpm test:coverage    # same suite plus the enforced aggregate coverage floor
 pnpm check            # all of the above
 pnpm build            # production web bundle
 pnpm build:control-plane # Cloudflare Worker dry-run bundle and binding check
+pnpm build:all         # scan-domain, scan-worker, and control-plane bundles
 ```
 
 Before a control-plane release, also apply the D1 migration to a fresh local
@@ -161,3 +164,36 @@ Live GitHub rate-limit and transport failures are retried only after verified
 scratch cleanup, with a closed three-attempt budget. The private low-volume
 slice does not yet schedule backoff; Retry-After-aware `next_eligible_at`
 scheduling belongs to the phase-three queue adapter before public operation.
+
+## Public Linux worker
+
+The selected $0 compute target and exact owner handoff live in
+`deploy/oci/README.md`. Build artifacts contain no credentials. The deployment
+script transfers only the two bundles, trusted scanner configs, and bootstrap
+files; the VM downloads exact SHA-256-pinned ARM64 Node, Gitleaks, and Zizmor
+artifacts. Bootstrap deliberately leaves the service disabled.
+
+Public enablement is two separate switches: `PUBLIC_WORKER=true` on the OCI
+host, then `PUBLIC_SCANNING_ENABLED=true` in Cloudflare. Never change both at
+once. First prove an operator-only synthetic request, empty scratch, the startup
+escape probe, service restart cleanup, and exact source-blind findings. Then
+prove a public synthetic request before changing the control-plane switch.
+
+CI installs bubblewrap and runs the same built scan-domain with planted source,
+Gitleaks, and Zizmor. A green CI proof is necessary but does not replace the
+live OCI proof.
+
+## Optional report email and retention
+
+The no-domain owner setup is in `integrations/google-apps-script/README.md`.
+Email remains absent from `/api/capabilities` and hidden in the browser unless
+all notification secrets are present. Apply D1 migrations `0002` and `0003`
+before deploying the code. Migration `0002` adds the encrypted queue and hard
+rolling quota trigger; `0003` indexes terminal report expiry. Cron independently
+runs discovery recovery, a bounded 30-day retention purge, and at most one
+notification delivery every five minutes.
+
+After enabling email, send only a test address controlled by the operator,
+prove the report reaches terminal state, confirm one message, and query D1 to
+verify `recipient_ciphertext` and `recipient_iv` are empty. Never log or paste a
+real recipient address while debugging.

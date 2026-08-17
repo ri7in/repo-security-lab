@@ -51,7 +51,12 @@
               />
               <button id="scan-button" type="submit">Start scan <span aria-hidden="true">→</span></button>
             </div>
-            <p class="form-note">No install. No card. No target code is executed.</p>
+            <div id="email-option" class="email-option" hidden>
+              <label for="email">Email me when the report is ready <span>(optional)</span></label>
+              <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" />
+              <p>One report-ready email. The address is encrypted, never shown, and deleted after delivery or final failure.</p>
+            </div>
+            <p class="form-note" id="service-note">No install. No card. No target code is executed. Typical 20-repository scans take about 2–5 minutes when a worker is available.</p>
           </form>
         </div>
 
@@ -97,6 +102,7 @@
           </div>
           <p class="legend"><span class="dot complete"></span>complete <span class="dot waiting"></span>waiting <span class="dot failed"></span>failed</p>
         </div>
+        <p id="ledger-note" class="findings-note"></p>
         <div class="table-shell" tabindex="0" aria-label="Scrollable repository coverage table">
           <table>
             <thead>
@@ -134,7 +140,7 @@
     </main>
 
     <footer>
-      <p><strong>Public report:</strong> coverage and source-blind findings are visible without login; raw source and secret values are never shown.</p>
+      <p><strong>Public report:</strong> visible without login, retained for 30 days; raw source and secret values are never shown. <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
       <p id="footer-name">Free and open source.</p>
     </footer>
   </body>

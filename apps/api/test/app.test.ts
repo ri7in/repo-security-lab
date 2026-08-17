@@ -10,6 +10,7 @@ import {
 } from "@app/api";
 import {
   operatorFindingPageSchema,
+  publicCapabilitiesSchema,
   publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestSummarySchema,
@@ -59,6 +60,97 @@ function discovery(repositoryCount = 2, githubAccountId = 123): DiscoveryPort {
 }
 
 describe("anonymous-safe control-plane API", () => {
+  it("publishes truthful scan and email capabilities", async () => {
+    const database = await store();
+    const preview = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+    });
+    expect(
+      publicCapabilitiesSchema.parse(
+        await (await preview.request("/api/capabilities")).json(),
+      ),
+    ).toEqual({
+      schemaVersion: 1,
+      scanCreation: "private_preview",
+      emailNotifications: false,
+      scanEtaMinutes: { min: 2, max: 5 },
+    });
+
+    const publicApp = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: null,
+      allowedGithubAccountIds: null,
+      registerNotification: async () => "queued",
+    });
+    expect(
+      publicCapabilitiesSchema.parse(
+        await (await publicApp.request("/api/capabilities")).json(),
+      ),
+    ).toMatchObject({
+      scanCreation: "public",
+      emailNotifications: true,
+    });
+    database.close();
+  });
+
+  it("accepts email only with a configured one-shot notification queue", async () => {
+    const database = await store();
+    const withoutEmail = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+    });
+    const unavailable = await withoutEmail.request("/api/scan-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username: "ri7in", email: "person@example.com" }),
+    });
+    expect(unavailable.status).toBe(503);
+    expect(await unavailable.json()).toEqual({ reason: "EMAIL_UNAVAILABLE" });
+    expect(await database.findActiveRequestByUsername("ri7in")).toBeNull();
+
+    const notifications: Array<Record<string, unknown>> = [];
+    const withEmail = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      dispatch: () => undefined,
+      createRequestId: () => "req_email000001",
+      now: () => 100,
+      registerNotification: async (input) => {
+        notifications.push(input);
+        return "queued";
+      },
+    });
+    const queued = await withEmail.request("/api/scan-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        username: "ri7in",
+        email: " Person@Example.COM ",
+      }),
+    });
+    expect(queued.status).toBe(202);
+    expect(await queued.json()).toEqual({
+      requestId: "req_email000001",
+      notification: "queued",
+    });
+    expect(notifications).toEqual([
+      {
+        requestId: "req_email000001",
+        email: "person@example.com",
+        nowMs: 100,
+      },
+    ]);
+    database.close();
+  });
+
   it("replays an interrupted durable discovery after restart", async () => {
     const database = await store();
     await database.createRequest({
@@ -307,7 +399,10 @@ describe("anonymous-safe control-plane API", () => {
       body: JSON.stringify({ username: "ri7in" }),
     });
     expect(accepted.status).toBe(202);
-    expect(await accepted.json()).toEqual({ requestId: "req_0000000001" });
+    expect(await accepted.json()).toEqual({
+      requestId: "req_0000000001",
+      notification: "not_requested",
+    });
     expect((await database.getRequest("req_0000000001"))?.state).toBe("accepted");
 
     const duplicate = await app.request("/api/scan-requests", {

@@ -28,12 +28,20 @@ import { brokerDerivedFindingSchema } from "./broker.js";
 /** `POST /api/scan-requests` request body. */
 export const createScanRequestBodySchema = z.strictObject({
   username: githubLoginSchema,
+  /** Optional one-shot report notification; never returned by the API. */
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .pipe(z.email().max(254))
+    .optional(),
 });
 export type CreateScanRequestBody = z.infer<typeof createScanRequestBodySchema>;
 
 /** `202 Accepted` response body. */
 export const scanRequestAcceptedSchema = z.strictObject({
   requestId: opaqueIdSchema,
+  notification: z.enum(["not_requested", "queued", "unavailable", "rate_limited"]),
 });
 export type ScanRequestAccepted = z.infer<typeof scanRequestAcceptedSchema>;
 
@@ -48,6 +56,7 @@ export const apiRejectionReasonSchema = z.enum([
   "DUPLICATE_ACTIVE_REQUEST",
   "RATE_LIMITED",
   "CAPACITY_EXHAUSTED",
+  "EMAIL_UNAVAILABLE",
 ]);
 export type ApiRejectionReason = z.infer<typeof apiRejectionReasonSchema>;
 
@@ -55,6 +64,18 @@ export const apiErrorSchema = z.strictObject({
   reason: apiRejectionReasonSchema,
 });
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/** Public, source-free product capabilities used to keep UI promises honest. */
+export const publicCapabilitiesSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  scanCreation: z.enum(["private_preview", "public"]),
+  emailNotifications: z.boolean(),
+  scanEtaMinutes: z.strictObject({
+    min: z.number().int().positive().max(60),
+    max: z.number().int().positive().max(60),
+  }),
+});
+export type PublicCapabilities = z.infer<typeof publicCapabilitiesSchema>;
 
 /** Exhaustive per-state repository totals (zero-filled, no omitted states). */
 export const repositoryStateTotalsSchema = z.record(

@@ -110,6 +110,7 @@ describePosix("bounded scanner command runner", () => {
       timeoutMs: number;
       stdoutLimitBytes: number;
       stderrLimitBytes: number;
+      acceptedExitCodes: readonly number[];
     }> = {},
   ): Promise<{
     result: ReturnType<typeof runScannerCommand>;
@@ -126,6 +127,9 @@ describePosix("bounded scanner command runner", () => {
           timeoutMs: overrides.timeoutMs ?? 2_000,
           stdoutLimitBytes: overrides.stdoutLimitBytes ?? 1_024,
           stderrLimitBytes: overrides.stderrLimitBytes ?? 1_024,
+          ...(overrides.acceptedExitCodes === undefined
+            ? {}
+            : { acceptedExitCodes: overrides.acceptedExitCodes }),
         },
       ),
       marker: setup.marker,
@@ -138,6 +142,7 @@ describePosix("bounded scanner command runner", () => {
     await expect(setup.result).resolves.toEqual({
       stdout: Buffer.from("bounded stdout"),
       stderr: Buffer.from("bounded stderr"),
+      exitCode: 0,
     });
   });
 
@@ -192,6 +197,30 @@ describePosix("bounded scanner command runner", () => {
       code: "SCANNER_INTERNAL",
       message: "SCANNER_INTERNAL",
     });
+  });
+
+  it("returns a declared nonzero exit without weakening the default", async () => {
+    const setup = await runMode("nonzero", { acceptedExitCodes: [0, 7] });
+    await expect(setup.result).resolves.toEqual({
+      stdout: Buffer.alloc(0),
+      stderr: Buffer.alloc(0),
+      exitCode: 7,
+    });
+  });
+
+  it("rejects an empty, duplicate, or out-of-range exit allowlist", async () => {
+    const setup = await processFixture();
+    for (const acceptedExitCodes of [[], [0, 0], [-1], [256]]) {
+      await expect(
+        runScannerCommand(process.execPath, [fixturePath, "success"], {
+          cwd: setup.root,
+          timeoutMs: 1_000,
+          stdoutLimitBytes: 1_024,
+          stderrLimitBytes: 1_024,
+          acceptedExitCodes,
+        }),
+      ).rejects.toMatchObject({ code: "SCANNER_INTERNAL" });
+    }
   });
 
   it("maps a spawn failure to one fixed failure without echoing its path", async () => {
