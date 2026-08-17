@@ -12,6 +12,7 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -162,10 +163,11 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
 }
 
 async function stageWorkflowInputs(
-  source: string,
   inputs: readonly WorkflowInput[],
 ): Promise<string> {
-  const staging = await mkdtemp(path.join(path.dirname(source), "zizmor-input-"));
+  const staging = await mkdtemp(
+    path.join(tmpdir(), "repo-security-zizmor-input-"),
+  );
   try {
     await chmod(staging, 0o700);
     const workflows = path.join(staging, ".github", "workflows");
@@ -255,7 +257,7 @@ export class ZizmorScanner {
     const inputs = await collectWorkflowInputs(source);
     if (inputs.length === 0) throw new ScannerError("SCANNER_INTERNAL");
 
-    const staging = await stageWorkflowInputs(source, inputs);
+    const staging = await stageWorkflowInputs(inputs);
     try {
       const result = await this.#runCommand(
         binary,
