@@ -12,7 +12,6 @@ import {
   stat,
   writeFile,
 } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import {
@@ -39,6 +38,8 @@ export const ZIZMOR_INPUT_LIMITS = Object.freeze({
 
 const MAX_STDOUT_BYTES = 4 * 1_024 * 1_024;
 const MAX_STDERR_BYTES = 256 * 1_024;
+// The supported scan runtime is Linux and mounts a private, disposable /tmp.
+const STAGING_DIRECTORY = "/tmp";
 const outputDecoder = new TextDecoder("utf-8", { fatal: true });
 
 const findingSchema = z.strictObject({
@@ -166,7 +167,7 @@ async function stageWorkflowInputs(
   inputs: readonly WorkflowInput[],
 ): Promise<string> {
   const staging = await mkdtemp(
-    path.join(tmpdir(), "repo-security-zizmor-input-"),
+    path.join(STAGING_DIRECTORY, "repo-security-zizmor-input-"),
   );
   try {
     await chmod(staging, 0o700);

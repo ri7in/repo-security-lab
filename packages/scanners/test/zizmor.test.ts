@@ -163,7 +163,7 @@ describe("pinned Zizmor adapter", () => {
       calls.push({ args: [...args], cwd: options.cwd });
       if (args[0] === "--version") return versionResult();
       staged = args.at(-1) ?? "";
-      expect(path.dirname(staged)).toBe(tmpdir());
+      expect(path.dirname(staged)).toBe("/tmp");
       const entries = await readdir(path.join(staged, ".github", "workflows"));
       expect(entries).toEqual(["workflow-000.yml"]);
       expect(
