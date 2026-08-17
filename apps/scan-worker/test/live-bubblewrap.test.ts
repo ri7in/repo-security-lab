@@ -1,9 +1,17 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { promisify } from "node:util";
 import { gzipSync } from "node:zlib";
 import { afterAll, expect, test } from "vitest";
+import {
+  runScannerCommand,
+  type ScannerCommandRunner,
+} from "@app/scanners";
 import { BubblewrapRepositoryScanDomain } from "../src/bubblewrap-domain.js";
+
+const execFileAsync = promisify(execFile);
 
 const enabled = process.env["RUN_BWRAP_E2E"] === "1";
 const bubblewrapPath = process.env["BUBBLEWRAP_BINARY"];
@@ -17,6 +25,32 @@ const runtimeLibraryPaths = (process.env["SCAN_RUNTIME_LIBRARY_PATHS"] ?? "")
   .split(",")
   .filter((entry) => entry !== "");
 const temporaryDirectories: string[] = [];
+
+const diagnosticRunner: ScannerCommandRunner = async (executable, args, options) => {
+  try {
+    return await runScannerCommand(executable, args, options);
+  } catch (error) {
+    if (args.at(-1) !== "probe") throw error;
+    try {
+      await execFileAsync(executable, [...args], {
+        cwd: "/",
+        env: {},
+        timeout: 5_000,
+        maxBuffer: 8 * 1_024,
+      });
+    } catch (diagnosticError) {
+      const stderr =
+        typeof diagnosticError === "object" &&
+        diagnosticError !== null &&
+        "stderr" in diagnosticError &&
+        typeof diagnosticError.stderr === "string"
+          ? diagnosticError.stderr.slice(0, 2_048).trim()
+          : "unavailable";
+      throw new Error(`fixed Linux probe failed: ${stderr}`);
+    }
+    throw error;
+  }
+};
 
 afterAll(async () => {
   await Promise.all(
@@ -103,6 +137,7 @@ test.skipIf(
       zizmorBinaryPath: zizmorPath,
       zizmorSha256: zizmorHash,
       runtimeLibraryPaths,
+      runCommand: diagnosticRunner,
     });
     await domain.verify();
     expect(domain.enforcedIsolation).toBe(true);
