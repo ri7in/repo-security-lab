@@ -195,10 +195,11 @@ export const runScannerCommand: ScannerCommandRunner = async (
         fail("SCANNER_OUTPUT_LIMIT");
       } else if (
         internalFailure ||
-        code === null ||
-        !acceptedExits.has(code)
+        code === null
       ) {
         fail("SCANNER_INTERNAL");
+      } else if (!acceptedExits.has(code)) {
+        fail("SCANNER_EXIT_FAILURE");
       } else {
         succeed({
           stdout: Buffer.concat(stdout),

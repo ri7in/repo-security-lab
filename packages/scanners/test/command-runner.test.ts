@@ -194,8 +194,8 @@ describePosix("bounded scanner command runner", () => {
   it("maps a nonzero exit to one fixed failure", async () => {
     const setup = await runMode("nonzero");
     await expect(setup.result).rejects.toMatchObject({
-      code: "SCANNER_INTERNAL",
-      message: "SCANNER_INTERNAL",
+      code: "SCANNER_EXIT_FAILURE",
+      message: "SCANNER_EXIT_FAILURE",
     });
   });
 

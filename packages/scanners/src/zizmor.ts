@@ -124,7 +124,7 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
       entries = await readdir(directory, { withFileTypes: true });
     } catch (error) {
       if (isMissing(error)) continue;
-      throw new ScannerError("SCANNER_INTERNAL");
+      throw new ScannerError("SCANNER_INPUT_FAILURE");
     }
     for (const entry of entries) {
       const extension = entry.name.endsWith(".yaml")
@@ -133,7 +133,7 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
           ? ".yml"
           : null;
       if (extension === null) continue;
-      if (!entry.isFile()) throw new ScannerError("SCANNER_INTERNAL");
+      if (!entry.isFile()) throw new ScannerError("SCANNER_INPUT_FAILURE");
       if (inputs.length >= ZIZMOR_INPUT_LIMITS.files) {
         throw new ScannerError("SCANNER_MEMORY_LIMIT");
       }
@@ -144,7 +144,7 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
         !metadata.isFile() ||
         metadata.isSymbolicLink()
       ) {
-        throw new ScannerError("SCANNER_INTERNAL");
+        throw new ScannerError("SCANNER_INPUT_FAILURE");
       }
       if (metadata.size > ZIZMOR_INPUT_LIMITS.fileBytes) {
         throw new ScannerError("SCANNER_MEMORY_LIMIT");
@@ -155,7 +155,7 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
       }
       const bytes = await readFile(filename);
       if (bytes.byteLength !== metadata.size) {
-        throw new ScannerError("SCANNER_INTERNAL");
+        throw new ScannerError("SCANNER_INPUT_FAILURE");
       }
       inputs.push({ bytes, extension });
     }
@@ -186,7 +186,7 @@ async function stageWorkflowInputs(
     return staging;
   } catch {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
-    throw new ScannerError("SCANNER_INTERNAL");
+    throw new ScannerError("SCANNER_STAGE_FAILURE");
   }
 }
 
@@ -253,10 +253,10 @@ export class ZizmorScanner {
     const source = await realpath(sourceDirectory).catch(() => null);
     const sourceMetadata = source === null ? null : await stat(source).catch(() => null);
     if (source === null || sourceMetadata === null || !sourceMetadata.isDirectory()) {
-      throw new ScannerError("SCANNER_INTERNAL");
+      throw new ScannerError("SCANNER_INPUT_FAILURE");
     }
     const inputs = await collectWorkflowInputs(source);
-    if (inputs.length === 0) throw new ScannerError("SCANNER_INTERNAL");
+    if (inputs.length === 0) throw new ScannerError("SCANNER_INPUT_FAILURE");
 
     const staging = await stageWorkflowInputs(inputs);
     try {

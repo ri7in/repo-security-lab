@@ -308,7 +308,7 @@ describe("pinned Zizmor adapter", () => {
     await rm(workflow);
     await symlink(path.join(setup.source, "zizmor.yml"), workflow);
     await expect(scanner(setup, runCommand).scan(setup.source)).rejects.toMatchObject({
-      code: "SCANNER_INTERNAL",
+      code: "SCANNER_INPUT_FAILURE",
     });
     await rm(workflow);
     await writeFile(workflow, Buffer.alloc(ZIZMOR_INPUT_LIMITS.fileBytes + 1));
