@@ -123,7 +123,7 @@ export const runScannerCommand: ScannerCommandRunner = async (
       child = spawn(executable, [...args], {
         cwd: options.cwd,
         detached: true,
-        env: { LANG: "C", LC_ALL: "C" },
+        env: { HOME: "/nonexistent", LANG: "C", LC_ALL: "C" },
         shell: false,
         stdio: ["ignore", "pipe", "pipe"],
       });

@@ -13,6 +13,8 @@ if (mode === "grandchild") {
 } else if (mode === "success") {
   writeSync(1, "bounded stdout");
   writeSync(2, "bounded stderr");
+} else if (mode === "environment") {
+  writeSync(1, JSON.stringify(process.env));
 } else if (mode === "nonzero") {
   process.exitCode = 7;
 } else if (mode === "race") {

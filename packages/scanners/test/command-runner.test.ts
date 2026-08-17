@@ -146,6 +146,28 @@ describePosix("bounded scanner command runner", () => {
     });
   });
 
+  it("provides only the fixed scanner startup environment", async () => {
+    const setup = await runMode("environment");
+    const result = await setup.result;
+    const environment = JSON.parse(result.stdout.toString("utf8")) as Record<
+      string,
+      string
+    >;
+    expect(environment).toMatchObject({
+      HOME: "/nonexistent",
+      LANG: "C",
+      LC_ALL: "C",
+    });
+    expect(Object.keys(environment).sort()).toEqual(
+      [
+        "HOME",
+        "LANG",
+        "LC_ALL",
+        ...(process.platform === "darwin" ? ["__CF_USER_TEXT_ENCODING"] : []),
+      ].sort(),
+    );
+  });
+
   it("kills a lingering descendant when its leader exits successfully", async () => {
     const setup = await runMode("lingering");
     await expect(setup.result).resolves.toMatchObject({
