@@ -76,7 +76,6 @@ describe("anonymous-safe control-plane API", () => {
       schemaVersion: 1,
       scanCreation: "private_preview",
       emailNotifications: false,
-      scanEtaMinutes: { min: 2, max: 5 },
     });
 
     const publicApp = createApi({
@@ -233,6 +232,47 @@ describe("anonymous-safe control-plane API", () => {
         discoveryComplete: true,
       });
     }
+    database.close();
+  });
+
+  it("stops cron-style discovery recovery at a true total bound", async () => {
+    const database = await store();
+    for (const index of [1, 2, 3]) {
+      await database.createRequest({
+        requestId: `req_cronbound000${index}`,
+        username: `cron-user-${index}`,
+        nowMs: index,
+      });
+    }
+    const calls: string[] = [];
+    const resumed = await resumePendingDiscoveries(
+      {
+        store: database,
+        discovery: {
+          async discover(username) {
+            calls.push(username);
+            return {
+              mode: "authenticated_graphql",
+              requestCount: 1,
+              account: {
+                githubAccountId: calls.length + 200,
+                canonicalLogin: username,
+                repositories: [],
+              },
+            };
+          },
+        },
+        allowedRequestedLogins: null,
+        allowedGithubAccountIds: null,
+        now: () => 10,
+      },
+      1,
+      2,
+    );
+
+    expect(resumed).toBe(2);
+    expect(calls).toHaveLength(2);
+    expect(await database.listPendingDiscoveryRequests(10)).toHaveLength(1);
     database.close();
   });
 

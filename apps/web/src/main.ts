@@ -40,7 +40,7 @@ let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limit
 
 $("#product-name").textContent = branding.productDisplayName;
 $("#tagline").textContent = branding.tagline;
-$("#footer-name").textContent = `${branding.productDisplayName} · free and open source.`;
+$("#footer-name").textContent = `${branding.productDisplayName} · private release preview.`;
 document.title = `${branding.productDisplayName} — public repository security`;
 
 const themeToggle = $<HTMLButtonElement>("#theme-toggle");
@@ -324,10 +324,9 @@ void requestJson("/api/capabilities")
     const capabilities = publicCapabilitiesSchema.parse(value);
     emailEnabled = capabilities.emailNotifications;
     emailOption.hidden = !emailEnabled;
-    const eta = `${capabilities.scanEtaMinutes.min}–${capabilities.scanEtaMinutes.max}`;
     serviceNote.textContent =
       capabilities.scanCreation === "public"
-        ? `No install. No card. No target code is executed. Typical 20-repository scans take about ${eta} minutes when a worker is available.`
+        ? "No install. No card. No target code is executed. Reports update live; queue time depends on current worker capacity."
         : `Private production preview: scan creation is currently limited to the operator account while the public isolation worker is commissioned. Existing report links remain public.`;
   })
   .catch(() => {

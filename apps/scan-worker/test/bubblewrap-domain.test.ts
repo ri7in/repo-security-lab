@@ -1,4 +1,12 @@
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  mkdir,
+  mkdtemp,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -203,5 +211,50 @@ describe("bubblewrap scan domain", () => {
     });
     await expect(domain.verify()).rejects.toThrow();
     expect(domain.enforcedIsolation).toBe(false);
+  });
+
+  it("resolves trusted runtime symlinks before execution and mounting", async () => {
+    const files = await fixture();
+    const bwrapLink = path.join(files.root, "bwrap-link");
+    const nodeLink = path.join(files.root, "node-link");
+    await symlink(files.paths.bwrap, bwrapLink);
+    await symlink(files.paths.node, nodeLink);
+    const calls: Array<{ executable: string; args: readonly string[] }> = [];
+    const runCommand: ScannerCommandRunner = async (executable, args) => {
+      calls.push({ executable, args: [...args] });
+      if (args[0] === "--version") {
+        return { stdout: Buffer.from("bubblewrap 0.11.0\n"), stderr: Buffer.alloc(0) };
+      }
+      await writeFile(
+        path.join(outputDirectory(args), "result.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          networkDenied: true,
+          credentialPathsHidden: true,
+          outsideWriteDenied: true,
+          environmentClean: true,
+        }),
+      );
+      return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0) };
+    };
+    const domain = new BubblewrapRepositoryScanDomain({
+      bubblewrapPath: bwrapLink,
+      nodePath: nodeLink,
+      applicationBundlePath: files.paths.bundle,
+      gitleaksBinaryPath: files.paths.gitleaks,
+      gitleaksConfigPath: files.paths.config,
+      gitleaksIgnorePath: files.paths.ignore,
+      gitleaksSha256: "a".repeat(64),
+      runtimeLibraryPaths: [files.libraries],
+      runCommand,
+    });
+
+    await domain.verify();
+
+    const canonicalBwrap = await realpath(files.paths.bwrap);
+    const canonicalNode = await realpath(files.paths.node);
+    expect(calls.every(({ executable }) => executable === canonicalBwrap)).toBe(true);
+    expect(calls[1]?.args).toContain(canonicalNode);
+    expect(calls[1]?.args).not.toContain(nodeLink);
   });
 });

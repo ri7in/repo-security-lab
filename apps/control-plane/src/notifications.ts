@@ -1,5 +1,6 @@
 import { opaqueIdSchema, type OpaqueId } from "@app/contracts";
 import type { D1Database } from "@app/store-d1";
+import { reserveModeledWrites } from "./write-budget.js";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
@@ -7,12 +8,15 @@ const DAY_MS = 24 * 60 * 60 * 1_000;
 const CLAIM_TIMEOUT_MS = 10 * 60 * 1_000;
 const MAX_DAILY_NOTIFICATIONS = 80;
 const MAX_ATTEMPTS = 3;
+const MODELED_NOTIFICATION_WRITES = 12;
 
 export interface NotificationEnvironment {
   readonly NOTIFICATION_DATA_SECRET?: string;
   readonly NOTIFICATION_RELAY_SECRET?: string;
   readonly NOTIFICATION_RELAY_URL?: string;
+  readonly NOTIFICATION_ALLOWED_RECIPIENT?: string;
   readonly PUBLIC_APP_ORIGIN?: string;
+  readonly PUBLIC_SCANNING_ENABLED?: string;
 }
 
 export interface NotificationConfiguration {
@@ -20,6 +24,7 @@ export interface NotificationConfiguration {
   readonly relaySecret: string;
   readonly relayUrl: string;
   readonly publicAppOrigin: string;
+  readonly allowedRecipient: string;
 }
 
 interface NotificationRow {
@@ -70,6 +75,7 @@ export function notificationConfiguration(
     environment.NOTIFICATION_DATA_SECRET,
     environment.NOTIFICATION_RELAY_SECRET,
     environment.NOTIFICATION_RELAY_URL,
+    environment.NOTIFICATION_ALLOWED_RECIPIENT,
   ];
   if (senderValues.every((value) => value === undefined || value === "")) return null;
   if (
@@ -79,20 +85,32 @@ export function notificationConfiguration(
   ) {
     throw new Error("incomplete notification configuration");
   }
-  const [dataSecret, relaySecret, relayUrl] = senderValues as [
+  const [dataSecret, relaySecret, relayUrl, rawAllowedRecipient] = senderValues as [
+    string,
     string,
     string,
     string,
   ];
   const publicAppOrigin = environment.PUBLIC_APP_ORIGIN;
+  const allowedRecipient = rawAllowedRecipient.trim().toLowerCase();
   if (dataSecret.length < 32 || relaySecret.length < 32) {
     throw new Error("invalid notification secret");
   }
+  if (
+    allowedRecipient.length > 254 ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/u.test(allowedRecipient)
+  ) {
+    throw new Error("invalid notification recipient");
+  }
+  // Until a consent-verification flow exists, report email is an operator-only
+  // preview feature and structurally disappears when public admission opens.
+  if (environment.PUBLIC_SCANNING_ENABLED === "true") return null;
   return {
     dataSecret,
     relaySecret,
     relayUrl: checkedUrl(relayUrl, false),
     publicAppOrigin: checkedUrl(publicAppOrigin, true),
+    allowedRecipient,
   };
 }
 
@@ -161,7 +179,8 @@ export async function registerNotification(
   if (
     !opaqueIdSchema.safeParse(input.requestId).success ||
     !Number.isSafeInteger(input.nowMs) ||
-    input.nowMs < 0
+    input.nowMs < 0 ||
+    input.email !== configuration.allowedRecipient
   ) {
     return "unavailable";
   }
@@ -182,6 +201,9 @@ export async function registerNotification(
   ]);
   if ((total?.count ?? 0) >= MAX_DAILY_NOTIFICATIONS || (recipient?.count ?? 0) >= 1) {
     return "rate_limited";
+  }
+  if (!(await reserveModeledWrites(database, input.nowMs, MODELED_NOTIFICATION_WRITES))) {
+    return "unavailable";
   }
   try {
     await database
@@ -294,13 +316,9 @@ export async function deliverOneNotification(
   nowMs = Date.now(),
   fetchImpl: typeof fetch = fetch,
 ): Promise<"idle" | "sent" | "retry" | "failed"> {
-  const row = await database
+  const candidate = await database
     .prepare(
-      `UPDATE scan_notifications
-       SET state = 'sending', attempt_count = attempt_count + 1,
-           claimed_at_ms = ?, updated_at_ms = ?
-       WHERE request_id = (
-         SELECT n.request_id
+      `SELECT n.request_id
          FROM scan_notifications n
          JOIN scan_requests r ON r.request_id = n.request_id
          WHERE r.state IN ('complete','failed')
@@ -310,11 +328,34 @@ export async function deliverOneNotification(
              (n.state = 'sending' AND n.claimed_at_ms <= ?)
            )
          ORDER BY n.created_at_ms, n.request_id
-         LIMIT 1
-       )
+         LIMIT 1`,
+    )
+    .bind(nowMs, Math.max(0, nowMs - CLAIM_TIMEOUT_MS))
+    .first<{ request_id: string }>();
+  if (candidate === null) return "idle";
+  if (!(await reserveModeledWrites(database, nowMs, MODELED_NOTIFICATION_WRITES))) {
+    return "idle";
+  }
+  const row = await database
+    .prepare(
+      `UPDATE scan_notifications
+       SET state = 'sending', attempt_count = attempt_count + 1,
+           claimed_at_ms = ?, updated_at_ms = ?
+       WHERE request_id = ?
+         AND attempt_count < 3
+         AND (
+           (state = 'pending' AND next_attempt_at_ms <= ?) OR
+           (state = 'sending' AND claimed_at_ms <= ?)
+         )
        RETURNING request_id, recipient_ciphertext, recipient_iv, attempt_count`,
     )
-    .bind(nowMs, nowMs, nowMs, Math.max(0, nowMs - CLAIM_TIMEOUT_MS))
+    .bind(
+      nowMs,
+      nowMs,
+      candidate.request_id,
+      nowMs,
+      Math.max(0, nowMs - CLAIM_TIMEOUT_MS),
+    )
     .first<NotificationRow>();
   if (row === null) return "idle";
 

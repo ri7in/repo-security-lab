@@ -17,17 +17,22 @@ scan or view a report.
 4. Deploy as **Web app**, execute as the owner, and allow anyone to invoke it.
    The body-level HMAC is the authorization boundary; the script rejects every
    unsigned, stale, replayed, malformed, or wrong-origin packet.
-5. Install three Cloudflare secrets without printing them:
+5. This adapter is restricted to one operator-controlled address during the
+   private preview. Public scanning disables it structurally until a separate
+   recipient-consent flow exists. Install four Cloudflare secrets without
+   printing them:
 
    ```sh
    pnpm exec wrangler secret put NOTIFICATION_DATA_SECRET --config apps/control-plane/wrangler.jsonc
    pnpm exec wrangler secret put NOTIFICATION_RELAY_SECRET --config apps/control-plane/wrangler.jsonc
    pnpm exec wrangler secret put NOTIFICATION_RELAY_URL --config apps/control-plane/wrangler.jsonc
+   pnpm exec wrangler secret put NOTIFICATION_ALLOWED_RECIPIENT --config apps/control-plane/wrangler.jsonc
    ```
 
    `NOTIFICATION_RELAY_SECRET` must equal the Apps Script `RELAY_SECRET`.
    `NOTIFICATION_RELAY_URL` is the deployed `/exec` URL. Use a separate random
    `NOTIFICATION_DATA_SECRET` for recipient encryption and deduplication.
+   `NOTIFICATION_ALLOWED_RECIPIENT` must be an address owned by the operator.
 6. Apply migration `0002_notifications.sql`, deploy, and confirm
    `/api/capabilities` reports `emailNotifications: true`.
 
@@ -35,7 +40,9 @@ The control plane accepts at most one message per recipient per rolling 24
 hours and 80 total per rolling 24 hours, below the current 100-recipient/day
 consumer Apps Script quota. It retries twice with fixed delays, stores the
 recipient only as AES-GCM ciphertext plus a keyed hash, and erases ciphertext
-after success or final failure. The relay accepts no custom subject or body.
+after success or final failure. The relay uses a bounded durable marker before
+calling MailApp, giving best-effort at-most-once delivery across retries. The
+relay accepts no custom subject or body.
 The message is sent from the dedicated Gmail account; the Workspace-only
 `noReply` option is deliberately not used.
 

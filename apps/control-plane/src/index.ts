@@ -9,7 +9,7 @@ import {
   registerNotification,
   type NotificationEnvironment,
 } from "./notifications.js";
-import { purgeExpiredReports } from "./retention.js";
+import { expireStaleActiveReport, purgeExpiredReports } from "./retention.js";
 
 interface ExecutionContextPort {
   waitUntil(promise: Promise<unknown>): void;
@@ -179,7 +179,6 @@ export async function handleControlPlaneRequest(
         scanCreation:
           configuredScope.requestedLogins === null ? "public" : "private_preview",
         emailNotifications: configuredNotifications !== null,
-        scanEtaMinutes: { min: 2, max: 5 },
       },
     });
     return secured(await app.fetch(request));
@@ -198,7 +197,8 @@ async function recoverPendingDiscoveries(
       allowedRequestedLogins: configuredScope.requestedLogins,
       allowedGithubAccountIds: configuredScope.accountIds,
     },
-    25,
+    3,
+    3,
   );
 }
 
@@ -206,15 +206,26 @@ async function runScheduledMaintenance(
   environment: ControlPlaneEnvironment,
 ): Promise<void> {
   const configuration = notificationConfiguration(environment);
-  const tasks: Promise<unknown>[] = [
-    recoverPendingDiscoveries(environment),
-    purgeExpiredReports(environment.DB),
+  // Keep privacy cleanup first and recovery below D1's 50-query invocation
+  // ceiling. Three worst-case discovery completions leave headroom for every
+  // cleanup and notification query in this invocation.
+  const tasks: Array<() => Promise<unknown>> = [
+    () => expireStaleActiveReport(environment.DB),
+    () => purgeExpiredReports(environment.DB),
   ];
   if (configuration !== null) {
-    tasks.push(deliverOneNotification(environment.DB, configuration));
+    tasks.push(() => deliverOneNotification(environment.DB, configuration));
   }
-  const results = await Promise.allSettled(tasks);
-  if (results.some((result) => result.status === "rejected")) {
+  tasks.push(() => recoverPendingDiscoveries(environment));
+  let failed = false;
+  for (const task of tasks) {
+    try {
+      await task();
+    } catch {
+      failed = true;
+    }
+  }
+  if (failed) {
     throw new Error("scheduled maintenance failed");
   }
 }

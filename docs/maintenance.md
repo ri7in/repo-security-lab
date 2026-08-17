@@ -90,14 +90,16 @@ not the continuous production compute boundary.
 
 CI additionally downloads the exact SHA-256-pinned zizmor 1.29.0 release and
 audits this repository's workflow/config definitions offline with target
-configuration and ignores disabled. A clean JSON-v1 array is required. This is
-a repository self-scan only; hosted repository coverage remains explicitly
-`unsupported` until the source-blind zizmor adapter is integrated.
+configuration and ignores disabled. A clean JSON-v1 array is required. The
+hosted source-blind adapter is implemented and may run only inside the proven
+Linux scan domain. Its `complete` state means all 36 allowlisted offline audits
+ran; `impostor-commit`, `known-vulnerable-actions`, `ref-confusion`, and
+`stale-action-refs` are excluded because upstream marks them online-only.
 
 The name-only applicability walk intentionally treats a stemless `.yml` or
 `.yaml` entry directly under `.github/workflows/` as workflow-relevant. This
 conservative bias can only produce `unsupported`; it cannot produce a false
-absence or a claim that zizmor ran.
+absence or a claim that the offline workflow lane ran.
 
 CI also downloads the provenance-checked, exact SHA-256-pinned OSV-Scanner
 2.5.0 binary and scans only this project's committed `pnpm-lock.yaml`, with
@@ -187,11 +189,17 @@ live OCI proof.
 
 The no-domain owner setup is in `integrations/google-apps-script/README.md`.
 Email remains absent from `/api/capabilities` and hidden in the browser unless
-all notification secrets are present. Apply D1 migrations `0002` and `0003`
-before deploying the code. Migration `0002` adds the encrypted queue and hard
-rolling quota trigger; `0003` indexes terminal report expiry. Cron independently
-runs discovery recovery, a bounded 30-day retention purge, and at most one
-notification delivery every five minutes.
+all four notification secrets are present. It is restricted to the configured
+operator-controlled recipient and turns off when `PUBLIC_SCANNING_ENABLED=true`
+until a separate consent-verification flow ships. Apply D1 migrations `0002`,
+`0003`, and `0004` before deploying the code. Migration `0002` adds the encrypted
+queue and hard rolling quota trigger; `0003` indexes terminal report expiry;
+`0004` closes scan admission at 40,000 modeled writes per UTC day, reserves a
+protected privacy-maintenance band through 60,000, preserves the final 40% for
+indexes and unmodeled writes, and caps accepted reports at 240 per UTC day so
+intake remains below the 288/day cleanup rate. Each cron runs privacy cleanup
+first, attempts one notification, then recovers at most three discovery requests
+to stay below D1's 50-query invocation ceiling.
 
 After enabling email, send only a test address controlled by the operator,
 prove the report reaches terminal state, confirm one message, and query D1 to

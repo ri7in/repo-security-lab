@@ -70,10 +70,6 @@ export const publicCapabilitiesSchema = z.strictObject({
   schemaVersion: z.literal(1),
   scanCreation: z.enum(["private_preview", "public"]),
   emailNotifications: z.boolean(),
-  scanEtaMinutes: z.strictObject({
-    min: z.number().int().positive().max(60),
-    max: z.number().int().positive().max(60),
-  }),
 });
 export type PublicCapabilities = z.infer<typeof publicCapabilitiesSchema>;
 

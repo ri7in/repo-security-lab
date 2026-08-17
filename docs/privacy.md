@@ -15,10 +15,12 @@ coverage report. It does not require an account, set cookies, or run analytics.
 - Reports contain fixed coverage states and manifest-derived finding metadata.
   They cannot contain source paths, snippets, raw matches, secret values, or
   scanner prose.
-- If report email is enabled and requested, the address is encrypted with
-  AES-GCM at rest. Its ciphertext is erased after successful delivery or the
-  final failed attempt. A keyed recipient hash remains only until the report is
-  deleted, to enforce the one-email-per-day abuse limit.
+- During the private preview, optional report email is restricted to one
+  operator-controlled address and encrypted with AES-GCM at rest. Its
+  ciphertext is erased after successful delivery or the final failed attempt.
+  A keyed recipient hash remains only until the report is deleted, to enforce
+  the one-email-per-day abuse limit. Public scanning disables email until a
+  recipient-consent flow exists.
 - Cloudflare may process the requester IP at the edge for transport and rate
   limiting. The application does not store requester IP addresses.
 
@@ -31,8 +33,9 @@ an email provider or AI provider. The AI source lane remains disabled.
 
 Reports are public to anyone with the report URL. Terminal reports and their
 repository ledger, findings, quota records, and remaining notification metadata
-are automatically deleted 30 days after their last update. Active work is kept
-until it reaches a terminal state so interrupted jobs can recover safely.
+are automatically deleted 30 days after their last update. Active work with no
+update for 24 hours is failed, its leases are invalidated, and queued email
+ciphertext is erased; the terminal report then follows the 30-day policy.
 
 For a removal or privacy request, contact the operator through the public
 GitHub profile at <https://github.com/ri7in> and include only the report ID. Do

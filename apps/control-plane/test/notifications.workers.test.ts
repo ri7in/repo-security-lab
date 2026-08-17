@@ -13,10 +13,13 @@ const configuration: NotificationConfiguration = {
   relaySecret: "notification-relay-secret-longer-than-thirty-two-characters",
   relayUrl: "https://script.google.com/macros/s/example/exec",
   publicAppOrigin: "https://product.test",
+  allowedRecipient: "person@example.com",
 };
 
 beforeEach(async () => {
-  await env.DB.exec("DELETE FROM scan_requests; DELETE FROM scan_notifications;");
+  await env.DB.exec(
+    "DELETE FROM scan_requests; DELETE FROM scan_notifications; DELETE FROM write_budget;",
+  );
 });
 
 async function terminalRequest(requestId: string, username: string): Promise<void> {
@@ -38,6 +41,16 @@ describe("one-shot report notifications", () => {
         NOTIFICATION_DATA_SECRET: configuration.dataSecret,
       }),
     ).toThrow("incomplete notification configuration");
+    expect(
+      notificationConfiguration({
+        PUBLIC_APP_ORIGIN: "https://product.test",
+        PUBLIC_SCANNING_ENABLED: "true",
+        NOTIFICATION_DATA_SECRET: configuration.dataSecret,
+        NOTIFICATION_RELAY_SECRET: configuration.relaySecret,
+        NOTIFICATION_RELAY_URL: configuration.relayUrl,
+        NOTIFICATION_ALLOWED_RECIPIENT: configuration.allowedRecipient,
+      }),
+    ).toBeNull();
   });
 
   it("encrypts recipients, signs a fixed relay packet, and erases delivery data", async () => {
@@ -103,17 +116,21 @@ describe("one-shot report notifications", () => {
   });
 
   it("limits one recipient per rolling day and erases data after final failure", async () => {
+    const sameConfiguration = {
+      ...configuration,
+      allowedRecipient: "same@example.com",
+    };
     await terminalRequest("req_notify000002", "notify-two");
     await terminalRequest("req_notify000003", "notify-three");
     expect(
-      await registerNotification(env.DB, configuration, {
+      await registerNotification(env.DB, sameConfiguration, {
         requestId: "req_notify000002",
         email: "same@example.com",
         nowMs: 100,
       }),
     ).toBe("queued");
     expect(
-      await registerNotification(env.DB, configuration, {
+      await registerNotification(env.DB, sameConfiguration, {
         requestId: "req_notify000003",
         email: "same@example.com",
         nowMs: 101,
@@ -122,14 +139,14 @@ describe("one-shot report notifications", () => {
 
     const failedFetch: typeof fetch = () =>
       Promise.resolve(new Response("no", { status: 503 }));
-    expect(await deliverOneNotification(env.DB, configuration, 200, failedFetch)).toBe(
+    expect(await deliverOneNotification(env.DB, sameConfiguration, 200, failedFetch)).toBe(
       "retry",
     );
     expect(
-      await deliverOneNotification(env.DB, configuration, 5 * 60 * 1_000 + 201, failedFetch),
+      await deliverOneNotification(env.DB, sameConfiguration, 5 * 60 * 1_000 + 201, failedFetch),
     ).toBe("retry");
     expect(
-      await deliverOneNotification(env.DB, configuration, 35 * 60 * 1_000 + 202, failedFetch),
+      await deliverOneNotification(env.DB, sameConfiguration, 35 * 60 * 1_000 + 202, failedFetch),
     ).toBe("failed");
 
     const failed = await env.DB.prepare(
@@ -144,5 +161,23 @@ describe("one-shot report notifications", () => {
       recipient_ciphertext: "",
       recipient_iv: "",
     });
+  });
+
+  it("refuses recipients outside the private preview allowlist", async () => {
+    await terminalRequest("req_notify000004", "notify-four");
+    expect(
+      await registerNotification(env.DB, configuration, {
+        requestId: "req_notify000004",
+        email: "victim@example.com",
+        nowMs: 300,
+      }),
+    ).toBe("unavailable");
+    expect(
+      await env.DB.prepare(
+        "SELECT request_id FROM scan_notifications WHERE request_id = ?",
+      )
+        .bind("req_notify000004")
+        .first(),
+    ).toBeNull();
   });
 });

@@ -16,6 +16,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   ZIZMOR_BROKER_MANIFEST,
+  ZIZMOR_EXCLUDED_ONLINE_AUDITS,
   ZIZMOR_INPUT_LIMITS,
   ZIZMOR_LINUX_ARCHIVE_SHA256,
   ZIZMOR_LINUX_BINARY_SHA256,
@@ -133,11 +134,24 @@ describe("pinned Zizmor adapter", () => {
       ),
     ).toHaveLength(ZIZMOR_VARIANTS.length);
     expect(ZIZMOR_BROKER_MANIFEST).toHaveLength(ZIZMOR_VARIANTS.length);
+    expect(ZIZMOR_EXCLUDED_ONLINE_AUDITS).toEqual([
+      "impostor-commit",
+      "known-vulnerable-actions",
+      "ref-confusion",
+      "stale-action-refs",
+    ]);
+    expect(
+      ZIZMOR_VARIANTS.some(({ ident }) =>
+        ZIZMOR_EXCLUDED_ONLINE_AUDITS.includes(
+          ident as (typeof ZIZMOR_EXCLUDED_ONLINE_AUDITS)[number],
+        ),
+      ),
+    ).toBe(false);
     expect(
       createHash("sha256")
         .update(JSON.stringify(ZIZMOR_VARIANTS))
         .digest("hex"),
-    ).toBe("7e9ab8aba9dd2fbd8e62d1cd143fcbfdd467931a8eb88d4956a57e353ad5de78");
+    ).toBe("11f654f42049951e2e5acaed5294cde677546679bb0444a90b444fe860986504");
     expect(zizmorVariantToken("target-invented-rule", "High", "High")).toBeNull();
   });
 

@@ -85,7 +85,6 @@ export interface ApiOptions {
   readonly publicCapabilities?: {
     readonly scanCreation: "private_preview" | "public";
     readonly emailNotifications: boolean;
-    readonly scanEtaMinutes: { readonly min: number; readonly max: number };
   };
   readonly operatorMode?: boolean;
   readonly bindHost?: string;
@@ -224,11 +223,24 @@ async function processDiscovery(
 /** Replays durable accepted/discovering rows after a local-runtime restart. */
 export async function resumePendingDiscoveries(
   options: DiscoveryProcessingOptions,
-  limit = 100,
+  pageSize = 100,
+  maximumRequests = Number.POSITIVE_INFINITY,
 ): Promise<number> {
+  if (
+    !Number.isSafeInteger(pageSize) ||
+    pageSize < 1 ||
+    pageSize > 100 ||
+    (!Number.isSafeInteger(maximumRequests) && maximumRequests !== Number.POSITIVE_INFINITY) ||
+    maximumRequests < 1
+  ) {
+    throw new Error("invalid discovery recovery bound");
+  }
   const attempted = new Set<OpaqueId>();
-  while (true) {
-    const pending = await options.store.listPendingDiscoveryRequests(limit);
+  while (attempted.size < maximumRequests) {
+    const remaining = maximumRequests - attempted.size;
+    const pending = await options.store.listPendingDiscoveryRequests(
+      Math.min(pageSize, remaining),
+    );
     if (pending.length === 0) return attempted.size;
     for (const request of pending) {
       if (attempted.has(request.requestId)) {
@@ -240,6 +252,7 @@ export async function resumePendingDiscoveries(
       await processDiscovery(options, request.requestId, request.username);
     }
   }
+  return attempted.size;
 }
 
 export function createApi(options: ApiOptions): Hono {
@@ -301,7 +314,6 @@ export function createApi(options: ApiOptions): Hono {
                 ? "public"
                 : "private_preview",
             emailNotifications: options.registerNotification !== undefined,
-            scanEtaMinutes: { min: 2, max: 5 },
           }),
         },
       ),

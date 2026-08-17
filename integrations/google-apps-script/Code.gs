@@ -74,24 +74,46 @@ function doPost(event) {
     var lock = LockService.getScriptLock();
     if (!lock.tryLock(5000)) return jsonResponse({ ok: false });
     try {
-      var cache = CacheService.getScriptCache();
-      var replayKey = "sent:" + body.requestId;
-      if (cache.get(replayKey) === "1") return jsonResponse({ ok: true });
-      if (MailApp.getRemainingDailyQuota() < 10) return jsonResponse({ ok: false });
-      MailApp.sendEmail({
-        to: body.recipient,
-        subject: "Your repository security report is ready",
-        body:
-          "Your public, source-blind repository security report is ready:\n\n" +
-          body.reportUrl +
-          "\n\nThe report never includes secret values, source snippets, or repository paths.",
-        htmlBody:
-          "<p>Your public, source-blind repository security report is ready.</p>" +
-          '<p><a href="' + body.reportUrl + '">Open the report</a></p>' +
-          "<p>The report never includes secret values, source snippets, or repository paths.</p>",
-        name: "Repository security report",
+      var deliveryProperty = "DELIVERY_MARKERS_V1";
+      var markerText = properties.getProperty(deliveryProperty) || "{}";
+      var markers = JSON.parse(markerText);
+      if (!markers || Array.isArray(markers) || typeof markers !== "object") {
+        return jsonResponse({ ok: false });
+      }
+      var cutoff = Date.now() - 24 * 60 * 60 * 1000;
+      Object.keys(markers).forEach(function (requestId) {
+        if (typeof markers[requestId] !== "number" || markers[requestId] < cutoff) {
+          delete markers[requestId];
+        }
       });
-      cache.put(replayKey, "1", 21600);
+      if (typeof markers[body.requestId] === "number") {
+        return jsonResponse({ ok: true });
+      }
+      if (MailApp.getRemainingDailyQuota() < 10) return jsonResponse({ ok: false });
+      // Persist the marker before the external send. This chooses at-most-once
+      // delivery across lost HTTP responses; a process crash may omit mail but
+      // cannot turn a retry into duplicate mail.
+      markers[body.requestId] = Date.now();
+      properties.setProperty(deliveryProperty, JSON.stringify(markers));
+      try {
+        MailApp.sendEmail({
+          to: body.recipient,
+          subject: "Your repository security report is ready",
+          body:
+            "Your public, source-blind repository security report is ready:\n\n" +
+            body.reportUrl +
+            "\n\nThe report never includes secret values, source snippets, or repository paths.",
+          htmlBody:
+            "<p>Your public, source-blind repository security report is ready.</p>" +
+            '<p><a href="' + body.reportUrl + '">Open the report</a></p>' +
+            "<p>The report never includes secret values, source snippets, or repository paths.</p>",
+          name: "Repository security report",
+        });
+      } catch (sendError) {
+        delete markers[body.requestId];
+        properties.setProperty(deliveryProperty, JSON.stringify(markers));
+        throw sendError;
+      }
       return jsonResponse({ ok: true });
     } finally {
       lock.releaseLock();

@@ -19,7 +19,7 @@
         <span id="product-name">Security ledger</span>
       </a>
       <div class="header-actions">
-        <span class="cost-badge">$0 · open source</span>
+        <span class="cost-badge">$0 · private preview</span>
         <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle color theme" aria-pressed="false">◐</button>
       </div>
     </header>
@@ -54,9 +54,9 @@
             <div id="email-option" class="email-option" hidden>
               <label for="email">Email me when the report is ready <span>(optional)</span></label>
               <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" />
-              <p>One report-ready email. The address is encrypted, never shown, and deleted after delivery or final failure.</p>
+              <p>At most one best-effort report-ready email. The address is encrypted, never shown, and deleted after delivery or final failure.</p>
             </div>
-            <p class="form-note" id="service-note">No install. No card. No target code is executed. Typical 20-repository scans take about 2–5 minutes when a worker is available.</p>
+            <p class="form-note" id="service-note">Private production preview: scan creation is limited while the public isolation worker is commissioned.</p>
           </form>
         </div>
 
@@ -106,7 +106,7 @@
         <div class="table-shell" tabindex="0" aria-label="Scrollable repository coverage table">
           <table>
             <thead>
-              <tr><th>Repository</th><th>State</th><th>Snapshot</th><th>Guard</th><th>Secrets</th><th>Dependencies</th><th>Workflows</th><th>Source rules</th></tr>
+              <tr><th>Repository</th><th>State</th><th>Snapshot</th><th>Guard</th><th>Secrets</th><th>Dependencies</th><th>Workflows (offline)</th><th>Source rules</th></tr>
             </thead>
             <tbody id="repository-rows"></tbody>
           </table>
@@ -141,7 +141,7 @@
 
     <footer>
       <p><strong>Public report:</strong> visible without login, retained for 30 days; raw source and secret values are never shown. <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
-      <p id="footer-name">Free and open source.</p>
+      <p id="footer-name">Private release preview.</p>
     </footer>
   </body>
 </html>

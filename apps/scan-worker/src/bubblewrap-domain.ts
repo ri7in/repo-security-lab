@@ -43,6 +43,15 @@ export interface BubblewrapDomainOptions {
   readonly runCommand?: ScannerCommandRunner;
 }
 
+interface VerifiedIsolationPaths {
+  readonly bubblewrap: string;
+  readonly node: string;
+  readonly applicationBundle: string;
+  readonly gitleaksBinary: string;
+  readonly gitleaksConfig: string;
+  readonly gitleaksIgnore: string;
+}
+
 async function trustedPath(
   filename: string,
   kind: "file" | "directory",
@@ -83,6 +92,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
   readonly #runCommand: ScannerCommandRunner;
   #verified: Promise<void> | null = null;
   #isVerified = false;
+  #verifiedPaths: VerifiedIsolationPaths | null = null;
   #runtimeLibraryMounts: readonly {
     readonly source: string;
     readonly target: string;
@@ -123,19 +133,37 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     } catch (error) {
       this.#verified = null;
       this.#isVerified = false;
+      this.#verifiedPaths = null;
+      this.#runtimeLibraryMounts = [];
+      this.#verifiedZizmorBinary = null;
       throw error;
     }
   }
 
   async #verifyOnce(): Promise<void> {
-    await Promise.all([
-      trustedPath(this.#options.bubblewrapPath, "file"),
-      trustedPath(this.#options.nodePath, "file"),
+    const [
+      bubblewrap,
+      node,
+      applicationBundle,
+      gitleaksBinary,
+      gitleaksConfig,
+      gitleaksIgnore,
+    ] = await Promise.all([
+      trustedPath(this.#options.bubblewrapPath, "file", true),
+      trustedPath(this.#options.nodePath, "file", true),
       trustedPath(this.#options.applicationBundlePath, "file"),
       trustedPath(this.#options.gitleaksBinaryPath, "file"),
       trustedPath(this.#options.gitleaksConfigPath, "file"),
       trustedPath(this.#options.gitleaksIgnorePath, "file"),
     ]);
+    this.#verifiedPaths = Object.freeze({
+      bubblewrap,
+      node,
+      applicationBundle,
+      gitleaksBinary,
+      gitleaksConfig,
+      gitleaksIgnore,
+    });
     this.#verifiedZizmorBinary =
       this.#options.zizmorBinaryPath === undefined
         ? null
@@ -152,7 +180,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       })),
     );
     const version = await this.#runCommand(
-      this.#options.bubblewrapPath,
+      this.#verifiedPaths.bubblewrap,
       ["--version"],
       {
         cwd: "/",
@@ -167,7 +195,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     const outputDirectory = await mkdtemp(path.join(tmpdir(), "repo-security-probe-"));
     try {
       await this.#runCommand(
-        this.#options.bubblewrapPath,
+        this.#verifiedPaths.bubblewrap,
         [
           ...this.#baseArguments(outputDirectory),
           "--chdir",
@@ -192,6 +220,9 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
   }
 
   #baseArguments(outputDirectory: string): string[] {
+    if (this.#verifiedPaths === null) {
+      throw new Error("isolation paths are not verified");
+    }
     const zizmorEnvironment =
       this.#verifiedZizmorBinary !== null &&
       this.#options.zizmorSha256 !== undefined
@@ -244,19 +275,19 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       "--dir",
       "/work",
       "--ro-bind",
-      this.#options.nodePath,
+      this.#verifiedPaths.node,
       "/runtime/bin/node",
       "--ro-bind",
-      this.#options.applicationBundlePath,
+      this.#verifiedPaths.applicationBundle,
       "/app/scan-domain.mjs",
       "--ro-bind",
-      this.#options.gitleaksBinaryPath,
+      this.#verifiedPaths.gitleaksBinary,
       "/tools/gitleaks",
       "--ro-bind",
-      this.#options.gitleaksConfigPath,
+      this.#verifiedPaths.gitleaksConfig,
       "/config/gitleaks.toml",
       "--ro-bind",
-      this.#options.gitleaksIgnorePath,
+      this.#verifiedPaths.gitleaksIgnore,
       "/config/gitleaks.ignore",
       "--bind",
       outputDirectory,
@@ -284,8 +315,11 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     outputDirectory: string,
   ): Promise<unknown> {
     await this.verify();
+    if (this.#verifiedPaths === null) {
+      throw new Error("isolation paths are not verified");
+    }
     await this.#runCommand(
-      this.#options.bubblewrapPath,
+      this.#verifiedPaths.bubblewrap,
       [
         ...this.#baseArguments(outputDirectory),
         ...argumentsList,

@@ -5,7 +5,7 @@
 > project owner. All branding lives in `packages/branding` and renaming is
 > mechanical — see `docs/maintenance.md`.
 
-Free, open-source, privacy-preserving security reports for all public
+Zero-cost, privacy-preserving security reports for all public
 repositories of a GitHub account. A visitor enters a GitHub username; a
 backend agent system attempts every owned public repository and returns one
 clear combined report with exact per-repository, per-specialist coverage.
@@ -27,10 +27,15 @@ Current guarantees:
 - Gitleaks and Zizmor have exact version/hash pins, strict adapters, and
   source-blind manifests. Zizmor remains runtime-default-off outside the Linux
   scan domain and cannot silently claim coverage.
-- Optional report email uses an encrypted one-shot queue. The no-domain Gmail
-  adapter stays hidden until its owner secrets are configured.
-- Public reports expire 30 days after their terminal update; privacy and
-  acceptable-use policies ship with the site.
+- Optional private-preview report email uses an encrypted one-shot queue and
+  one operator-controlled address. Public scanning disables it until a
+  recipient-consent flow exists.
+- Abandoned active reports fail after 24 hours, and terminal reports expire 30
+  days after their last update; privacy and acceptable-use policies ship with
+  the site.
+- Global admission is capped at 240 reports per UTC day, below the 288/day
+  retention drain. Scan admission stops at 40% of the D1 Free allowance;
+  privacy maintenance has a protected band up to 60%.
 - The AI lane currently exists only as typed contracts and deterministic
   fixture tagging. No model client exists in the dependency graph, and no
   repository byte can reach any model. The configured Groq and Gemini keys

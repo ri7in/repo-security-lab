@@ -12,6 +12,14 @@ export const ZIZMOR_LINUX_ARM64_ARCHIVE_SHA256 =
 export const ZIZMOR_LINUX_ARM64_BINARY_SHA256 =
   "774a1b9fa2514a5645a9cf7f374f24bd538468436db1be1dd76000ffa8567902";
 
+/** Audits omitted because upstream documents them as requiring online access. */
+export const ZIZMOR_EXCLUDED_ONLINE_AUDITS = Object.freeze([
+  "impostor-commit",
+  "known-vulnerable-actions",
+  "ref-confusion",
+  "stale-action-refs",
+] as const);
+
 type Variant = readonly [ZizmorSeverity, ZizmorConfidence];
 type Declaration = readonly [string, readonly Variant[]];
 
@@ -72,7 +80,6 @@ const DECLARATIONS = [
   ],
   ["github-env", [["High", "Low"]]],
   ["hardcoded-container-credentials", [["High", "High"]]],
-  ["impostor-commit", [["High", "High"]]],
   [
     "insecure-commands",
     [
@@ -81,14 +88,6 @@ const DECLARATIONS = [
     ],
   ],
   ["insecure-url-scheme", [["High", "High"]]],
-  [
-    "known-vulnerable-actions",
-    [
-      ["Low", "High"],
-      ["Medium", "High"],
-      ["High", "High"],
-    ],
-  ],
   ["misfeature", [["Low", "High"]]],
   [
     "obfuscation",
@@ -98,7 +97,6 @@ const DECLARATIONS = [
     ],
   ],
   ["overprovisioned-secrets", [["Medium", "High"]]],
-  ["ref-confusion", [["Medium", "High"]]],
   [
     "ref-version-mismatch",
     [
@@ -115,7 +113,6 @@ const DECLARATIONS = [
       ["Medium", "High"],
     ],
   ],
-  ["stale-action-refs", [["Low", "High"]]],
   [
     "superfluous-actions",
     [

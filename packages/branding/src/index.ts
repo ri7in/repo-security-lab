@@ -19,7 +19,7 @@ export const branding = {
   tagline: "One clear security report for every public repository you own.",
   /** Longer description for README/package metadata surfaces. */
   description:
-    "Free, open-source, privacy-preserving security reports covering all public repositories of a GitHub account. Deterministic findings are immutable evidence; target code is never executed.",
+    "Zero-cost, privacy-preserving security reports covering all public repositories of a GitHub account. Deterministic findings are immutable evidence; target code is never executed.",
   /** Canonical repository URL (private during development). */
   repoUrl: "https://github.com/ri7in/repo-security-lab",
   /** True until Rivin selects the final name (D-020). */

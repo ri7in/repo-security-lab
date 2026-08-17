@@ -233,7 +233,8 @@ Zizmor 1.29.0 is pinned by source commit plus Linux archive/binary hashes. The
 adapter copies only bounded workflow YAML into a renamed staging tree, forces
 offline/no-config/no-ignore regular-persona JSON mode, closes exit semantics,
 and discards every description, URL, location, fix, and ignored field. Only a
-reviewed 40-rule/67-variant numeric vocabulary crosses the broker. Multiple
+reviewed 36-audit/61-variant offline numeric vocabulary crosses the broker. The
+four upstream audits documented as online-only are explicitly excluded. Multiple
 severity/confidence variants for one audit are legal in the manifest, but two
 variants for one audit in one packet reject. OSV and Opengrep remain deferred
 until their offline database/rules, memory, provenance, and Linux gates pass.
@@ -242,15 +243,17 @@ until their offline database/rules, memory, provenance, and Linux gates pass.
 
 **Status:** accepted implementation, owner setup pending (2026-08-17)
 
-Scanning and report viewing never depend on email. When three notification
-secrets are configured together, the API accepts one optional normalized
-address, encrypts it with AES-GCM, enforces one recipient and 80 total messages
-per rolling day in code and D1, and sends only after a request is terminal. The
-fixed HMAC-signed relay carries one recipient and public report URL. The
-no-domain adapter uses a dedicated consumer Gmail account via Apps Script
-MailApp; its 100-recipient quota leaves a 20-message reserve. Ciphertext and IV
-are erased after success or final failure. Resend remains dormant because its
-test domain cannot deliver arbitrary recipients.
+Scanning and report viewing never depend on email. During the private preview,
+four notification secrets bind the queue to one operator-controlled address.
+The address is encrypted with AES-GCM, one recipient and 80 total messages per
+rolling day are enforced in code and D1, and delivery starts only after a
+request is terminal. The fixed HMAC-signed relay carries one recipient and
+public report URL. Apps Script persists a bounded replay marker before MailApp,
+choosing best-effort at-most-once delivery across lost responses. Its
+100-recipient consumer quota leaves a 20-message reserve. Ciphertext and IV are
+erased after success or final failure. Public scanning structurally disables
+email until recipient consent can be verified. Resend remains dormant because
+its test domain cannot deliver arbitrary recipients.
 
 ## ADR-018: public reports have bounded reads and 30-day retention
 
@@ -258,8 +261,16 @@ test domain cannot deliver arbitrary recipients.
 
 Summary polling uses ETags and a three-second backoff; active scans fetch at
 most the first 100 ledger rows, while terminal reports paginate the complete
-ledger. Public reads have a dedicated edge rate limit. A bounded cron batch
-deletes terminal requests older than 30 days, cascading to ledgers, findings,
-reservations, and notification metadata. The site exposes the last update plus
-plain privacy and acceptable-use pages. Active jobs are not age-deleted because
-lease recovery must terminalize them first.
+ledger. Public reads have a dedicated edge rate limit. A budget-reserved cron
+task first terminalizes one active request abandoned for 24 hours, invalidates
+its leases, and erases queued recipient ciphertext. A second budget-reserved
+task deletes one terminal request older than 30 days, cascading to ledgers,
+findings, reservations, and notification metadata. The site exposes the last
+update plus plain privacy and acceptable-use pages. Scan admission closes at
+40,000 modeled writes per UTC day; privacy maintenance can reserve through
+60,000, leaving 40% of the D1 Free daily allowance for indexes and other
+unmodeled writes. Global admission is capped at 240 requests per UTC day, below
+the 288-per-day purge and stale-expiry throughput of the five-minute cron, so
+sustained accepted intake cannot outrun cleanup. Cron runs privacy maintenance
+before recovery, which is bounded to three requests per invocation to remain
+below D1's 50-query cap.

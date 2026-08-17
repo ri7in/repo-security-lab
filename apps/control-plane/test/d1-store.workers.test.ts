@@ -260,7 +260,7 @@ describe("D1 store in workerd", () => {
     await store.createRequest({ requestId, username: "reserve-user", nowMs: 1 });
     await store.startDiscovery(requestId, 2);
     await env.DB.prepare(
-      "INSERT INTO write_budget(utc_day, modeled_writes) VALUES ('1970-01-02', 79999)",
+      "INSERT INTO write_budget(utc_day, modeled_writes) VALUES ('1970-01-02', 39999)",
     ).run();
     await expect(store.completeDiscovery({
       requestId,
@@ -285,14 +285,14 @@ describe("D1 store in workerd", () => {
       await env.DB.prepare(
         "SELECT modeled_writes FROM write_budget WHERE utc_day = '1970-01-02'",
       ).first<number>("modeled_writes"),
-    ).toBe(79_999);
+    ).toBe(39_999);
   });
 
   it("refuses request creation atomically when base writes cannot be reserved", async ({ expect }) => {
     const store = new D1Store(env.DB);
     const requestId = "req_d1basecap001";
     await env.DB.prepare(
-      "INSERT INTO write_budget(utc_day, modeled_writes) VALUES ('1970-01-03', 79999)",
+      "INSERT INTO write_budget(utc_day, modeled_writes) VALUES ('1970-01-03', 39999)",
     ).run();
     await expect(store.createRequest({
       requestId,
@@ -311,7 +311,32 @@ describe("D1 store in workerd", () => {
       await env.DB.prepare(
         "SELECT modeled_writes FROM write_budget WHERE utc_day = '1970-01-03'",
       ).first<number>("modeled_writes"),
-    ).toBe(79_999);
+    ).toBe(39_999);
+  });
+
+  it("caps daily admission below retention cleanup throughput", async ({ expect }) => {
+    const store = new D1Store(env.DB);
+    await env.DB.prepare(
+      "INSERT INTO daily_request_admission(utc_day, accepted_requests) VALUES ('1970-01-04', 239)",
+    ).run();
+    await store.createRequest({
+      requestId: "req_dailycap0001",
+      username: "daily-cap-one",
+      nowMs: 3 * 86_400_000,
+    });
+    await expect(
+      store.createRequest({
+        requestId: "req_dailycap0002",
+        username: "daily-cap-two",
+        nowMs: 3 * 86_400_000 + 1,
+      }),
+    ).rejects.toBeInstanceOf(StoreWriteReserveError);
+    expect(await store.getRequest("req_dailycap0002")).toBeNull();
+    expect(
+      await env.DB.prepare(
+        "SELECT accepted_requests FROM daily_request_admission WHERE utc_day = '1970-01-04'",
+      ).first<number>("accepted_requests"),
+    ).toBe(240);
   });
 
   it("rolls back the whole ledger when the immutable account binding conflicts", async ({ expect }) => {
