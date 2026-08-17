@@ -128,7 +128,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends bubblewrap
           test "$(stat --format='%U:%G:%a' /usr/bin/bwrap)" = "root:root:755"
+          node_binary="$(realpath "$(command -v node)")"
+          chmod go-w \
+            "$node_binary" \
+            "$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.toml" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.ignore"
+          for trusted_file in \
+            "$node_binary" \
+            "$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.toml" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.ignore"; do
+            test "$(( 8#$(stat --format='%a' "$trusted_file") & 8#22 ))" -eq 0
+          done
           echo "BUBBLEWRAP_BINARY=/usr/bin/bwrap" >> "$GITHUB_ENV"
+          echo "SCAN_NODE_BINARY=$node_binary" >> "$GITHUB_ENV"
           echo "SCAN_DOMAIN_BUNDLE=$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" >> "$GITHUB_ENV"
           echo "SCAN_RUNTIME_LIBRARY_PATHS=/lib/x86_64-linux-gnu,/usr/lib/x86_64-linux-gnu,/lib64" >> "$GITHUB_ENV"
 

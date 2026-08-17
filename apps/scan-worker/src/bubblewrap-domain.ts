@@ -56,11 +56,12 @@ async function trustedPath(
   filename: string,
   kind: "file" | "directory",
   allowSymlink = false,
+  label = "job-input",
 ): Promise<string> {
-  if (!path.isAbsolute(filename)) throw new Error("invalid isolation path");
+  if (!path.isAbsolute(filename)) throw new Error(`invalid isolation path:${label}`);
   const suppliedMetadata = await lstat(filename);
   if (!allowSymlink && suppliedMetadata.isSymbolicLink()) {
-    throw new Error("invalid isolation path");
+    throw new Error(`invalid isolation path:${label}`);
   }
   const resolved = await realpath(filename);
   const metadata = await lstat(resolved);
@@ -69,7 +70,7 @@ async function trustedPath(
     (metadata.mode & 0o022) !== 0 ||
     (kind === "file" ? !metadata.isFile() : !metadata.isDirectory())
   ) {
-    throw new Error("invalid isolation path");
+    throw new Error(`invalid isolation path:${label}`);
   }
   return resolved;
 }
@@ -149,12 +150,12 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       gitleaksConfig,
       gitleaksIgnore,
     ] = await Promise.all([
-      trustedPath(this.#options.bubblewrapPath, "file", true),
-      trustedPath(this.#options.nodePath, "file", true),
-      trustedPath(this.#options.applicationBundlePath, "file"),
-      trustedPath(this.#options.gitleaksBinaryPath, "file"),
-      trustedPath(this.#options.gitleaksConfigPath, "file"),
-      trustedPath(this.#options.gitleaksIgnorePath, "file"),
+      trustedPath(this.#options.bubblewrapPath, "file", true, "bubblewrap"),
+      trustedPath(this.#options.nodePath, "file", true, "node"),
+      trustedPath(this.#options.applicationBundlePath, "file", false, "bundle"),
+      trustedPath(this.#options.gitleaksBinaryPath, "file", false, "gitleaks"),
+      trustedPath(this.#options.gitleaksConfigPath, "file", false, "config"),
+      trustedPath(this.#options.gitleaksIgnorePath, "file", false, "ignore"),
     ]);
     this.#verifiedPaths = Object.freeze({
       bubblewrap,
@@ -167,10 +168,10 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     this.#verifiedZizmorBinary =
       this.#options.zizmorBinaryPath === undefined
         ? null
-        : await trustedPath(this.#options.zizmorBinaryPath, "file");
+        : await trustedPath(this.#options.zizmorBinaryPath, "file", false, "zizmor");
     const runtimeSources = await Promise.all(
       this.#options.runtimeLibraryPaths.map((entry) =>
-        trustedPath(entry, "directory", true),
+        trustedPath(entry, "directory", true, "runtime-library"),
       ),
     );
     this.#runtimeLibraryMounts = Object.freeze(

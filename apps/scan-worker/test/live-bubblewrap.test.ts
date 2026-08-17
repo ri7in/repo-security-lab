@@ -12,6 +12,7 @@ const gitleaksPath = process.env["GITLEAKS_BINARY"];
 const gitleaksHash = process.env["GITLEAKS_SHA256"];
 const zizmorPath = process.env["ZIZMOR_BINARY"];
 const zizmorHash = process.env["ZIZMOR_SHA256"];
+const nodePath = process.env["SCAN_NODE_BINARY"] ?? process.execPath;
 const runtimeLibraryPaths = (process.env["SCAN_RUNTIME_LIBRARY_PATHS"] ?? "")
   .split(",")
   .filter((entry) => entry !== "");
@@ -93,7 +94,7 @@ test.skipIf(
 
     const domain = new BubblewrapRepositoryScanDomain({
       bubblewrapPath,
-      nodePath: process.execPath,
+      nodePath,
       applicationBundlePath: bundlePath,
       gitleaksBinaryPath: gitleaksPath,
       gitleaksConfigPath: path.resolve("packages/scanners/config/gitleaks.toml"),
