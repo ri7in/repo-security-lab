@@ -233,6 +233,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       "--die-with-parent",
       "--new-session",
       "--unshare-all",
+      "--unshare-user",
       "--disable-userns",
       "--cap-drop",
       "ALL",

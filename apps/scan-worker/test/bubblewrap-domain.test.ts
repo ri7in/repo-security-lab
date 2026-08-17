@@ -128,6 +128,7 @@ describe("bubblewrap scan domain", () => {
     expect(sandboxCalls).toHaveLength(3);
     for (const args of sandboxCalls) {
       expect(args).toContain("--unshare-all");
+      expect(args).toContain("--unshare-user");
       expect(args).toContain("--disable-userns");
       expect(args).toContain("--clearenv");
       expect(args).toContain("/tools/zizmor");
