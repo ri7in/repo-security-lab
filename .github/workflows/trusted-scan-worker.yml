@@ -1,0 +1,71 @@
+name: trusted-scan-worker
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 * * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trusted-scan-worker
+  cancel-in-progress: false
+
+jobs:
+  drain-private-queue:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out trusted worker revision
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
+        with:
+          version: 10.33.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Download pinned Gitleaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/gitleaks_8.30.1_linux_x64.tar.gz"
+          tool_dir="$RUNNER_TEMP/gitleaks-8.30.1"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            --output "$archive" \
+            https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz
+          echo "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb  $archive" | sha256sum --check --strict
+          mkdir --mode=0700 "$tool_dir"
+          tar --extract --gzip --file "$archive" --directory "$tool_dir" gitleaks
+          echo "88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509  $tool_dir/gitleaks" | sha256sum --check --strict
+          chmod 0700 "$tool_dir/gitleaks"
+          echo "GITLEAKS_BINARY=$tool_dir/gitleaks" >> "$GITHUB_ENV"
+          echo "GITLEAKS_SHA256=88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509" >> "$GITHUB_ENV"
+
+      - name: Drain queued private-slice scans
+        env:
+          CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL }}
+          WORKER_ID: worker_github_actions_01
+          WORKER_KEY_GENERATION: "1"
+          WORKER_SECRET: ${{ secrets.SCAN_WORKER_SECRET }}
+          GITHUB_TOKEN: ${{ secrets.SCAN_GITHUB_TOKEN }}
+          PRIVATE_SLICE_ACCOUNT_IDS: "121791882"
+          SCRATCH_PATH: ${{ runner.temp }}/repo-security-scratch
+          MAX_JOBS_PER_TICK: "50"
+          RUN_ONCE: "true"
+        run: pnpm dev:worker

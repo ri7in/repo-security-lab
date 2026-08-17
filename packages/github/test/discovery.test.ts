@@ -298,6 +298,28 @@ describe("REST fallback discovery", () => {
 });
 
 describe("fixed failures", () => {
+  it("does not rebind the Fetch receiver in standards-strict runtimes", async () => {
+    const receivers: unknown[] = [];
+    const fetchImpl: typeof fetch = async function (this: unknown, input) {
+      receivers.push(this);
+      return requestUrl(input).endsWith("/users/ri7in")
+        ? jsonResponse({
+            id: 123,
+            login: "ri7in",
+            type: "User",
+            public_repos: 0,
+          })
+        : jsonResponse([]);
+    };
+
+    const result = await new GithubDiscoveryClient({ fetchImpl }).discover(
+      "ri7in",
+    );
+
+    expect(result.account.repositories).toEqual([]);
+    expect(receivers).toEqual([undefined, undefined]);
+  });
+
   it("refuses non-HTTPS or credential-bearing configured endpoints", () => {
     for (const options of [
       { graphqlUrl: "http://api.github.test/graphql" },

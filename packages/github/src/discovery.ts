@@ -16,6 +16,15 @@ const MAX_JSON_BYTES = 2 * 1_024 * 1_024;
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const strictJsonDecoder = new TextDecoder("utf-8", { fatal: true });
 
+function reportGithubFailure(
+  stage: string,
+  details: Readonly<Record<string, string | number>>,
+): void {
+  console.error(
+    JSON.stringify({ event: "github_discovery_failure", stage, ...details }),
+  );
+}
+
 const safeGithubIdSchema = z.number().int().nonnegative().safe();
 
 const graphRepositorySchema = z.object({
@@ -260,6 +269,10 @@ export class GithubDiscoveryClient {
       );
       const parsed = graphResponseSchema.safeParse(response.body);
       if (!parsed.success) {
+        reportGithubFailure("graphql_schema", {
+          issueCode: parsed.error.issues[0]?.code ?? "unknown",
+          issuePath: parsed.error.issues[0]?.path.join(".") ?? "unknown",
+        });
         throw new GithubClientError("INVALID_RESPONSE");
       }
       if (parsed.data.errors !== undefined && parsed.data.errors.length > 0) {
@@ -269,6 +282,9 @@ export class GithubDiscoveryClient {
             this.#retryAfterSeconds(response.headers),
           );
         }
+        reportGithubFailure("graphql_errors", {
+          errorType: parsed.data.errors[0]?.type ?? "unknown",
+        });
         throw new GithubClientError("INVALID_RESPONSE");
       }
       if (parsed.data.data === undefined) {
@@ -458,11 +474,16 @@ export class GithubDiscoveryClient {
     }
     let response: Response;
     try {
-      response = await this.#fetch(url, {
+      const fetchImpl = this.#fetch;
+      response = await fetchImpl(url, {
         ...init,
         signal: AbortSignal.timeout(this.#requestTimeoutMs),
       });
-    } catch {
+    } catch (error) {
+      reportGithubFailure("fetch", {
+        errorName: error instanceof Error ? error.name : "unknown",
+        errorMessage: error instanceof Error ? error.message : "unknown",
+      });
       throw new GithubClientError("NETWORK_FAILED");
     }
     if (response.status === 401) {
@@ -490,6 +511,7 @@ export class GithubDiscoveryClient {
       );
     }
     if (!response.ok) {
+      reportGithubFailure("http", { status: response.status });
       await cancelBody(response);
       throw new GithubClientError("UPSTREAM_FAILED");
     }
@@ -511,7 +533,10 @@ export class GithubDiscoveryClient {
         body: JSON.parse(strictJsonDecoder.decode(bytes)) as unknown,
         headers: response.headers,
       };
-    } catch {
+    } catch (error) {
+      reportGithubFailure("json", {
+        errorName: error instanceof Error ? error.name : "unknown",
+      });
       throw new GithubClientError("INVALID_RESPONSE");
     }
   }

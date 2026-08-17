@@ -13,6 +13,7 @@ export interface ScanWorkerConfiguration {
   readonly allowedGithubAccountIds: ReadonlySet<number> | null;
   readonly pollIntervalMs: number;
   readonly maxJobsPerTick: number;
+  readonly runOnce: boolean;
 }
 
 function required(environment: NodeJS.ProcessEnv, key: string): string {
@@ -94,7 +95,8 @@ export function parseScanWorkerConfiguration(
     maxJobsPerTick: positiveInteger(
       environment["MAX_JOBS_PER_TICK"] ?? "5",
       "MAX_JOBS_PER_TICK",
-      10,
+      50,
     ),
+    runOnce: environment["RUN_ONCE"] === "true",
   };
 }

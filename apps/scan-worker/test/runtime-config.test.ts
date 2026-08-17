@@ -22,6 +22,16 @@ describe("scan worker configuration", () => {
       path.join("/srv/worker", ".data", "worker-scratch"),
     );
     expect(parsed.workerSecret).toHaveLength(43);
+    expect(parsed.runOnce).toBe(false);
+  });
+
+  it("supports a bounded one-shot process for hosted CI compute", () => {
+    const input = environment();
+    input["RUN_ONCE"] = "true";
+    input["MAX_JOBS_PER_TICK"] = "50";
+    const parsed = parseScanWorkerConfiguration(input);
+    expect(parsed.runOnce).toBe(true);
+    expect(parsed.maxJobsPerTick).toBe(50);
   });
 
   it("requires an explicit switch for the isolated public worker", () => {
