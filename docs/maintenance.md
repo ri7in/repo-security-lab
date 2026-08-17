@@ -185,6 +185,11 @@ CI installs bubblewrap and runs the same built scan-domain with planted source,
 Gitleaks, and Zizmor. A green CI proof is necessary but does not replace the
 live OCI proof.
 
+Ubuntu 24.04 also requires its packaged `bwrap-userns-restrict` AppArmor
+profile. CI and `deploy/oci/bootstrap-ubuntu.sh` install and load that narrow
+profile. Never work around a missing profile by disabling the host-wide
+`kernel.apparmor_restrict_unprivileged_userns` setting.
+
 ## Optional report email and retention
 
 The no-domain owner setup is in `integrations/google-apps-script/README.md`.

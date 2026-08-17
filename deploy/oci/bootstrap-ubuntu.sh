@@ -25,7 +25,21 @@ trap 'rm -rf "$temporary"' EXIT
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install --yes --no-install-recommends bubblewrap ca-certificates curl tar xz-utils
+apt-get install --yes --no-install-recommends \
+  apparmor-profiles \
+  apparmor-utils \
+  bubblewrap \
+  ca-certificates \
+  curl \
+  tar \
+  xz-utils
+test -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+install -o root -g root -m 0644 \
+  /usr/share/apparmor/extra-profiles/bwrap-userns-restrict \
+  /etc/apparmor.d/bwrap-userns-restrict
+apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
+grep --fixed-strings --line-regexp \
+  'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
 
 if ! id repo-security >/dev/null 2>&1; then
   useradd --system --home-dir /var/lib/repository-security --shell /usr/sbin/nologin repo-security

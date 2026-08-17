@@ -8,6 +8,11 @@ environment, read-only trusted tools, and a strict numeric output contract.
 The host bundle includes pinned Gitleaks and Zizmor ARM64 binaries; the workflow
 lane stays unavailable everywhere that cannot pass the same isolation proof.
 
+The bootstrap installs and loads Ubuntu's packaged
+`bwrap-userns-restrict` AppArmor profile. Do not disable Ubuntu's global
+`kernel.apparmor_restrict_unprivileged_userns` safeguard: the narrow profile is
+what grants Bubblewrap only the namespace operations needed by this worker.
+
 ## Owner actions
 
 1. Create or sign in to an OCI Free Tier account. The home region is permanent,
