@@ -19,7 +19,14 @@ const GITLEAKS_BINARY = "/tools/gitleaks";
 const GITLEAKS_CONFIG = "/config/gitleaks.toml";
 const GITLEAKS_IGNORE = "/config/gitleaks.ignore";
 const ZIZMOR_BINARY = "/tools/zizmor";
-const PROBE_ENVIRONMENT = ["GITLEAKS_SHA256", "HOME", "LANG", "LC_ALL", "PATH"];
+const PROBE_ENVIRONMENT = [
+  "GITLEAKS_SHA256",
+  "HOME",
+  "LANG",
+  "LC_ALL",
+  "PATH",
+  "PWD",
+];
 
 function scannerFailure(error: unknown): FailureClass {
   if (error instanceof ScannerError) {
@@ -107,7 +114,15 @@ async function probe(): Promise<void> {
   ].sort();
   const environmentClean =
     JSON.stringify(Object.keys(process.env).sort()) ===
-    JSON.stringify(allowedEnvironment);
+      JSON.stringify(allowedEnvironment) &&
+    process.env["HOME"] === "/nonexistent" &&
+    process.env["LANG"] === "C" &&
+    process.env["LC_ALL"] === "C" &&
+    process.env["PATH"] === "/runtime/bin:/tools" &&
+    process.env["PWD"] === "/work" &&
+    /^[a-f0-9]{64}$/u.test(process.env["GITLEAKS_SHA256"] ?? "") &&
+    (process.env["ZIZMOR_SHA256"] === undefined ||
+      /^[a-f0-9]{64}$/u.test(process.env["ZIZMOR_SHA256"]));
   const [networkDenied, credentialPathsHidden, outsideWriteDenied] = await Promise.all([
     networkIsDenied(),
     credentialPathsAreHidden(),

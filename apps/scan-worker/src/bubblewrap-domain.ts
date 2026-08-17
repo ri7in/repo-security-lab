@@ -199,6 +199,8 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
         this.#verifiedPaths.bubblewrap,
         [
           ...this.#baseArguments(outputDirectory),
+          "--remount-ro",
+          "/",
           "--chdir",
           "/work",
           "/runtime/bin/node",
@@ -250,6 +252,9 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       "--setenv",
       "PATH",
       "/runtime/bin:/tools",
+      "--setenv",
+      "PWD",
+      "/work",
       "--setenv",
       "GITLEAKS_SHA256",
       this.#options.gitleaksSha256,
@@ -325,6 +330,8 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
       [
         ...this.#baseArguments(outputDirectory),
         ...argumentsList,
+        "--remount-ro",
+        "/",
         "--chdir",
         "/work",
         "/runtime/bin/node",

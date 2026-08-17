@@ -131,6 +131,11 @@ describe("bubblewrap scan domain", () => {
       expect(args).toContain("--unshare-user");
       expect(args).toContain("--disable-userns");
       expect(args).toContain("--clearenv");
+      const remountIndex = args.lastIndexOf("--remount-ro");
+      expect(args[remountIndex + 1]).toBe("/");
+      expect(remountIndex).toBeGreaterThan(args.lastIndexOf("--bind"));
+      expect(remountIndex).toBeGreaterThan(args.lastIndexOf("--ro-bind"));
+      expect(remountIndex).toBeLessThan(args.lastIndexOf("--chdir"));
       expect(args).toContain("/tools/zizmor");
       expect(args).toContain("ZIZMOR_SHA256");
       expect(args.join(" ")).not.toContain("WORKER_SECRET");
