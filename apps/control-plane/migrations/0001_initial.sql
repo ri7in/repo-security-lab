@@ -91,11 +91,10 @@ BEFORE INSERT ON write_reservations
 BEGIN
   INSERT OR IGNORE INTO write_budget(utc_day, modeled_writes)
   VALUES (NEW.utc_day, 0);
-  SELECT CASE WHEN (
+  SELECT RAISE(ABORT, 'D1_WRITE_RESERVE')
+  WHERE (
     SELECT modeled_writes FROM write_budget WHERE utc_day = NEW.utc_day
-  ) + NEW.modeled_writes > 80000
-    THEN RAISE(ABORT, 'D1_WRITE_RESERVE')
-  END;
+  ) + NEW.modeled_writes > 80000;
   UPDATE write_budget
   SET modeled_writes = modeled_writes + NEW.modeled_writes
   WHERE utc_day = NEW.utc_day;
