@@ -12,8 +12,9 @@ clear combined report with exact per-repository, per-specialist coverage.
 
 **Private production preview.** The website and D1 control plane are live at
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
-The authenticated pull worker is implemented, but public third-party scanning
-is still disabled until the account and isolation gates below are satisfied.
+Authenticated discovery and the pull worker are implemented and live-proven
+against Rivin's account. Public third-party scanning is still disabled until
+the owner-proof and isolated-compute gates below are satisfied.
 Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
@@ -92,10 +93,12 @@ pnpm dev:web
 The Cloudflare deployment is intentionally fail-closed by default:
 `PUBLIC_SCANNING_ENABLED=false`. D1 is provisioned and migrated in APAC, the
 preview is bound to GitHub account ID `121791882`, and static/API responses pass
-through the same security-header boundary. A dedicated no-scope GitHub
-discovery credential, GitHub OAuth app, and one trusted worker identity remain
-to be installed. Third-party accounts stay refused until the documented
-isolated-compute gate passes. See `docs/maintenance.md` for the release runbook.
+through the same security-header boundary. The dedicated discovery credential,
+signed worker identity, and first 22-repository live proof are installed. The
+remaining account gate is the GitHub OAuth app for owner-only findings; the
+remaining compute gate is a continuously available, terms-compatible isolated
+worker. Third-party accounts stay refused until both gates pass. See
+`docs/maintenance.md` for the release runbook.
 `OPERATOR_MODE=true` enables the source-blind findings table only on loopback;
 without it, the browser receives coverage/status and the findings route is
 absent.

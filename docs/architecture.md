@@ -126,9 +126,11 @@ The current deployment URL is published in `README.md` and is backed by the
 APAC D1 database recorded in `wrangler.jsonc`. Static assets run through the
 Worker before the Assets binding so the same CSP, HSTS, frame, referrer, and
 cross-origin policies cover the homepage and API. A live private-scope smoke
-test proved third-party admission returns `PRIVATE_SLICE_SCOPE`; GitHub's
-anonymous REST path failed from the Worker, so discovery stays visibly failed
-until a dedicated no-scope credential is installed.
+test proved third-party admission returns `PRIVATE_SLICE_SCOPE`. The
+authenticated GraphQL path now discovers all 22 owned public repositories. The
+initial production failure was traced to native Worker `fetch` being invoked
+with the wrong receiver; the fixed unbound call has a regression test and the
+deployed path is green.
 
 Vercel is authenticated as the owner's personal account and remains an
 isolated-compute candidate because Sandbox provides Firecracker microVMs and
@@ -158,7 +160,8 @@ deny-all scan phase, source-blind output, and lifecycle proof remain required.
 
 - Enforced Linux privilege separation, no-network sandboxing, cgroups, tmpfs,
   crash/reboot cleanup, and swap policy.
-- Live Cloudflare account/D1 creation and exact deployed-SHA smoke proof.
+- Continuously available, terms-compatible zero-cost isolated scan compute;
+  the manual Actions proof is not a production backend.
 - GitHub OAuth application registration and callback proof on the live origin.
 - Project-attested scanner build provenance; a release hash pin is identity,
   not provenance.

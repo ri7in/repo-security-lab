@@ -74,6 +74,16 @@ plus `/auth/github/callback`. Install GitHub credentials only through Wrangler
 secrets; never commit them. The trusted scan worker uses the signed internal
 protocol, and the current implementation is not a public multi-tenant sandbox.
 
+The dedicated public-data discovery token, worker-auth master secret, and
+generation-1 `worker_github_actions_01` identity are installed. Live request
+`req_9459e1e0850982b19ae14e2af03c2140` discovered all 22 repositories and a
+manual hosted validation drained the queue in 1 minute 46 seconds: 16 complete,
+four owner-excluded forks, two honest `ARCHIVE_LIMIT` failures, and three
+source-blind findings across three repositories. The manual workflow has no
+schedule and is development/test evidence only. GitHub's current Actions terms
+warn against using hosted Actions as part of a serverless application, so it is
+not the continuous production compute boundary.
+
 CI additionally downloads the exact SHA-256-pinned zizmor 1.29.0 release and
 audits this repository's workflow/config definitions offline with target
 configuration and ignores disabled. A clean JSON-v1 array is required. This is
