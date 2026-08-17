@@ -10,9 +10,10 @@ repositories of a GitHub account. A visitor enters a GitHub username; a
 backend agent system attempts every owned public repository and returns one
 clear combined report with exact per-repository, per-specialist coverage.
 
-**Private production preview.** The deployable website/control plane and the
-authenticated pull worker are implemented, but public third-party scanning is
-still disabled until the account and isolation gates below are satisfied.
+**Private production preview.** The website and D1 control plane are live at
+[repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
+The authenticated pull worker is implemented, but public third-party scanning
+is still disabled until the account and isolation gates below are satisfied.
 Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
@@ -89,11 +90,12 @@ pnpm dev:web
 ```
 
 The Cloudflare deployment is intentionally fail-closed by default:
-`PUBLIC_SCANNING_ENABLED=false`. Before it can be deployed, create the D1
-database, replace the placeholder database ID, configure Worker/OAuth secrets,
-and provision one worker identity. Third-party accounts remain refused until
-the documented isolated-compute gate passes. See `docs/maintenance.md` for the
-exact release runbook.
+`PUBLIC_SCANNING_ENABLED=false`. D1 is provisioned and migrated in APAC, the
+preview is bound to GitHub account ID `121791882`, and static/API responses pass
+through the same security-header boundary. A dedicated no-scope GitHub
+discovery credential, GitHub OAuth app, and one trusted worker identity remain
+to be installed. Third-party accounts stay refused until the documented
+isolated-compute gate passes. See `docs/maintenance.md` for the release runbook.
 `OPERATOR_MODE=true` enables the source-blind findings table only on loopback;
 without it, the browser receives coverage/status and the findings route is
 absent.

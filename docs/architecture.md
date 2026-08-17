@@ -1,9 +1,10 @@
 # Architecture
 
-**Status:** private production preview. The local vertical slice plus a
-Cloudflare Workers/D1 control plane, same-origin static site, owner OAuth, and
-an authenticated external pull worker are implemented and exercised. Public
-deployment awaits Cloudflare/GitHub application setup; third-party scans remain
+**Status:** private production preview. The local vertical slice plus a live
+Cloudflare Workers/D1 control plane, same-origin static site, owner OAuth
+boundary, and an authenticated external pull worker are implemented and
+exercised. The deployed preview remains bound to `ri7in`; GitHub discovery and
+owner OAuth credentials are not yet installed, and third-party scans remain
 disabled until isolated scan compute is proven.
 
 ## Product flow
@@ -120,6 +121,15 @@ PKCE state; the short-lived access token is actively revoked after `/user` and
 is never stored. `apps/scan-worker` uses a narrowed HTTPS store adapter and
 rotating HMAC identity. The server supplies all mutation timestamps, and every
 lease mutation remains generation-bound and idempotent.
+
+The current deployment is
+`https://repo-security-lab.rivinsand.workers.dev`, backed by the APAC D1
+database recorded in `wrangler.jsonc`. Static assets run through the Worker
+before the Assets binding so the same CSP, HSTS, frame, referrer, and
+cross-origin policies cover the homepage and API. A live private-scope smoke
+test proved third-party admission returns `PRIVATE_SLICE_SCOPE`; GitHub's
+anonymous REST path failed from the Worker, so discovery stays visibly failed
+until a dedicated no-scope credential is installed.
 
 Vercel is authenticated as the owner's personal account and remains an
 isolated-compute candidate because Sandbox provides Firecracker microVMs and
