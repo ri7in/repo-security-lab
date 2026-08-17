@@ -7,6 +7,8 @@ import {
   createScanRequestBodySchema,
   githubLoginSchema,
   githubRepoNameSchema,
+  publicFindingPageSchema,
+  publicFindingSchema,
   repositoryPageSchema,
   repositoryRowSchema,
   scanRequestAcceptedSchema,
@@ -221,5 +223,45 @@ describe("repository ledger rows", () => {
         nextCursor: "not a cursor / with / slashes",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("public source-blind findings", () => {
+  const publicFinding = {
+    schema_version: 1,
+    repository_id: 42,
+    commit_sha: "a".repeat(40),
+    engine: "gitleaks",
+    rule_id: "github-pat",
+    category: "secret",
+    severity: "high",
+    confidence: "high",
+    occurrence_bucket: "one",
+    remediation_key: "rotate-secret",
+  } as const;
+
+  it("accepts only the public broker-derived subset", () => {
+    expect(publicFindingSchema.safeParse(publicFinding).success).toBe(true);
+    expect(
+      publicFindingPageSchema.safeParse({
+        schemaVersion: 1,
+        findings: [publicFinding],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("cannot express internal ids or source-derived details", () => {
+    for (const extra of [
+      { finding_id: "fnd_0000000001" },
+      { request_id: "req_0000000001" },
+      { owner_detail_ref: "chunk_000001" },
+      { path: "src/index.ts" },
+      { snippet: "const token = 'secret'" },
+      { match: "secret-value" },
+    ]) {
+      expect(
+        publicFindingSchema.safeParse({ ...publicFinding, ...extra }).success,
+      ).toBe(false);
+    }
   });
 });

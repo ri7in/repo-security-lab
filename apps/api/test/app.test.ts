@@ -10,6 +10,7 @@ import {
 } from "@app/api";
 import {
   operatorFindingPageSchema,
+  publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestSummarySchema,
 } from "@app/contracts";
@@ -349,6 +350,22 @@ describe("anonymous-safe control-plane API", () => {
     expect(repositoryPageSchema.parse(await secondPage.json()).repositories).toHaveLength(
       1,
     );
+    const findings = await app.request(
+      "/api/scan-requests/req_0000000001/findings",
+    );
+    expect(findings.status).toBe(200);
+    expect(findings.headers.get("cache-control")).toBe("no-store");
+    expect(publicFindingPageSchema.parse(await findings.json())).toEqual({
+      schemaVersion: 1,
+      findings: [],
+    });
+    expect(
+      (
+        await app.request(
+          "/api/scan-requests/req_0000000001/findings?cursor=bad%20cursor",
+        )
+      ).status,
+    ).toBe(404);
     database.close();
   });
 
@@ -423,6 +440,62 @@ describe("anonymous-safe control-plane API", () => {
       reason: "PRIVATE_SLICE_SCOPE",
       githubAccountId: null,
     });
+    database.close();
+  });
+
+  it("publishes only the strict source-blind finding subset", async () => {
+    const database = await store();
+    await database.createRequest({
+      requestId: "req_publicfind01",
+      username: "ri7in",
+      nowMs: 1,
+    });
+    vi.spyOn(database, "listFindings").mockResolvedValue({
+      findings: [
+        {
+          schema_version: 1,
+          finding_id: "fnd_internal001",
+          request_id: "req_publicfind01",
+          repository_id: 42,
+          commit_sha: "a".repeat(40),
+          engine: "gitleaks",
+          rule_id: "github-pat",
+          category: "secret",
+          severity: "high",
+          confidence: "high",
+          occurrence_bucket: "one",
+          remediation_key: "rotate-secret",
+          owner_detail_ref: "chunk_internal01",
+        },
+      ],
+      nextFindingId: null,
+    });
+    const app = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+    });
+    const response = await app.request(
+      "/api/scan-requests/req_publicfind01/findings",
+    );
+    expect(response.status).toBe(200);
+    const page = publicFindingPageSchema.parse(await response.json());
+    expect(page.findings).toEqual([
+      {
+        schema_version: 1,
+        repository_id: 42,
+        commit_sha: "a".repeat(40),
+        engine: "gitleaks",
+        rule_id: "github-pat",
+        category: "secret",
+        severity: "high",
+        confidence: "high",
+        occurrence_bucket: "one",
+        remediation_key: "rotate-secret",
+      },
+    ]);
+    expect(JSON.stringify(page)).not.toContain("internal");
     database.close();
   });
 

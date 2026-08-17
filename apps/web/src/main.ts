@@ -1,11 +1,11 @@
 import { branding } from "@app/branding";
 import {
-  operatorFindingPageSchema,
   opaqueIdSchema,
+  publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
   scanRequestSummarySchema,
-  type BrokerDerivedFinding,
+  type PublicFinding,
   type RepositoryRow,
   type ScanRequestSummary,
 } from "@app/contracts";
@@ -28,9 +28,6 @@ const progressBar = $<HTMLElement>("#progress-bar");
 const summaryGrid = $<HTMLElement>("#summary-grid");
 const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
-const findingTable = $<HTMLElement>("#finding-table");
-const ownerGate = $<HTMLElement>("#owner-gate");
-const ownerAuthLink = $<HTMLAnchorElement>("#owner-auth-link");
 const requestIdLabel = $<HTMLElement>("#request-id");
 const botCode = $<HTMLElement>("#bot-code");
 
@@ -144,7 +141,7 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
 }
 
 function renderFindings(
-  findings: readonly BrokerDerivedFinding[],
+  findings: readonly PublicFinding[],
   repositories: readonly RepositoryRow[],
 ): void {
   const repositoryNames = new Map(
@@ -173,8 +170,6 @@ function renderFindings(
       return row;
     }),
   );
-  ownerGate.hidden = true;
-  findingTable.hidden = false;
   findingsSection.hidden = false;
   $("#finding-count").textContent = `${findings.length} source-blind finding${findings.length === 1 ? "" : "s"}`;
 }
@@ -206,32 +201,18 @@ async function loadRepositories(requestId: string): Promise<RepositoryRow[]> {
   return repositories;
 }
 
-async function loadOwnerFindings(
-  requestId: string,
-): Promise<BrokerDerivedFinding[] | "owner_auth_required"> {
-  const findings: BrokerDerivedFinding[] = [];
+async function loadFindings(requestId: string): Promise<PublicFinding[]> {
+  const findings: PublicFinding[] = [];
   let cursor: string | undefined;
   do {
     const query = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
-    const response = await fetch(
-      `/api/owner/requests/${requestId}/findings${query}`,
+    const page = publicFindingPageSchema.parse(
+      await requestJson(`/api/scan-requests/${requestId}/findings${query}`),
     );
-    if (response.status === 401) return "owner_auth_required";
-    if (!response.ok) throw new Error("OWNER_REPORT_UNAVAILABLE");
-    const page = operatorFindingPageSchema.parse(await response.json());
     findings.push(...page.findings);
     cursor = page.nextCursor;
   } while (cursor !== undefined);
   return findings;
-}
-
-function renderOwnerGate(requestId: string): void {
-  findingsSection.hidden = false;
-  ownerGate.hidden = false;
-  findingTable.hidden = true;
-  findingRows.replaceChildren();
-  ownerAuthLink.href = `/auth/github/start?requestId=${encodeURIComponent(requestId)}`;
-  $("#finding-count").textContent = "owner verification required";
 }
 
 async function poll(requestId: string): Promise<void> {
@@ -244,14 +225,9 @@ async function poll(requestId: string): Promise<void> {
     renderRepositories(repositories);
     ledgerSection.hidden = false;
     try {
-      const findings = await loadOwnerFindings(requestId);
-      if (findings === "owner_auth_required") {
-        renderOwnerGate(requestId);
-      } else {
-        renderFindings(findings, repositories);
-      }
+      renderFindings(await loadFindings(requestId), repositories);
     } catch {
-      // Finding detail is a separate owner-only plane. Its failure must never
+      // Finding detail is a separate public-safe plane. Its failure must never
       // relabel a valid coverage request as failed.
       findingsSection.hidden = true;
       findingRows.replaceChildren();
@@ -271,7 +247,6 @@ form.addEventListener("submit", (event) => {
   }
   button.disabled = true;
   findingsSection.hidden = true;
-  ownerGate.hidden = true;
   findingRows.replaceChildren();
   setScanState("scanning");
   statusSection.hidden = false;

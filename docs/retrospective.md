@@ -76,7 +76,7 @@ checkpoint; they are not the current gate.
 ## What remains deliberately unclaimed
 
 This slice does not prove public Linux isolation, deployed D1/queue behavior,
-public abuse resistance, owner OAuth, scanner reproducibility, dependency/
+public abuse resistance, scanner reproducibility, dependency/
 workflow/source-rule specialists, or real AI vulnerability detection. The
 frontend is buildable but has not been deployed because the available Vercel
 session could not be positively identified as the owner's personal account.

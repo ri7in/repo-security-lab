@@ -3,7 +3,6 @@ import type { GithubLogin } from "@app/contracts";
 import { GithubDiscoveryClient } from "@app/github";
 import { D1Store, type D1Database } from "@app/store-d1";
 import { handleInternalRequest } from "./internal-api.js";
-import { handleOwnerRequest } from "./owner-auth.js";
 
 interface ExecutionContextPort {
   waitUntil(promise: Promise<unknown>): void;
@@ -28,9 +27,6 @@ export interface ControlPlaneEnvironment {
   readonly PRIVATE_SLICE_ACCOUNT_IDS: string;
   readonly GITHUB_TOKEN?: string;
   readonly WORKER_AUTH_MASTER_SECRET?: string | undefined;
-  readonly GITHUB_OAUTH_CLIENT_ID?: string | undefined;
-  readonly GITHUB_OAUTH_CLIENT_SECRET?: string | undefined;
-  readonly OWNER_SESSION_SECRET?: string | undefined;
 }
 
 function csv(value: string): string[] {
@@ -133,21 +129,12 @@ export async function handleControlPlaneRequest(
     url.pathname.startsWith("/auth/") ||
     url.pathname.startsWith("/api/owner/")
   ) {
-    const ownerResponse = await handleOwnerRequest({
-      request,
-      environment: {
-        GITHUB_OAUTH_CLIENT_ID: environment.GITHUB_OAUTH_CLIENT_ID ?? "",
-        GITHUB_OAUTH_CLIENT_SECRET:
-          environment.GITHUB_OAUTH_CLIENT_SECRET ?? "",
-        OWNER_SESSION_SECRET: environment.OWNER_SESSION_SECRET ?? "",
-      },
-      store: new D1Store(environment.DB),
-    });
-    if (ownerResponse !== null) return secured(ownerResponse);
-    return secured(Response.json(
-      { reason: "NOT_FOUND" },
-      { status: 404, headers: { "cache-control": "no-store" } },
-    ));
+    return secured(
+      Response.json(
+        { reason: "NOT_FOUND" },
+        { status: 404, headers: { "cache-control": "no-store" } },
+      ),
+    );
   }
   if (url.pathname.startsWith("/api/")) {
     const configuredScope = scope(environment);

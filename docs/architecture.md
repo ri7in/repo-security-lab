@@ -1,11 +1,12 @@
 # Architecture
 
 **Status:** private production preview. The local vertical slice plus a live
-Cloudflare Workers/D1 control plane, same-origin static site, owner OAuth
-boundary, and an authenticated external pull worker are implemented and
-exercised. The deployed preview remains bound to `ri7in`; GitHub discovery and
-owner OAuth credentials are not yet installed, and third-party scans remain
-disabled until isolated scan compute is proven.
+Cloudflare Workers/D1 control plane, same-origin static site, public
+source-blind report, and an authenticated external pull worker are implemented
+and exercised. The deployed preview remains bound to `ri7in`; GitHub discovery and
+the authenticated pull worker are live-proven. Reports are public and require
+no login; third-party scan creation remains disabled until isolated scan
+compute is proven.
 
 ## Product flow
 
@@ -45,11 +46,12 @@ disabled until isolated scan compute is proven.
    metadata and publish findings with durable lease identity. Mixed outcomes
    publish `partial` plus a closed per-engine failure map; the map cannot carry
    target text.
-9. The anonymous API exposes exhaustive status and coverage, never findings.
-   A local operator endpoint is available only when explicitly enabled and
-   bound to loopback. Operator mode automatically validates the literal `Host`
-   header to reject DNS-rebinding access; the composed runtime also enables
-   that guard for every route.
+9. The anonymous API exposes exhaustive status, coverage, and a strict public
+   subset of source-blind findings. That subset omits internal finding/request
+   IDs and owner-detail references and has no fields for paths, snippets,
+   matches, or secrets. The full broker record remains available only through
+   an explicitly enabled loopback operator endpoint with literal `Host`
+   validation against DNS rebinding.
 
 ## Trust boundaries
 
@@ -85,9 +87,10 @@ coverage, the canonical reason map, and findings.
 ### Browser and anonymous API
 
 The browser is a viewer and controller only. Strict anonymous response schemas
-cannot express finding data, paths, snippets, secrets, or free-form upstream
-errors. Responses use `no-store`, `nosniff`, and `no-referrer`; unexpected
-exceptions collapse to one fixed 500 response.
+can express closed, broker-derived public finding metadata but cannot express
+paths, snippets, matches, secrets, internal detail references, or free-form
+upstream errors. Responses use `no-store`, `nosniff`, and `no-referrer`;
+unexpected exceptions collapse to one fixed 500 response.
 
 ## AI boundary
 
@@ -116,11 +119,11 @@ runtime.
 `apps/control-plane` serves the production web bundle and API from one
 Cloudflare Worker. It uses D1, two public admission rate limits, a separate
 worker-edge limit, cron discovery recovery, security headers, and a default-off
-public scanning switch. Owner findings use no-scope GitHub OAuth with signed
-PKCE state; the short-lived access token is actively revoked after `/user` and
-is never stored. `apps/scan-worker` uses a narrowed HTTPS store adapter and
-rotating HMAC identity. The server supplies all mutation timestamps, and every
-lease mutation remains generation-bound and idempotent.
+public scanning switch. Completed source-blind reports require no identity or
+session. Legacy `/auth/` and `/api/owner/` routes return fixed 404 responses.
+`apps/scan-worker` uses a narrowed HTTPS store adapter and rotating HMAC
+identity. The server supplies all mutation timestamps, and every lease mutation
+remains generation-bound and idempotent.
 
 The current deployment URL is published in `README.md` and is backed by the
 APAC D1 database recorded in `wrangler.jsonc`. Static assets run through the
@@ -153,8 +156,8 @@ deny-all scan phase, source-blind output, and lifecycle proof remain required.
   repository tree plus full Git history.
 - Workerd tests apply the real D1 migration and prove atomic discovery,
   materialized totals, write-reserve refusal, lease ABA protection, chunked
-  publication, signed-worker rotation/revocation, owner OAuth identity matching,
-  OAuth token revocation, and default-off public admission.
+  publication, signed-worker rotation/revocation, fixed legacy-login refusal,
+  and default-off public admission.
 
 ## Known release gates
 
@@ -162,7 +165,6 @@ deny-all scan phase, source-blind output, and lifecycle proof remain required.
   crash/reboot cleanup, and swap policy.
 - Continuously available, terms-compatible zero-cost isolated scan compute;
   the manual Actions proof is not a production backend.
-- GitHub OAuth application registration and callback proof on the live origin.
 - Project-attested scanner build provenance; a release hash pin is identity,
   not provenance.
 - OSV, workflow, and source-rule specialists remain unintegrated; relevant

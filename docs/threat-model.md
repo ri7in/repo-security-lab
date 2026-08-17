@@ -39,11 +39,12 @@ project-attested scanner provenance described below.
 
 The public Worker validates a closed GitHub-login grammar, applies Cloudflare
 rate limits, and creates each request durably before discovery. Public scope is
-off by default. Owner detail requires a GitHub OAuth PKCE session bound to the
-immutable GitHub account ID; the short-lived OAuth access token is revoked
-immediately after identity lookup and is never persisted. Signed internal
-worker requests use bounded bodies, server-authoritative time, rotating HMAC
-generations, and revocation. Security headers apply to API and static assets.
+off by default. Completed source-blind reports are public and require no login.
+Their strict schema omits internal finding/request IDs and detail references
+and has no field capable of carrying a path, snippet, match, or secret. Signed
+internal worker requests use bounded bodies, server-authoritative time,
+rotating HMAC generations, and revocation. Security headers apply to API and
+static assets.
 
 D1 records the exhaustive ledger, materialized request totals, bounded finding
 chunks, lease generations, and modeled daily write reservations. Request and
@@ -51,7 +52,7 @@ discovery reservations are atomic with their corresponding writes, and the
 service fails closed with an explicit capacity response before it can exceed
 the configured free-tier write budget. Workerd integration tests exercise the
 real migration, transactions/batches, conflicts, lease ABA resistance,
-idempotency, rate limiting, OAuth boundaries, and response headers.
+idempotency, rate limiting, legacy-login refusal, and response headers.
 
 The local API validates the same GitHub-login grammar and admits only configured
 logins. On restart, the local
@@ -126,11 +127,12 @@ reason carries the cause. Cancelled pre-source rows remain `not_applicable`.
 
 ### Report and AI lanes
 
-Anonymous DTOs expose exhaustive status and coverage but cannot express a
-finding. The source-blind finding route exists only in explicit operator mode,
-which requires a literal loopback bind and automatically enforces a matching
-Host header. The composed runtime applies the same Host guard to every route.
-Public finding detail remains gated on owner authentication.
+Anonymous DTOs expose exhaustive status, coverage, and closed broker-derived
+finding metadata. The public finding DTO cannot express internal IDs, detail
+references, paths, snippets, matches, or secrets. A separate full broker-record
+route exists only in explicit operator mode, which requires a literal loopback
+bind and automatically enforces a matching Host header. The composed runtime
+applies the same Host guard to every route.
 
 The AI package is an unnetworked fixture harness. Its only provider tag is
 `fixture`, its production default is disabled, and real adapter registration
@@ -139,7 +141,7 @@ throws. No model client or repository-to-provider route exists in this slice.
 ## Abuse and privacy limits
 
 The local runtime is intentionally single-operator and sequentially paced. The
-deployed control-plane code has owner authorization, durable capacity
+deployed control-plane code has public source-blind reports, durable capacity
 reservations, and public/internal rate-limit boundaries, but no public scan
 worker is attached. Forks are represented but refused before download because
 owned forks can contain third-party source. Logs carry fixed event/result codes
@@ -150,9 +152,8 @@ only.
 - Run acquisition, parsing, scanning, and cleanup under a non-root Linux
   identity with no network, read-only trusted tools, tmpfs, cgroup/rlimit
   ceilings, process-count limits, swap policy, and crash/reboot cleanup proofs.
-- Deploy the already-tested Worker/D1 control plane under Rivin's Cloudflare
-  account, create the production D1 database, install secrets, and verify the
-  exact deployed OAuth callback and free-tier capacity alarms.
+- Maintain the deployed Worker/D1 control plane under Rivin's Cloudflare
+  account and verify free-tier capacity alarms before third-party admission.
 - Attach a non-root Linux or microVM scan-compute boundary with no target-code
   execution, default-deny egress after acquisition, resource ceilings, trusted
   read-only scanners, tuple cleanup, and crash/reboot proofs.

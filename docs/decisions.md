@@ -190,3 +190,22 @@ enter durable state or anonymous responses. Publication retries compare the
 canonical map for exact idempotency, and every requeue/release path clears it.
 Broker engine identity remains constructor-bound and is checked again before
 accepted findings join the publication.
+
+## ADR-014: public source-blind reports require no login
+
+**Status:** accepted (2026-08-17), replaces the owner-OAuth report gate
+
+Coverage and finding reports are public to anyone who has a request ID. The
+public finding contract is a strict broker-derived subset: engine, rule,
+category, severity, confidence, occurrence bucket, remediation key, repository
+ID, and commit SHA. It deliberately omits internal finding/request IDs and
+owner-detail references and cannot express paths, filenames, snippets, matches,
+scanner prose, or secret values. The browser uses this route directly without
+an account or session.
+
+The unused OAuth implementation and its secret binding are removed. Legacy
+`/auth/` and `/api/owner/` paths return a fixed no-store 404 instead of falling
+through to static assets. The full broker record remains loopback-only for
+operator proofs. This report-visibility decision is separate from scan
+admission: third-party scan creation stays disabled until the isolated compute
+gate is satisfied.

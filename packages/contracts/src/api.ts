@@ -19,11 +19,10 @@ import { failureClassSchema } from "./failure.js";
 import { brokerDerivedFindingSchema } from "./broker.js";
 
 /**
- * Anonymous-safe API DTOs (D-043): status and coverage only. These schemas
- * cannot express finding data, secret-derived counts, paths, snippets, or any
- * archive/scanner string. Repository names come exclusively from the control
- * plane's GitHub discovery record. Owner-gated finding DTOs are deferred to
- * the operator/OAuth stages.
+ * Public-safe API DTOs. Status and coverage cannot express finding data or
+ * archive/scanner strings. The separate public finding DTO is a strict subset
+ * of source-blind broker output and cannot express paths, snippets, matches,
+ * secret characters, or internal owner-detail references.
  */
 
 /** `POST /api/scan-requests` request body. */
@@ -135,10 +134,30 @@ export const repositoryPageSchema = z.strictObject({
 });
 export type RepositoryPage = z.infer<typeof repositoryPageSchema>;
 
+export const publicFindingSchema = brokerDerivedFindingSchema.pick({
+  schema_version: true,
+  repository_id: true,
+  commit_sha: true,
+  engine: true,
+  rule_id: true,
+  category: true,
+  severity: true,
+  confidence: true,
+  occurrence_bucket: true,
+  remediation_key: true,
+});
+export type PublicFinding = z.infer<typeof publicFindingSchema>;
+
+/** Public source-blind finding page. */
+export const publicFindingPageSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  findings: z.array(publicFindingSchema).max(100),
+  nextCursor: opaqueIdSchema.optional(),
+});
+export type PublicFindingPage = z.infer<typeof publicFindingPageSchema>;
+
 /**
- * Owner/operator-only finding page. This is deliberately separate from every
- * anonymous DTO above. Fields are the already source-blind broker output; raw
- * paths, snippets, matches, and secret characters remain unrepresentable.
+ * Loopback operator page retains full broker identity fields for local proofs.
  */
 export const operatorFindingPageSchema = z.strictObject({
   schemaVersion: z.literal(1),

@@ -50,7 +50,7 @@ pnpm install          # resolves/checks the committed lockfile
 pnpm typecheck        # strict TypeScript over all packages and tests
 pnpm lint             # ESLint flat config, type-checked rules
 pnpm test             # Vitest, includes the rename guard and contract suites
-pnpm test:workers     # workerd-backed Worker, D1, OAuth, and internal API tests
+pnpm test:workers     # workerd-backed Worker, D1, and internal API tests
 pnpm test:coverage    # same suite plus the enforced aggregate coverage floor
 pnpm check            # all of the above
 pnpm build            # production web bundle
@@ -69,10 +69,11 @@ pnpm build:control-plane
 
 The private production preview URL is published in `README.md`. It runs under
 Rivin's Cloudflare account with D1 migrated and
-`PUBLIC_SCANNING_ENABLED=false`. The exact GitHub OAuth callback is that origin
-plus `/auth/github/callback`. Install GitHub credentials only through Wrangler
-secrets; never commit them. The trusted scan worker uses the signed internal
-protocol, and the current implementation is not a public multi-tenant sandbox.
+`PUBLIC_SCANNING_ENABLED=false`. Reports require no OAuth application or login;
+legacy auth and owner routes return fixed 404 responses. Install service
+credentials only through Wrangler secrets; never commit them. The trusted scan
+worker uses the signed internal protocol, and the current implementation is not
+a public multi-tenant sandbox.
 
 The dedicated public-data discovery token, worker-auth master secret, and
 generation-1 `worker_github_actions_01` identity are installed. Live request

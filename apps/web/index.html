@@ -110,13 +110,12 @@
       <section id="findings-section" class="ledger-section" hidden aria-labelledby="findings-title">
         <div class="section-heading">
           <div>
-            <p class="eyebrow">OWNER-ONLY REPORT</p>
+            <p class="eyebrow">PUBLIC SOURCE-BLIND REPORT</p>
             <h2 id="findings-title">Deterministic findings</h2>
           </div>
           <p class="legend" id="finding-count"></p>
         </div>
-        <p class="findings-note">Only the GitHub account owner can open findings. Tokens are discarded immediately after identity verification; secrets, paths, snippets, and raw matches never enter this report.</p>
-        <p id="owner-gate" class="owner-gate" hidden><a id="owner-auth-link" href="/">Verify ownership with GitHub</a></p>
+        <p class="findings-note">Findings are public and source-blind. Secrets, paths, snippets, raw matches, and internal detail references never enter this report.</p>
         <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
           <table>
             <thead>
@@ -135,7 +134,7 @@
     </main>
 
     <footer>
-      <p><strong>Privacy boundary:</strong> public coverage is visible; vulnerability findings require proof of GitHub account ownership.</p>
+      <p><strong>Public report:</strong> coverage and source-blind findings are visible without login; raw source and secret values are never shown.</p>
       <p id="footer-name">Free and open source.</p>
     </footer>
   </body>

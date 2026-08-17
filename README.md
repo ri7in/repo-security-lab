@@ -58,7 +58,7 @@ Current guarantees:
   no external model adapter.
 - `apps/api` — Hono control plane and loopback-only private runtime.
 - `apps/control-plane` — Cloudflare Workers, D1, Static Assets, rate limiting,
-  GitHub OAuth owner proof, cron recovery, and the signed worker API.
+  cron recovery, public source-blind reports, and the signed worker API.
 - `apps/scan-worker` — external pull worker for trusted private-slice compute.
 - `apps/web` — responsive vanilla TypeScript report interface.
 - `docs/` — architecture, threat model, research record, maintenance,
@@ -95,10 +95,10 @@ The Cloudflare deployment is intentionally fail-closed by default:
 preview is bound to GitHub account ID `121791882`, and static/API responses pass
 through the same security-header boundary. The dedicated discovery credential,
 signed worker identity, and first 22-repository live proof are installed. The
-remaining account gate is the GitHub OAuth app for owner-only findings; the
-remaining compute gate is a continuously available, terms-compatible isolated
-worker. Third-party accounts stay refused until both gates pass. See
-`docs/maintenance.md` for the release runbook.
-`OPERATOR_MODE=true` enables the source-blind findings table only on loopback;
-without it, the browser receives coverage/status and the findings route is
-absent.
+source-blind finding report is public and requires no login. It cannot express
+paths, snippets, matches, secret values, or internal detail references. The
+remaining release gate is a continuously available, terms-compatible isolated
+worker, so third-party scan creation stays refused until that compute boundary
+passes. See `docs/maintenance.md` for the release runbook.
+`OPERATOR_MODE=true` additionally enables the full broker record on loopback;
+the public browser receives only the reduced public finding schema.

@@ -114,9 +114,6 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.045em; }
 
 .legend { margin: 0; color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; }
 .findings-note { margin: -10px 0 18px; color: var(--muted); font-size: .82rem; }
-.owner-gate { margin: 22px 0; }
-.owner-gate a { display: inline-block; padding: 12px 16px; border: 1px solid var(--ink); color: var(--paper); background: var(--ink); font: 700 11px var(--mono); text-decoration: none; }
-.owner-gate a:hover { color: var(--signal-contrast); background: var(--signal); }
 .dot { display: inline-block; width: 7px; height: 7px; margin: 0 5px 0 12px; border-radius: 50%; background: var(--muted); }
 .dot.complete { background: var(--signal); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
 .table-shell { width: 100%; overflow-x: auto; border: 1px solid var(--line); background: var(--paper-raised); }

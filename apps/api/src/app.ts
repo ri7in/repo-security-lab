@@ -3,6 +3,7 @@ import {
   createScanRequestBodySchema,
   opaqueIdSchema,
   operatorFindingPageSchema,
+  publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
   scanRequestSummarySchema,
@@ -408,6 +409,47 @@ export function createApi(options: ApiOptions): Hono {
         : { nextCursor: encodeCursor(page.nextRepositoryId) }),
     });
     return context.json(response);
+  });
+
+  app.get("/api/scan-requests/:requestId/findings", async (context) => {
+    const requestId = context.req.param("requestId");
+    const afterFindingId = context.req.query("cursor") ?? null;
+    if (
+      !opaqueIdSchema.safeParse(requestId).success ||
+      (afterFindingId !== null &&
+        !opaqueIdSchema.safeParse(afterFindingId).success)
+    ) {
+      return context.json({ reason: "NOT_FOUND" }, 404);
+    }
+    if ((await options.store.getRequest(requestId)) === null) {
+      return context.json({ reason: "NOT_FOUND" }, 404);
+    }
+    const page = await options.store.listFindings({
+      requestId,
+      afterFindingId,
+      limit: 100,
+    });
+    context.header("Cache-Control", "no-store");
+    return context.json(
+      publicFindingPageSchema.parse({
+        schemaVersion: 1,
+        findings: page.findings.map((finding) => ({
+          schema_version: finding.schema_version,
+          repository_id: finding.repository_id,
+          commit_sha: finding.commit_sha,
+          engine: finding.engine,
+          rule_id: finding.rule_id,
+          category: finding.category,
+          severity: finding.severity,
+          confidence: finding.confidence,
+          occurrence_bucket: finding.occurrence_bucket,
+          remediation_key: finding.remediation_key,
+        })),
+        ...(page.nextFindingId === null
+          ? {}
+          : { nextCursor: page.nextFindingId }),
+      }),
+    );
   });
 
   if (operatorMode) {

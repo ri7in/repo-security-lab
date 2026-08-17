@@ -49,4 +49,18 @@ describe("production accessibility invariants", () => {
     expect(html).toMatch(/id="theme-toggle"[^>]*aria-pressed="false"/);
     expect(script).toContain('themeToggle.setAttribute("aria-pressed", String(dark))');
   });
+
+  it("loads public source-blind findings without login routes", async () => {
+    const [html, script] = await Promise.all([
+      readFile(new URL("index.html", root), "utf8"),
+      readFile(new URL("src/main.ts", root), "utf8"),
+    ]);
+    expect(html).toContain("PUBLIC SOURCE-BLIND REPORT");
+    expect(html).not.toContain("owner-gate");
+    expect(html).not.toContain("/auth/github");
+    expect(script).toContain(
+      "`/api/scan-requests/${requestId}/findings${query}`",
+    );
+    expect(script).not.toContain("/api/owner/");
+  });
 });

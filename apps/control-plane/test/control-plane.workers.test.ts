@@ -29,9 +29,6 @@ function environment(
     PRIVATE_SLICE_LOGINS: "ri7in",
     PRIVATE_SLICE_ACCOUNT_IDS: "123",
     WORKER_AUTH_MASTER_SECRET: "worker-master-secret-at-least-thirty-two-chars",
-    GITHUB_OAUTH_CLIENT_ID: "",
-    GITHUB_OAUTH_CLIENT_SECRET: "",
-    OWNER_SESSION_SECRET: "",
     ...overrides,
   };
 }
@@ -73,18 +70,20 @@ describe("control-plane boundary", () => {
     expect(await response.json()).toEqual({ reason: "PRIVATE_SLICE_SCOPE" });
   });
 
-  it("fails closed when owner OAuth secrets are not installed", async ({ expect }) => {
-    const response = await handleControlPlaneRequest(
-      new Request("https://product.test/auth/github/start?requestId=request_0001"),
-      environment({
-        GITHUB_OAUTH_CLIENT_ID: undefined,
-        GITHUB_OAUTH_CLIENT_SECRET: undefined,
-        OWNER_SESSION_SECRET: undefined,
-      }),
-      context,
-    );
-    expect(response.status).toBe(503);
-    expect(await response.json()).toEqual({ reason: "OWNER_AUTH_UNAVAILABLE" });
+  it("does not expose legacy login routes", async ({ expect }) => {
+    for (const path of [
+      "/auth/github/start?requestId=request_0001",
+      "/api/owner/requests/request_0001/findings",
+    ]) {
+      const response = await handleControlPlaneRequest(
+        new Request(`https://product.test${path}`),
+        environment(),
+        context,
+      );
+      expect(response.status).toBe(404);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(await response.json()).toEqual({ reason: "NOT_FOUND" });
+    }
   });
 
   it("rate-limits the public worker edge before authentication reads", async ({ expect }) => {
