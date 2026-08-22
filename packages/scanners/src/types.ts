@@ -1,3 +1,4 @@
+import type { ReviewFinding } from "@app/contracts";
 export const SCANNER_ERROR_CODES = [
   "SCANNER_BINARY_MISMATCH",
   "SCANNER_TIMEOUT",
@@ -59,6 +60,13 @@ export interface GitleaksScanResult {
   readonly findings: readonly ScannerRuleFinding[];
   readonly rawFindingCount: number;
   readonly findingLimitExceeded: boolean;
+  /**
+   * Bounded review context, present only when the caller asked for it. This is
+   * the sole archive-derived data the scanner returns; it reaches the worker
+   * and stops there. See `reviewFindingSchema` for why it exists and what
+   * guarantee it changes.
+   */
+  readonly review?: readonly ReviewFinding[];
 }
 
 export const ZIZMOR_SEVERITIES = [

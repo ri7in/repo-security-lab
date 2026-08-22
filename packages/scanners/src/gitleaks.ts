@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, realpath, stat } from "node:fs/promises";
+import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import {
@@ -12,6 +13,8 @@ import {
   ScannerError,
   type GitleaksScanResult,
 } from "./types.js";
+import { REVIEW_MAX_FINDINGS, type ReviewFinding } from "@app/contracts";
+import { buildReviewContext, reviewablePath } from "./review-context.js";
 import {
   runScannerCommand,
   type ScannerCommandRunner,
@@ -39,11 +42,19 @@ const findingSchema = z.object({
   // to prove redaction happened and is then discarded inside the hostile
   // scanner domain; it never enters the normalized packet or return value.
   Match: z.string().min(8).max(8_192).refine((value) => value.includes("REDACTED")),
+  // Location fields survive `--redact`; only the value itself is replaced.
+  // They are parsed leniently because they feed the optional review channel,
+  // and a malformed location must degrade to "unreviewable", never fail a scan.
+  File: z.string().max(4_096).optional(),
+  StartLine: z.number().int().nonnegative().optional(),
+  Entropy: z.number().nonnegative().optional(),
 });
 
 export interface GitleaksScannerOptions {
   readonly binaryPath: string;
   readonly expectedBinarySha256: string;
+  /** Capture bounded review context for each finding. Default false. */
+  readonly collectReview?: boolean;
   readonly trustedConfigPath?: string;
   readonly trustedIgnorePath?: string;
   readonly timeoutMs?: number;
@@ -92,6 +103,8 @@ export class GitleaksScanner {
   readonly #ignorePath: string;
   readonly #timeoutMs: number;
   readonly #runCommand: ScannerCommandRunner;
+  /** Off unless the caller asked for review context. */
+  readonly #collectReview: boolean;
 
   constructor(options: GitleaksScannerOptions) {
     this.#binaryPath = options.binaryPath;
@@ -107,6 +120,7 @@ export class GitleaksScanner {
       throw new Error("invalid Gitleaks timeout");
     }
     this.#runCommand = options.runCommand ?? runScannerCommand;
+    this.#collectReview = options.collectReview ?? false;
   }
 
   async verify(): Promise<void> {
@@ -182,17 +196,80 @@ export class GitleaksScanner {
     if (!Array.isArray(document)) {
       throw new ScannerError("SCANNER_INVALID_OUTPUT");
     }
-    const findings = document.map((value) => {
+    const parsedFindings = document.map((value) => {
       const parsed = findingSchema.safeParse(value);
       if (!parsed.success || gitleaksRuleToken(parsed.data.RuleID) === null) {
         throw new ScannerError("SCANNER_INVALID_OUTPUT");
       }
-      return { ruleId: parsed.data.RuleID };
+      return parsed.data;
     });
+    const findings = parsedFindings.map((entry) => ({ ruleId: entry.RuleID }));
+    const review = this.#collectReview
+      ? await buildReview(parsedFindings, source)
+      : undefined;
     return {
       findings: findings.slice(0, MAX_FINDINGS),
       rawFindingCount: findings.length,
       findingLimitExceeded: findings.length > MAX_FINDINGS,
+      ...(review === undefined ? {} : { review }),
     };
   }
+}
+
+/**
+ * Builds review context for the findings worth reviewing.
+ *
+ * Files are read once each, however many findings they hold, and only the
+ * first `REVIEW_MAX_FINDINGS` survive. A file that cannot be read, or a path
+ * the channel refuses, simply yields no review entry: the finding is still
+ * reported, it just goes unreviewed. Review may only ever remove a finding it
+ * actually judged, so failing to build context must never silently drop one.
+ */
+async function buildReview(
+  parsed: readonly {
+    RuleID: string;
+    File?: string | undefined;
+    StartLine?: number | undefined;
+    Entropy?: number | undefined;
+  }[],
+  sourceDirectory: string,
+): Promise<ReviewFinding[]> {
+  const review: ReviewFinding[] = [];
+  const fileCache = new Map<string, readonly string[] | null>();
+
+  for (const entry of parsed) {
+    if (review.length >= REVIEW_MAX_FINDINGS) break;
+    if (entry.File === undefined || entry.StartLine === undefined) continue;
+    const relative = reviewablePath(entry.File);
+    if (relative === null) continue;
+
+    let lines = fileCache.get(relative);
+    if (lines === undefined) {
+      try {
+        const absolute = path.resolve(sourceDirectory, relative);
+        // Refuse anything that escapes the extracted tree. The archive guard
+        // already rejects traversal, so this is defence in depth rather than
+        // the primary control.
+        const root = path.resolve(sourceDirectory);
+        lines =
+          absolute === root || absolute.startsWith(`${root}${path.sep}`)
+            ? (await readFile(absolute, "utf8")).split("\n")
+            : null;
+      } catch {
+        lines = null;
+      }
+      fileCache.set(relative, lines);
+    }
+    if (lines === null) continue;
+
+    review.push({
+      engine: "gitleaks",
+      ruleId: entry.RuleID,
+      path: relative,
+      startLine: Math.max(1, entry.StartLine),
+      entropy: Math.min(10, entry.Entropy ?? 0),
+      contextLines: buildReviewContext(lines, Math.max(1, entry.StartLine)),
+    });
+  }
+  return review;
 }
