@@ -56,6 +56,17 @@
               <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" />
               <p>At most one best-effort report-ready email. The address is encrypted, never shown, and deleted after delivery or final failure.</p>
             </div>
+            <section id="quota-meter" class="quota-meter" data-level="unknown" aria-labelledby="quota-title">
+              <div class="quota-head">
+                <p class="eyebrow" id="quota-title">DEEP READ BUDGET / TODAY</p>
+                <strong id="quota-percent" aria-hidden="true">--%</strong>
+              </div>
+              <div class="quota-track">
+                <i id="quota-bar"></i>
+              </div>
+              <p class="quota-line" id="quota-line" role="status">Checking today&rsquo;s model allowance.</p>
+              <p class="quota-sub" id="quota-sub"></p>
+            </section>
             <p class="form-note" id="service-note">Private production preview: scan creation is limited while the public isolation worker is commissioned.</p>
           </form>
         </div>
@@ -141,6 +152,7 @@
 
     <footer>
       <p><strong>Public report:</strong> visible without login, retained for 30 days; raw source and secret values are never shown. <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
+      <p class="ai-disclosure" id="ai-disclosure" hidden><strong>Deep read sends your public code to a model.</strong> The scan reads source files from your public repositories and sends them to <span id="ai-provider-name">an external model provider</span>. Lines where the secret scanner found a credential are blanked out first. Those providers may keep or train on what they receive, which is what pays for the free tier this runs on. Deep read is off unless the site says it is on, and the secret and dependency scans never send code anywhere. <a href="/privacy.html#deep-read">What is sent</a></p>
       <p id="footer-name">Private release preview.</p>
     </footer>
   </body>

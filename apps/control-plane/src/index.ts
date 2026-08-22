@@ -9,7 +9,9 @@ import {
   registerNotification,
   type NotificationEnvironment,
 } from "./notifications.js";
+import { readDeepReadBudget } from "./deep-read-budget.js";
 import { expireStaleActiveReport, purgeExpiredReports } from "./retention.js";
+import { dispatchScanWorker, readDispatchConfig } from "./worker-dispatch.js";
 
 interface ExecutionContextPort {
   waitUntil(promise: Promise<unknown>): void;
@@ -35,6 +37,11 @@ export interface ControlPlaneEnvironment extends NotificationEnvironment {
   readonly PRIVATE_SLICE_ACCOUNT_IDS: string;
   readonly GITHUB_TOKEN?: string;
   readonly WORKER_AUTH_MASTER_SECRET?: string | undefined;
+  /** On-demand worker dispatch. Absent values disable dispatch entirely. */
+  readonly WORKER_DISPATCH_REPOSITORY?: string | undefined;
+  readonly WORKER_DISPATCH_WORKFLOW?: string | undefined;
+  readonly WORKER_DISPATCH_REF?: string | undefined;
+  readonly WORKER_DISPATCH_TOKEN?: string | undefined;
 }
 
 function csv(value: string): string[] {
@@ -167,8 +174,23 @@ export async function handleControlPlaneRequest(
       allowedRequestedLogins: configuredScope.requestedLogins,
       allowedGithubAccountIds: configuredScope.accountIds,
       dispatch: (task) => context.waitUntil(task()),
-      admitScanRequest: (username, rawRequest) =>
-        admitScanRequest(environment, username, rawRequest),
+      admitScanRequest: async (username, rawRequest) => {
+        const admitted = await admitScanRequest(environment, username, rawRequest);
+        if (admitted) {
+          // Start a worker for this visitor. Best effort, and deliberately not
+          // folded into the response: the request is already durable by now, so
+          // a dispatch failure must not surface as a failed scan. The next
+          // dispatch, or a manual run, still drains the queue.
+          context.waitUntil(
+            dispatchScanWorker(
+              environment.DB,
+              Date.now(),
+              readDispatchConfig(environment),
+            ),
+          );
+        }
+        return admitted;
+      },
       ...(configuredNotifications === null
         ? {}
         : {
@@ -180,6 +202,7 @@ export async function handleControlPlaneRequest(
           configuredScope.requestedLogins === null ? "public" : "private_preview",
         emailNotifications: configuredNotifications !== null,
       },
+      deepReadBudget: () => readDeepReadBudget(environment.DB, Date.now()),
     });
     return secured(await app.fetch(request));
   }

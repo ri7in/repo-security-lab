@@ -138,7 +138,7 @@ tbody tr[data-active="true"] { background: var(--signal-soft); }
 .principles span { color: var(--signal); font: 700 11px var(--mono); }
 .principles h3 { margin: 18px 0 9px; font-size: 1.05rem; }
 .principles p { margin: 0; color: var(--muted); font-size: .9rem; line-height: 1.6; }
-footer { max-width: 1180px; margin: 0 auto; padding: 26px 28px 50px; color: var(--muted); display: flex; justify-content: space-between; gap: 30px; font: 500 10px/1.6 var(--mono); }
+footer { max-width: 1180px; margin: 0 auto; padding: 26px 28px 50px; color: var(--muted); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 30px; font: 500 10px/1.6 var(--mono); }
 footer a { color: inherit; text-underline-offset: 3px; }
 footer p { max-width: 720px; margin: 0; }
 
@@ -160,3 +160,37 @@ footer p { max-width: 720px; margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+/* Deep-read budget meter.
+   The percentage is the scarcest council member's remaining share of its own
+   day, so the bar can only ever be as full as the tightest free allowance. */
+.quota-meter { max-width: 700px; margin-top: 22px; padding: 15px 17px 16px; border: 1px solid var(--line); background: var(--paper-raised); }
+.quota-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.quota-head .eyebrow { margin: 0; }
+.quota-head strong { font: 700 26px var(--mono); letter-spacing: -.03em; line-height: 1; color: var(--signal); }
+.quota-track { height: 7px; margin: 11px 0 10px; background: var(--soft); overflow: hidden; }
+.quota-track i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .4s ease; }
+.quota-line { margin: 0; color: var(--ink); font: 600 11px/1.55 var(--mono); }
+.quota-sub { margin: 5px 0 0; color: var(--muted); font: 500 10px/1.55 var(--mono); }
+
+.quota-meter[data-level="low"] .quota-head strong,
+.quota-meter[data-level="low"] .quota-track i { color: var(--amber); background-color: var(--amber); }
+.quota-meter[data-level="low"] .quota-head strong { background: none; }
+.quota-meter[data-level="critical"] .quota-head strong,
+.quota-meter[data-level="empty"] .quota-head strong { color: var(--red); }
+.quota-meter[data-level="critical"] .quota-track i,
+.quota-meter[data-level="empty"] .quota-track i { background: var(--red); }
+.quota-meter[data-level="empty"] { border-color: var(--red); background: var(--red-soft); }
+.quota-meter[data-level="unknown"] .quota-head strong { color: var(--muted); }
+
+@media (max-width: 760px) {
+  .quota-meter { margin-top: 18px; padding: 13px 14px 14px; }
+  .quota-head strong { font-size: 22px; }
+}
+
+/* Model-use disclosure. Sits in the footer, shown only when deep read is on,
+   because a permanent warning about a feature that is off teaches people to
+   ignore the warning. */
+.ai-disclosure { max-width: 78ch; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; line-height: 1.6; }
+.ai-disclosure strong { color: var(--ink); }
+.ai-disclosure { flex: 1 0 100%; max-width: none; }

@@ -66,10 +66,41 @@ export const apiErrorSchema = z.strictObject({
 export type ApiError = z.infer<typeof apiErrorSchema>;
 
 /** Public, source-free product capabilities used to keep UI promises honest. */
+/**
+ * Remaining deep-read allowance, expressed as the scarcest council member's
+ * share of its own day. The council cannot run without every member, so this
+ * is deliberately a minimum and never an average. Carries no provider key,
+ * account identifier, or absolute token count.
+ */
+export const deepReadBudgetSchema = z.strictObject({
+  /** False once any member is exhausted for the UTC day. */
+  available: z.boolean(),
+  /** Scarcest member's remaining share of its own day, 0 to 100. */
+  percentRemaining: z.number().int().min(0).max(100),
+  /** Which member is the current bottleneck. */
+  scarcestModelId: z.string().min(1).max(64),
+  /** Repositories the council can still deep-read today. */
+  deepReadsRemaining: nonNegativeIntSchema,
+  /** Repositories the council deep-reads on an untouched day. */
+  deepReadsPerDay: nonNegativeIntSchema,
+  /** Repositories deep-read for one request. */
+  repoLimitPerRequest: nonNegativeIntSchema,
+  /** False while any member's published limits are unconfirmed upstream. */
+  limitsVerified: z.boolean(),
+  /**
+   * Routing surfaces that receive source during a deep read, for the site's
+   * disclosure. Per-model capacity stays private, but the identity of anyone
+   * who receives a visitor's code does not.
+   */
+  providers: z.array(z.string().min(1).max(32)).max(6),
+});
+export type DeepReadBudget = z.infer<typeof deepReadBudgetSchema>;
+
 export const publicCapabilitiesSchema = z.strictObject({
   schemaVersion: z.literal(1),
   scanCreation: z.enum(["private_preview", "public"]),
   emailNotifications: z.boolean(),
+  deepRead: deepReadBudgetSchema,
 });
 export type PublicCapabilities = z.infer<typeof publicCapabilitiesSchema>;
 

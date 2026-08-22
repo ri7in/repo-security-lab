@@ -1,0 +1,13 @@
+{
+  "name": "@app/ai-providers",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@app/contracts": "workspace:*",
+    "@app/ai": "workspace:*"
+  }
+}

@@ -67,6 +67,11 @@ export type SpecialistProgressState = z.infer<
  * deterministic coverage is never mislabeled as AI review. Additional lane
  * states arrive only with the real, separately gated AI implementation.
  */
-export const AI_LANE_STATES = ["ai_not_run", "ai_waiting", "ai_partial"] as const;
+export const AI_LANE_STATES = [
+  "ai_not_run",
+  "ai_waiting",
+  "ai_partial",
+  "ai_complete",
+] as const;
 export const aiLaneStateSchema = z.enum(AI_LANE_STATES);
 export type AiLaneState = z.infer<typeof aiLaneStateSchema>;

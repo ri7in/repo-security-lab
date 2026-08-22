@@ -6,6 +6,7 @@ import {
   repositoryPageSchema,
   scanRequestAcceptedSchema,
   scanRequestSummarySchema,
+  type DeepReadBudget,
   type PublicFinding,
   type RepositoryRow,
   type ScanRequestSummary,
@@ -35,6 +36,13 @@ const findingRows = $<HTMLElement>("#finding-rows");
 const requestIdLabel = $<HTMLElement>("#request-id");
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
+const quotaMeter = $<HTMLElement>("#quota-meter");
+const quotaPercent = $<HTMLElement>("#quota-percent");
+const quotaBar = $<HTMLElement>("#quota-bar");
+const quotaLine = $<HTMLElement>("#quota-line");
+const quotaSub = $<HTMLElement>("#quota-sub");
+const aiDisclosure = $<HTMLElement>("#ai-disclosure");
+const aiProviderName = $<HTMLElement>("#ai-provider-name");
 let emailEnabled = false;
 let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limited" = "not_requested";
 
@@ -319,11 +327,57 @@ form.addEventListener("submit", (event) => {
   })();
 });
 
+/**
+ * Paints the deep-read meter.
+ *
+ * The number shown is the scarcest council member's remaining share of its own
+ * day, because the council cannot run at all without every member. Showing an
+ * average here would promise depth the tightest free tier cannot deliver.
+ */
+function renderDeepReadBudget(budget: DeepReadBudget): void {
+  const percent = Math.max(0, Math.min(100, budget.percentRemaining));
+  const level = !budget.available
+    ? "empty"
+    : percent <= 15
+      ? "critical"
+      : percent <= 50
+        ? "low"
+        : "healthy";
+
+  // The disclosure appears only while the lane can actually run. A standing
+  // warning about a disabled feature trains people to skip the footer.
+  aiDisclosure.hidden = !budget.available;
+  aiProviderName.textContent =
+    budget.providers.length === 0
+      ? "an external model provider"
+      : budget.providers.join(" and ");
+
+  quotaMeter.dataset["level"] = level;
+  quotaPercent.textContent = `${String(percent)}%`;
+  quotaBar.style.width = `${String(percent)}%`;
+
+  if (!budget.available) {
+    quotaLine.textContent =
+      "Deep read is used up for today. Every repository still gets the full secret scan.";
+    quotaSub.textContent = `The daily allowance resets at 00:00 UTC. Add your own model key to read without the shared limit.`;
+    return;
+  }
+
+  const repos = budget.repoLimitPerRequest;
+  quotaLine.textContent =
+    `${String(budget.deepReadsRemaining)} of ${String(budget.deepReadsPerDay)} deep reads left today. ` +
+    `Each scan reads your ${String(repos)} most recently committed ${repos === 1 ? "repository" : "repositories"} in full; the rest get the secret scan.`;
+  quotaSub.textContent = budget.limitsVerified
+    ? `Limited by ${budget.scarcestModelId}, the tightest free allowance in the council.`
+    : `Limited by ${budget.scarcestModelId}. One member's published limit is unconfirmed upstream, so treat this figure as provisional.`;
+}
+
 void requestJson("/api/capabilities")
   .then((value) => {
     const capabilities = publicCapabilitiesSchema.parse(value);
     emailEnabled = capabilities.emailNotifications;
     emailOption.hidden = !emailEnabled;
+    renderDeepReadBudget(capabilities.deepRead);
     serviceNote.textContent =
       capabilities.scanCreation === "public"
         ? "No install. No card. No target code is executed. Reports update live; queue time depends on current worker capacity."
@@ -331,6 +385,10 @@ void requestJson("/api/capabilities")
   })
   .catch(() => {
     emailOption.hidden = true;
+    quotaMeter.dataset["level"] = "unknown";
+    quotaPercent.textContent = "--%";
+    quotaLine.textContent = "Today's model allowance is unavailable right now.";
+    quotaSub.textContent = "The secret scan does not depend on it and still runs on every repository.";
   });
 
 const existingRequest = new URLSearchParams(location.search).get("request");

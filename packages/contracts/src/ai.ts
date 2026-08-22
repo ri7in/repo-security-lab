@@ -11,19 +11,26 @@ import { boundedTokenSchema } from "./primitives.js";
  * implementation plan.
  */
 
-/** The only provider tag that exists in the slice. */
+/** The deterministic-double provider tag. */
 export const FIXTURE_PROVIDER = "fixture" as const;
 
 /**
- * Closed provider-tag vocabulary. Deliberately a single literal: every AI
- * artifact produced in this slice is schema-tagged as a deterministic fixture
- * and cannot be mistaken for real model review.
+ * Closed provider-tag vocabulary. `fixture` stays first and remains the only
+ * tag a deterministic double may carry, so replayed output can never be
+ * mistaken for real model review. Live tags name the routing surface rather
+ * than the model, because a single surface may serve several model families.
  */
-export const aiProviderTagSchema = z.literal(FIXTURE_PROVIDER);
+export const AI_PROVIDER_TAGS = [
+  FIXTURE_PROVIDER,
+  "openrouter",
+  "groq",
+  "gemini",
+] as const;
+export const aiProviderTagSchema = z.enum(AI_PROVIDER_TAGS);
 export type AiProviderTag = z.infer<typeof aiProviderTagSchema>;
 
-/** AI activation modes available in the slice. Production default: disabled. */
-export const AI_MODES = ["disabled", "fixture"] as const;
+/** AI activation modes. Production default stays `disabled`. */
+export const AI_MODES = ["disabled", "fixture", "live"] as const;
 export const aiModeSchema = z.enum(AI_MODES);
 export type AiMode = z.infer<typeof aiModeSchema>;
 export const DEFAULT_AI_MODE: AiMode = "disabled";
@@ -62,7 +69,10 @@ export type ProviderPolicy = z.infer<typeof providerPolicySchema>;
  * unconfusable with real review.
  */
 export const aiFixtureArtifactTagSchema = z.strictObject({
-  provider: aiProviderTagSchema,
+  // Deliberately the literal, not `aiProviderTagSchema`. Opening the provider
+  // vocabulary for the live lane must never let a replayed fixture tag itself
+  // as real model review.
+  provider: z.literal(FIXTURE_PROVIDER),
   fixtureId: boundedTokenSchema,
 });
 export type AiFixtureArtifactTag = z.infer<typeof aiFixtureArtifactTagSchema>;
@@ -131,3 +141,54 @@ export const aiCandidateSchema = z.strictObject({
   missingEvidence: z.array(aiMissingEvidenceSchema).max(5),
 });
 export type AiCandidate = z.infer<typeof aiCandidateSchema>;
+
+
+/**
+ * Pass-1 scout flag: a triage pointer, not a finding.
+ *
+ * The scout reads a whole account in one request and returns places worth a
+ * closer look. Flags are deliberately cheaper to express than
+ * `aiCandidateSchema`: no symbol graph, because no code map is built for the
+ * triage pass. A flag is never published on its own. It must survive the
+ * grounding gate and then a council vote before it can reach a report.
+ */
+export const aiScoutFlagSchema = z.strictObject({
+  /** Stable within one pack; the model echoes the token we assigned. */
+  fileToken: z.number().int().nonnegative(),
+  lineStart: z.number().int().positive(),
+  lineEnd: z.number().int().positive(),
+  /**
+   * Text the model claims sits at those lines. The grounding gate requires
+   * this to appear verbatim in the pack, which is what makes a fabricated
+   * flag structurally detectable rather than merely unlikely.
+   */
+  evidenceQuote: z
+    .string()
+    .min(8)
+    .max(500)
+    .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value)),
+  cwe: aiCweSchema,
+  impact: aiImpactSchema,
+  /** Why this is worth judging. Bounded so a flag cannot carry prose payloads. */
+  rationale: z.string().min(1).max(400),
+  confidence: z.enum(["high", "medium", "low"]),
+});
+export type AiScoutFlag = z.infer<typeof aiScoutFlagSchema>;
+
+/** The scout's whole response. A single malformed flag rejects the document. */
+export const aiScoutResponseSchema = z.strictObject({
+  flags: z.array(aiScoutFlagSchema).max(200),
+});
+export type AiScoutResponse = z.infer<typeof aiScoutResponseSchema>;
+
+/**
+ * One judge's independent vote on one grounded flag.
+ *
+ * Judges never see each other's votes. `unsure` is a first-class outcome so a
+ * judge is not pushed into a false binary, and it counts against publication.
+ */
+export const aiJudgeVerdictSchema = z.strictObject({
+  verdict: z.enum(["real", "not_real", "unsure"]),
+  reason: z.string().min(1).max(400),
+});
+export type AiJudgeVerdict = z.infer<typeof aiJudgeVerdictSchema>;

@@ -67,9 +67,13 @@ describe("coverage vocabulary", () => {
   });
 
   it("keeps the AI lane vocabulary closed and honest", () => {
-    expect(AI_LANE_STATES).toEqual(["ai_not_run", "ai_waiting", "ai_partial"]);
-    // No state may claim completed AI review in this slice.
-    expect(aiLaneStateSchema.safeParse("ai_complete").success).toBe(false);
+    expect(AI_LANE_STATES).toEqual(["ai_not_run", "ai_waiting", "ai_partial", "ai_complete"]);
+    // `ai_complete` means the lane finished running, never that the code is
+    // safe. No state may express a clean bill of health, because absence of an
+    // AI finding is not evidence of absence of a vulnerability.
+    for (const forbidden of ["ai_safe", "ai_clean", "ai_verified", "ai_passed"]) {
+      expect(aiLaneStateSchema.safeParse(forbidden).success).toBe(false);
+    }
   });
 });
 

@@ -17,6 +17,8 @@
     "@app/store-http": "workspace:*",
     "@app/worker-protocol": "workspace:*",
     "hono": "^4.9.0",
-    "zod": "^4.0.0"
+    "zod": "^4.0.0",
+    "@app/quota": "workspace:*",
+    "@app/branding": "workspace:*"
   }
 }

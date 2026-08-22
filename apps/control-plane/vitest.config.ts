@@ -12,6 +12,10 @@ export default defineConfig({
   plugins: [
     cloudflareTest(async () => ({
       miniflare: {
+        // Pinned to the Worker's own compatibility date. Left unset, the pool
+        // requests the current calendar date and fails against any workerd
+        // binary older than today.
+        compatibilityDate: "2026-08-17",
         d1Databases: ["DB"],
         bindings: {
           TEST_MIGRATIONS: await readD1Migrations(

@@ -59,6 +59,17 @@ function discovery(repositoryCount = 2, githubAccountId = 123): DiscoveryPort {
   };
 }
 
+const UNTOUCHED_DEEP_READ_BUDGET = {
+  available: true,
+  percentRemaining: 100,
+  scarcestModelId: "qwen/qwen3.6-27b",
+  deepReadsRemaining: 16,
+  deepReadsPerDay: 16,
+  repoLimitPerRequest: 3,
+  limitsVerified: true,
+  providers: ["openrouter", "groq"],
+} as const;
+
 describe("anonymous-safe control-plane API", () => {
   it("publishes truthful scan and email capabilities", async () => {
     const database = await store();
@@ -76,6 +87,7 @@ describe("anonymous-safe control-plane API", () => {
       schemaVersion: 1,
       scanCreation: "private_preview",
       emailNotifications: false,
+      deepRead: UNTOUCHED_DEEP_READ_BUDGET,
     });
 
     const publicApp = createApi({
@@ -93,6 +105,32 @@ describe("anonymous-safe control-plane API", () => {
       scanCreation: "public",
       emailNotifications: true,
     });
+    database.close();
+  });
+
+  it("publishes an injected deep-read budget instead of the untouched default", async () => {
+    const database = await store();
+    const app = createApi({
+      store: database,
+      discovery: discovery(),
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      deepReadBudget: () => ({
+        providers: ["openrouter", "groq"],
+        available: false,
+        percentRemaining: 0,
+        scarcestModelId: "qwen/qwen3.6-27b",
+        deepReadsRemaining: 0,
+        deepReadsPerDay: 16,
+        repoLimitPerRequest: 3,
+        limitsVerified: false,
+      }),
+    });
+    const capabilities = publicCapabilitiesSchema.parse(
+      await (await app.request("/api/capabilities")).json(),
+    );
+    expect(capabilities.deepRead.available).toBe(false);
+    expect(capabilities.deepRead.percentRemaining).toBe(0);
     database.close();
   });
 

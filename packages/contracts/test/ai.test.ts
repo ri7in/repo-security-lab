@@ -11,18 +11,21 @@ import {
 } from "@app/contracts";
 
 describe("ai provider tagging", () => {
-  it("accepts only the fixture provider tag", () => {
+  it("keeps the provider vocabulary closed to the routing surfaces we vetted", () => {
     expect(aiProviderTagSchema.safeParse(FIXTURE_PROVIDER).success).toBe(true);
-    for (const real of ["groq", "cloudflare", "gemini", "openai", "", "FIXTURE"]) {
-      expect(aiProviderTagSchema.safeParse(real).success).toBe(false);
+    for (const vetted of ["openrouter", "groq", "gemini"]) {
+      expect(aiProviderTagSchema.safeParse(vetted).success).toBe(true);
+    }
+    for (const unvetted of ["cloudflare", "openai", "anthropic", "", "FIXTURE"]) {
+      expect(aiProviderTagSchema.safeParse(unvetted).success).toBe(false);
     }
   });
 
-  it("defaults to disabled and offers only disabled/fixture modes", () => {
+  it("still defaults to disabled now that a live mode exists", () => {
     expect(DEFAULT_AI_MODE).toBe("disabled");
-    expect(AI_MODES).toEqual(["disabled", "fixture"]);
+    expect(AI_MODES).toEqual(["disabled", "fixture", "live"]);
     expect(aiModeSchema.safeParse("production").success).toBe(false);
-    expect(aiModeSchema.safeParse("live").success).toBe(false);
+    expect(aiModeSchema.safeParse("").success).toBe(false);
   });
 
   it("tags every fixture artifact so it cannot pass as real review", () => {

@@ -4,6 +4,7 @@ import {
   opaqueIdSchema,
   operatorFindingPageSchema,
   publicCapabilitiesSchema,
+  type DeepReadBudget,
   publicFindingPageSchema,
   repositoryPageSchema,
   scanRequestAcceptedSchema,
@@ -12,6 +13,7 @@ import {
   type OpaqueId,
 } from "@app/contracts";
 import { StoreWriteReserveError, type Store } from "@app/core";
+import { councilBudget, toDeepReadBudget } from "@app/quota";
 import {
   GithubClientError,
   type DiscoveryResult,
@@ -86,6 +88,11 @@ export interface ApiOptions {
     readonly scanCreation: "private_preview" | "public";
     readonly emailNotifications: boolean;
   };
+  /**
+   * Remaining council allowance. Omitted callers get the untouched-day budget,
+   * which is what a deployment without recorded spend honestly has.
+   */
+  readonly deepReadBudget?: () => DeepReadBudget | Promise<DeepReadBudget>;
   readonly operatorMode?: boolean;
   readonly bindHost?: string;
   readonly enforceHostHeader?: boolean;
@@ -255,6 +262,18 @@ export async function resumePendingDiscoveries(
   return attempted.size;
 }
 
+/**
+ * Resolves the council budget for the capabilities response. A deployment with
+ * no spend recorder reports the untouched-day budget rather than claiming zero,
+ * because zero would wrongly tell visitors the lane is exhausted.
+ */
+async function resolveDeepReadBudget(options: {
+  readonly deepReadBudget?: () => DeepReadBudget | Promise<DeepReadBudget>;
+}): Promise<DeepReadBudget> {
+  if (options.deepReadBudget === undefined) return toDeepReadBudget(councilBudget());
+  return options.deepReadBudget();
+}
+
 export function createApi(options: ApiOptions): Hono {
   const now = options.now ?? Date.now;
   const createRequestId =
@@ -303,11 +322,12 @@ export function createApi(options: ApiOptions): Hono {
     });
   }
 
-  app.get("/api/capabilities", (context) =>
+  app.get("/api/capabilities", async (context) =>
     context.json(
       publicCapabilitiesSchema.parse(
         {
           schemaVersion: 1,
+          deepRead: await resolveDeepReadBudget(options),
           ...(options.publicCapabilities ?? {
             scanCreation:
               options.allowedRequestedLogins === null

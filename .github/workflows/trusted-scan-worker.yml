@@ -1,5 +1,10 @@
 name: trusted-scan-worker
 
+# Started on demand by the control plane when a visitor requests a scan, and
+# by hand when needed. No schedule: an idle poll would burn Actions minutes to
+# find an empty queue, and it would be the "serverless application" pattern
+# GitHub's terms warn about. One run drains up to 50 jobs, so a request that
+# missed its own dispatch is still picked up by the next visitor's run.
 on:
   workflow_dispatch:
 
@@ -11,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  drain-private-queue:
+  drain-queue:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -55,14 +60,59 @@ jobs:
           echo "GITLEAKS_BINARY=$tool_dir/gitleaks" >> "$GITHUB_ENV"
           echo "GITLEAKS_SHA256=88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509" >> "$GITHUB_ENV"
 
-      - name: Drain queued private-slice scans
+      # Everything below is new. Scanning strangers' repositories requires the
+      # same enforced isolation the CI workflow already proves on this exact
+      # runner image, so the setup is copied from it rather than reinvented.
+      - name: Build the isolated scan domain
+        run: pnpm build:scan-domain
+
+      - name: Install Linux scan-isolation boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends \
+            apparmor-profiles \
+            apparmor-utils \
+            bubblewrap
+          test -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          sudo install -o root -g root -m 0644 \
+            /usr/share/apparmor/extra-profiles/bwrap-userns-restrict \
+            /etc/apparmor.d/bwrap-userns-restrict
+          sudo apparmor_parser --replace /etc/apparmor.d/bwrap-userns-restrict
+          sudo grep --fixed-strings --line-regexp \
+            'bwrap (enforce)' /sys/kernel/security/apparmor/profiles
+          test "$(stat --format='%U:%G:%a' /usr/bin/bwrap)" = "root:root:755"
+          node_binary="$(realpath "$(command -v node)")"
+          chmod go-w \
+            "$node_binary" \
+            "$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.toml" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.ignore"
+          for trusted_file in \
+            "$node_binary" \
+            "$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.toml" \
+            "$GITHUB_WORKSPACE/packages/scanners/config/gitleaks.ignore"; do
+            test "$(( 8#$(stat --format='%a' "$trusted_file") & 8#22 ))" -eq 0
+          done
+          echo "BUBBLEWRAP_BINARY=/usr/bin/bwrap" >> "$GITHUB_ENV"
+          echo "SCAN_NODE_BINARY=$node_binary" >> "$GITHUB_ENV"
+          echo "SCAN_DOMAIN_BUNDLE=$GITHUB_WORKSPACE/apps/scan-domain/dist/scan-domain.mjs" >> "$GITHUB_ENV"
+          echo "SCAN_RUNTIME_LIBRARY_PATHS=/lib/x86_64-linux-gnu,/usr/lib/x86_64-linux-gnu,/lib64" >> "$GITHUB_ENV"
+
+      - name: Drain queued scans
         env:
           CONTROL_PLANE_URL: ${{ vars.CONTROL_PLANE_URL }}
           WORKER_ID: worker_github_actions_01
           WORKER_KEY_GENERATION: "1"
           WORKER_SECRET: ${{ secrets.SCAN_WORKER_SECRET }}
           GITHUB_TOKEN: ${{ secrets.SCAN_GITHUB_TOKEN }}
-          PRIVATE_SLICE_ACCOUNT_IDS: "121791882"
+          # Public scope. The worker constructor refuses to start unless
+          # SCAN_ISOLATION_MODE is bubblewrap and the in-namespace escape probe
+          # passes, so this cannot silently degrade to an unsandboxed scan.
+          PUBLIC_WORKER: "true"
+          SCAN_ISOLATION_MODE: bubblewrap
           SCRATCH_PATH: ${{ runner.temp }}/repo-security-scratch
           MAX_JOBS_PER_TICK: "50"
           RUN_ONCE: "true"

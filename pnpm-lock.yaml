@@ -56,6 +56,9 @@ importers:
       '@app/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@app/quota':
+        specifier: workspace:*
+        version: link:../../packages/quota
       '@app/scanners':
         specifier: workspace:*
         version: link:../../packages/scanners
@@ -81,6 +84,9 @@ importers:
       '@app/api':
         specifier: workspace:*
         version: link:../api
+      '@app/branding':
+        specifier: workspace:*
+        version: link:../../packages/branding
       '@app/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -90,6 +96,9 @@ importers:
       '@app/github':
         specifier: workspace:*
         version: link:../../packages/github
+      '@app/quota':
+        specifier: workspace:*
+        version: link:../../packages/quota
       '@app/store-d1':
         specifier: workspace:*
         version: link:../../packages/store-d1
@@ -170,6 +179,15 @@ importers:
         specifier: workspace:*
         version: link:../contracts
 
+  packages/ai-providers:
+    dependencies:
+      '@app/ai':
+        specifier: workspace:*
+        version: link:../ai
+      '@app/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/archive:
     devDependencies:
       '@app/github':
@@ -223,6 +241,8 @@ importers:
       '@app/scanners':
         specifier: workspace:*
         version: link:../scanners
+
+  packages/quota: {}
 
   packages/scanners:
     dependencies:
