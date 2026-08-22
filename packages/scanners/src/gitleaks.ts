@@ -211,7 +211,9 @@ export class GitleaksScanner {
       findings: findings.slice(0, MAX_FINDINGS),
       rawFindingCount: findings.length,
       findingLimitExceeded: findings.length > MAX_FINDINGS,
-      ...(review === undefined ? {} : { review }),
+      ...(review === undefined
+        ? {}
+        : { review, reviewComplete: review.length === parsedFindings.length }),
     };
   }
 }

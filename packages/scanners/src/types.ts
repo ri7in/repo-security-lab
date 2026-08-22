@@ -67,6 +67,12 @@ export interface GitleaksScanResult {
    * guarantee it changes.
    */
   readonly review?: readonly ReviewFinding[];
+  /**
+   * True only when every finding produced a review entry. Suppression is only
+   * permitted on a fully reviewed engine result, because the published report
+   * uses coarse count buckets that cannot express a partial reduction.
+   */
+  readonly reviewComplete?: boolean;
 }
 
 export const ZIZMOR_SEVERITIES = [

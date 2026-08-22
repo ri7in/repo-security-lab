@@ -76,6 +76,17 @@ export const scanDomainResultSchema = z.strictObject({
   engineFailures: z.partialRecord(scanEngineSchema, failureClassSchema),
   /** Absent unless review is switched on, which it is not by default. */
   review: z.array(reviewFindingSchema).max(REVIEW_MAX_FINDINGS).optional(),
+  /**
+   * True only when every finding produced a review entry.
+   *
+   * The published report groups findings into coarse count buckets, so a
+   * partially reviewed group cannot be reduced honestly: there is no way to
+   * express "two_to_five, minus one". A group may therefore only be removed
+   * when this is true and every entry for it was rejected. Anything larger
+   * than the channel's cap, or any file that could not be read, leaves this
+   * false and the findings stand.
+   */
+  reviewComplete: z.boolean().optional(),
 });
 export type ScanDomainResult = z.infer<typeof scanDomainResultSchema>;
 

@@ -14,4 +14,5 @@ export * from "./grounding.js";
 export * from "./ports.js";
 export * from "./prompts.js";
 export * from "./funnel.js";
+export * from "./finding-review.js";
 export * from "./fixtures.js";
