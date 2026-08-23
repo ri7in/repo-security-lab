@@ -284,7 +284,64 @@ ALTER TABLE findings ADD COLUMN locations_json TEXT
   CHECK (locations_json IS NULL OR json_valid(locations_json));
 `;
 
-export const SCHEMA_VERSION = 8;
+/**
+ * Admits `ai` as a fifth engine.
+ *
+ * SQLite cannot alter a CHECK constraint, so both tables are rebuilt. Rebuild
+ * order matters: foreign keys are suspended for the transaction, the data is
+ * copied, and the indexes are recreated afterwards, because dropping a table
+ * takes its indexes with it.
+ */
+/**
+ * Admits `ai` as a fifth engine.
+ *
+ * Only `findings` is rebuilt. The old `repository_coverage` table carried the
+ * other engine CHECK and was dropped by migration 5, which replaced it with a
+ * JSON column validated by shape rather than by an enumerated list, so it
+ * accepts a new engine without being touched.
+ *
+ * SQLite cannot alter a CHECK, hence the copy. Foreign keys are suspended for
+ * the rebuild and the index is recreated afterwards, because dropping a table
+ * takes its indexes with it.
+ */
+export const MIGRATION_009 = `
+PRAGMA foreign_keys = OFF;
+
+CREATE TABLE findings_next (
+  finding_id TEXT PRIMARY KEY,
+  request_id TEXT NOT NULL,
+  repository_id INTEGER NOT NULL,
+  commit_sha TEXT NOT NULL CHECK (length(commit_sha) = 40),
+  engine TEXT NOT NULL CHECK (engine IN ('gitleaks','osv','zizmor','opengrep','ai')),
+  rule_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('critical','high','medium','low','info','unknown')),
+  confidence TEXT NOT NULL CHECK (confidence IN ('high','medium','low','unknown')),
+  occurrence_bucket TEXT NOT NULL CHECK (occurrence_bucket IN ('one','two_to_five','six_to_twenty','twenty_one_plus')),
+  remediation_key TEXT NOT NULL,
+  owner_detail_ref TEXT NOT NULL,
+  locations_json TEXT CHECK (locations_json IS NULL OR json_valid(locations_json)),
+  FOREIGN KEY (request_id, repository_id)
+    REFERENCES repositories(request_id, repository_id) ON DELETE CASCADE,
+  UNIQUE (request_id, repository_id, engine, rule_id)
+) STRICT;
+
+INSERT INTO findings_next SELECT
+  finding_id, request_id, repository_id, commit_sha, engine, rule_id,
+  category, severity, confidence, occurrence_bucket, remediation_key,
+  owner_detail_ref, locations_json
+FROM findings;
+
+DROP TABLE findings;
+ALTER TABLE findings_next RENAME TO findings;
+
+CREATE INDEX findings_request_order
+  ON findings(request_id, finding_id);
+
+PRAGMA foreign_keys = ON;
+`;
+
+export const SCHEMA_VERSION = 9;
 import {
   REPOSITORY_STATES,
   SPECIALISTS,

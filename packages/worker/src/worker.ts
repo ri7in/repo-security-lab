@@ -85,7 +85,14 @@ export interface RepositoryScanDomain {
   }>;
 }
 
-export type AdditionalScanEngine = Exclude<ScanEngine, "gitleaks">;
+/**
+ * Engines driven by the specialist loop.
+ *
+ * `ai` is excluded because it is not applicability-gated the way the file-type
+ * specialists are: there is no manifest or lockfile whose presence decides
+ * whether a model can read the code. It runs on its own path below.
+ */
+export type AdditionalScanEngine = Exclude<ScanEngine, "gitleaks" | "ai">;
 
 /** Hostile-domain adapter output is already reduced to the numeric packet. */
 export interface AdditionalEngineRunner {

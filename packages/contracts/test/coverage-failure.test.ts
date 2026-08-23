@@ -15,8 +15,8 @@ import {
 } from "@app/contracts";
 
 describe("engines and specialists", () => {
-  it("declares exactly the four deterministic engines", () => {
-    expect(SCAN_ENGINES).toEqual(["gitleaks", "osv", "zizmor", "opengrep"]);
+  it("declares every engine that reports coverage", () => {
+    expect(SCAN_ENGINES).toEqual(["gitleaks", "osv", "zizmor", "opengrep", "ai"]);
     expect(scanEngineSchema.safeParse("gitleaks").success).toBe(true);
     expect(scanEngineSchema.safeParse("trivy").success).toBe(false);
   });
@@ -29,6 +29,7 @@ describe("engines and specialists", () => {
       "osv",
       "zizmor",
       "opengrep",
+      "ai",
     ]);
     expect(specialistSchema.safeParse("archive_guard").success).toBe(true);
     expect(specialistSchema.safeParse("normalizer").success).toBe(false);

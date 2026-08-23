@@ -27,6 +27,15 @@ import {
   SqliteStore,
 } from "@app/store-sqlite";
 
+const LEGACY_SPECIALISTS = [
+  "snapshot",
+  "archive_guard",
+  "gitleaks",
+  "osv",
+  "zizmor",
+  "opengrep",
+] as const;
+
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
@@ -404,7 +413,10 @@ describe("SQLite store ledger", () => {
         request_id, repository_id, specialist, progress_state
       ) VALUES ('req_legacy0001', 99, ?, 'waiting')`,
     );
-    for (const specialist of SPECIALISTS) {
+    // The specialists that existed at this schema version, spelled out on
+    // purpose: a legacy fixture must not follow today's list, or adding an
+    // engine breaks a test about databases written before it existed.
+    for (const specialist of LEGACY_SPECIALISTS) {
       insertLegacyCoverage.run(specialist);
     }
     legacy.close();
@@ -519,7 +531,8 @@ describe("SQLite store ledger", () => {
       ["req_v4active001", 11, "waiting"],
       ["req_v4terminal1", 12, "complete"],
     ] as const) {
-      for (const specialist of SPECIALISTS) {
+      // Version-four fixture: the specialists that existed then, not today's.
+      for (const specialist of LEGACY_SPECIALISTS) {
         insertCoverage.run(requestId, repositoryId, specialist, progress);
       }
     }
@@ -564,7 +577,10 @@ describe("SQLite store ledger", () => {
     ).toMatchObject({
       state: "complete",
       publishedLeaseGeneration: 1,
-      coverage: outcomes(),
+      // A version-four database was written before the AI engine existed, so
+      // that engine has no recorded outcome and correctly reads as waiting.
+      // Back-filling it with "complete" would claim a review that never ran.
+      coverage: { ...outcomes(), ai: "waiting" },
     });
     expect(
       await store.listFindings({
@@ -596,7 +612,7 @@ describe("SQLite store ledger", () => {
       migrated
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8].map((version) => ({ version })));
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((version) => ({ version })));
     migrated.close();
   });
 

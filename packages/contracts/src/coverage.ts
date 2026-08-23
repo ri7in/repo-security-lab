@@ -6,7 +6,16 @@ import { z } from "zod";
  * fail-closed stubs that report `unsupported`/`failed` coverage and never
  * fabricate results.
  */
-export const SCAN_ENGINES = ["gitleaks", "osv", "zizmor", "opengrep"] as const;
+/**
+ * `ai` is an engine like any other, on purpose.
+ *
+ * A model's output is untrusted input, so routing it through the same
+ * manifest broker as a scanner means it can only ever emit a known CWE token
+ * and a count bucket. It cannot invent a rule name, a severity, or prose. It
+ * also inherits the coverage ledger, the locations channel and the report UI
+ * rather than growing a parallel set of all three.
+ */
+export const SCAN_ENGINES = ["gitleaks", "osv", "zizmor", "opengrep", "ai"] as const;
 export const scanEngineSchema = z.enum(SCAN_ENGINES);
 export type ScanEngine = z.infer<typeof scanEngineSchema>;
 

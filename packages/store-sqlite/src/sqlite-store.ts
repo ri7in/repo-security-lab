@@ -63,6 +63,7 @@ import {
   MIGRATION_006,
   MIGRATION_007,
   MIGRATION_008,
+  MIGRATION_009,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 
@@ -445,6 +446,13 @@ export class SqliteStore implements Store {
         if (versionEight === undefined) {
           this.#database.exec(MIGRATION_008);
           recordMigration.run(8, migrationTimeMs);
+        }
+        const versionNine = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 9")
+          .get() as { version: number } | undefined;
+        if (versionNine === undefined) {
+          this.#database.exec(MIGRATION_009);
+          recordMigration.run(9, migrationTimeMs);
         }
       });
       migrate();
