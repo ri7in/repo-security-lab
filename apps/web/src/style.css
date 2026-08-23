@@ -4,7 +4,13 @@
   --paper-raised: #ffffff;
   --ink: #16181d;
   --muted: #626870;
+  /* A dimmed text colour that still clears 4.5:1. The steps used to reach
+     this by compositing --muted at 55% opacity, which lands on 2.28:1. */
+  --muted-dim: #767c85;
   --line: #d8d9d3;
+  /* For anything that bounds a control or signals a state, where --line's
+     1.4:1 leaves no perceivable edge. */
+  --line-strong: #8b8d86;
   --soft: #efefe9;
   --signal: #087a55;
   --signal-contrast: #ffffff;
@@ -23,7 +29,9 @@
   --paper-raised: #171a1f;
   --ink: #e9ebe7;
   --muted: #a8adb5;
+  --muted-dim: #8d939b;
   --line: #34383e;
+  --line-strong: #6b7079;
   --soft: #20242a;
   --signal: #45c995;
   --signal-contrast: #101216;
@@ -32,6 +40,37 @@
   --amber-soft: #3c2b16;
   --red: #ff7b72;
   --red-soft: #421f22;
+}
+
+/* The same palette, for a visitor whose system is already in dark mode.
+ *
+ * Without this the page ignored the system setting entirely and opened white,
+ * while the meta color-scheme told the browser both were supported, so form
+ * controls and scrollbars rendered dark against a light page. `:not` keeps an
+ * explicit "light" choice winning over the system preference.
+ *
+ * The two blocks are checked against each other by a test rather than trusted
+ * to stay in step by hand.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --paper: #101216;
+    --paper-raised: #171a1f;
+    --ink: #e9ebe7;
+    --muted: #a8adb5;
+    --muted-dim: #8d939b;
+    --line: #34383e;
+    --line-strong: #6b7079;
+    --soft: #20242a;
+    --signal: #45c995;
+    --signal-contrast: #101216;
+    --signal-soft: #153a2d;
+    --amber: #f2ad57;
+    --amber-soft: #3c2b16;
+    --red: #ff7b72;
+    --red-soft: #421f22;
+  }
 }
 
 * { box-sizing: border-box; }
@@ -62,7 +101,7 @@ button { cursor: pointer; }
 .mark { font: 700 14px var(--mono); border: 1px solid var(--ink); padding: 7px 8px; }
 .header-actions { display: flex; align-items: center; gap: 12px; }
 .cost-badge { font: 650 11px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 10px; color: var(--signal); border: 1px solid currentColor; }
-.theme-toggle { border: 1px solid var(--line); color: var(--ink); background: transparent; width: 34px; height: 34px; }
+.theme-toggle { border: 1px solid var(--line-strong); color: var(--ink); background: transparent; width: 34px; height: 34px; }
 .theme-toggle:focus-visible, button:focus-visible, input:focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
 
 main { max-width: 1180px; margin: 0 auto; padding: 0 28px; }
@@ -80,15 +119,22 @@ h1 span { color: var(--muted); font-weight: 520; }
 .scan-form label { display: block; margin-bottom: 9px; font: 700 12px var(--mono); }
 .input-row { display: flex; align-items: stretch; max-width: 700px; border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 5px 5px 0 var(--ink); }
 .prompt { padding: 16px 0 16px 16px; color: var(--muted); font: 500 14px var(--mono); display: flex; align-items: center; }
-.input-row input { min-width: 0; flex: 1; border: 0; color: var(--ink); background: transparent; padding: 16px 12px 16px 2px; font: 600 14px var(--mono); outline: 0; }
+/* No `outline: 0` here. It used to sit later in the file at the same
+   specificity as the shared focus rule, so the primary control of the whole
+   product, and the fourth thing you reach with Tab, had no focus ring at
+   all. The offset is negative because the field sits inside a bordered row. */
+.input-row input { min-width: 0; flex: 1; border: 0; color: var(--ink); background: transparent; padding: 16px 12px 16px 2px; font: 600 14px var(--mono); }
+.input-row input:focus-visible { outline: 3px solid var(--amber); outline-offset: -4px; }
 .input-row button { border: 0; border-left: 1px solid var(--ink); color: var(--signal-contrast); background: var(--signal); padding: 0 22px; font-weight: 750; }
 .input-row button:hover { filter: brightness(.92); }
-.input-row button:disabled { background: var(--muted); cursor: wait; }
-.form-note { margin: 14px 0 0; color: var(--muted); font: 500 11px var(--mono); }
+.input-row button.is-busy { background: var(--muted); cursor: wait; }
+.field-help { margin: 9px 0 0; min-height: 0; color: var(--red); font: 600 11px var(--mono); }
+.field-help:empty { margin: 0; }
+.form-note { max-width: 700px; margin: 14px 0 0; color: var(--muted); font: 500 11px var(--mono); }
 .email-option { max-width: 700px; margin-top: 14px; padding: 14px 16px; border: 1px solid var(--line); background: var(--paper-raised); }
 .email-option label { margin-bottom: 8px; }
 .email-option label span { color: var(--muted); font-weight: 500; }
-.email-option input { width: 100%; min-height: 42px; border: 1px solid var(--line); color: var(--ink); background: var(--paper); padding: 9px 11px; font: 600 13px var(--mono); }
+.email-option input { width: 100%; min-height: 42px; border: 1px solid var(--line-strong); color: var(--ink); background: var(--paper); padding: 9px 11px; font: 600 13px var(--mono); }
 .email-option p { margin: 8px 0 0; color: var(--muted); font: 500 10px/1.5 var(--mono); }
 
 /* The scan agent.
@@ -97,7 +143,7 @@ h1 span { color: var(--muted); font-weight: 520; }
    moves here is driven by counts the server actually reported: the sign carries
    the step running now and fills with that step's real progress, and a step is
    only handed over once the previous one genuinely finished. */
-.bot-panel { align-self: start; position: relative; border: 1px solid var(--line); background-color: var(--paper-raised); background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Cpath d='M0 0H24M0 0V24' fill='none' stroke='%23d8d9d3' stroke-width='1'/%3E%3C/svg%3E"); background-size: 24px 24px; overflow: hidden; }
+.bot-panel { align-self: start; position: relative; border: 1px solid var(--line); background-color: var(--paper-raised); background-image: repeating-linear-gradient(to right, var(--line) 0 1px, transparent 1px 24px), repeating-linear-gradient(to bottom, var(--line) 0 1px, transparent 1px 24px); overflow: hidden; }
 .panel-label { display: flex; justify-content: space-between; padding: 11px 14px; background: var(--paper-raised); border-bottom: 1px solid var(--line); font: 700 10px var(--mono); letter-spacing: .1em; }
 
 .bot-stage { display: flex; flex-direction: column; align-items: center; padding: 16px 14px 10px; }
@@ -158,6 +204,22 @@ body[data-scan-state="failed"] .core, body[data-scan-state="failed"] .eyes { col
 .see-results { width: 100%; margin-top: 9px; padding: 8px; border: 1px solid var(--signal); background: var(--signal); color: var(--signal-contrast); font: 700 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .see-results:hover { filter: brightness(.93); }
 
+/* Opening a shared ?request= link used to land on the scan form, with the
+   result a full screen below the fold: an empty username box, a quota meter,
+   and a robot saying "All checks done" about a scan the visitor did not run.
+   In report mode the hero shrinks to a line of context and the verdict is the
+   first thing on the page. */
+body[data-view="report"] .hero { padding: 16px 0 4px; }
+body[data-view="report"] h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); }
+body[data-view="report"] .lede,
+body[data-view="report"] .quota-meter,
+body[data-view="report"] .bot-panel,
+body[data-view="report"] .eyebrow,
+body[data-view="report"] .email-option { display: none; }
+body[data-view="report"] .hero { grid-template-columns: 1fr; gap: 0; }
+body[data-view="report"] .status-section { border-top: 0; padding-top: 20px; }
+body[data-view="report"] .scan-form label { margin-bottom: 6px; }
+
 .status-section, .ledger-section { border-top: 1px solid var(--ink); padding: 48px 0 70px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
 .section-heading .eyebrow { margin-bottom: 8px; }
@@ -178,19 +240,25 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .findings-note { margin: -10px 0 18px; color: var(--muted); font-size: .82rem; }
 .dot { display: inline-block; width: 7px; height: 7px; margin: 0 5px 0 12px; border-radius: 50%; background: var(--muted); }
 .dot.complete { background: var(--signal); }.dot.skipped { background: var(--muted); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
-.table-shell { width: 100%; overflow-x: auto; border: 1px solid var(--line); background: var(--paper-raised); }
-table { width: 100%; border-collapse: collapse; min-width: 940px; }
+.table-shell { position: relative; width: 100%; overflow-x: auto; border: 1px solid var(--line); background: var(--paper-raised); }
+/* A fade at the right edge, so a table wider than the screen looks like one
+   rather than like a list that stops. */
+.table-shell::after { content: ""; position: sticky; top: 0; right: 0; float: right; width: 26px; height: 100%; margin-left: -26px; background: linear-gradient(to right, transparent, var(--paper-raised)); pointer-events: none; }
+table { width: 100%; border-collapse: collapse; min-width: 760px; }
+/* max-width is ignored on a table cell in auto layout, so the truncation has
+   to live on something inside it. The full name is on the cell's title. */
+.repo-name > span { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 td { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
 tbody tr:last-child td { border-bottom: 0; }
-tbody tr[data-active="true"] { background: var(--signal-soft); }
-.repo-name { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
-.state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 5px 7px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
+tbody tr[data-active="true"] { background: var(--signal-soft); box-shadow: inset 3px 0 0 var(--signal); }
+.repo-name { width: 1%; }
+.state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
 /* Tone, not state name. A skipped fork and a checker with nothing to do are
    correct outcomes and must not wear the same colour as a real failure, or a
    visitor reads a healthy report as a broken one. `cursor: help` advertises
    that the full explanation is one hover away. */
-[data-detail] { cursor: help; position: relative; }
+[data-detail] { cursor: help; }
 .state-chip::before { content: "○"; }
 .state-chip.tone-ok::before { content: "✓"; }
 .state-chip.tone-problem::before { content: "!"; }
@@ -198,7 +266,8 @@ tbody tr[data-active="true"] { background: var(--signal-soft); }
 .state-chip.tone-active::before { content: "◐"; }
 .state-chip.tone-ok { color: var(--signal); background: var(--signal-soft); }
 .state-chip.tone-problem { color: var(--red); background: var(--red-soft); }
-.state-chip.tone-skipped { color: var(--muted); background: transparent; border-color: var(--line); }
+/* The only chip with no fill, so its border is the whole chip. */
+.state-chip.tone-skipped { color: var(--muted); background: transparent; border-color: var(--line-strong); }
 .state-chip.tone-active { color: var(--amber); background: var(--amber-soft); }
 
 .principles { display: grid; grid-template-columns: repeat(3, 1fr); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); margin: 30px 0 88px; }
@@ -213,6 +282,9 @@ footer p { max-width: 720px; margin: 0; }
 
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 26px; }
+  /* Stacked, the panel would otherwise stretch to a metre of graph paper
+     around a 148px robot. */
+  .bot-panel { max-width: 460px; }
   .summary-card { border-bottom: 1px solid var(--line); }
   .principles { grid-template-columns: 1fr; }.principles article { border-right: 0; border-bottom: 1px solid var(--line); margin: 0; }
 }
@@ -262,7 +334,9 @@ footer p { max-width: 720px; margin: 0; }
    ignore the warning. */
 .ai-disclosure { max-width: 78ch; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: .78rem; line-height: 1.6; }
 .ai-disclosure strong { color: var(--ink); }
-.ai-disclosure { flex: 1 0 100%; max-width: none; }
+/* This used to override the measure set one rule above it, so the footer's
+   two paragraphs ran at visibly different line lengths. */
+.ai-disclosure { flex: 1 0 100%; }
 
 /* The four steps.
    A step is picked up from the right when it starts and dropped to the left
@@ -270,19 +344,21 @@ footer p { max-width: 720px; margin: 0; }
    place. Only one is ever active: marking several at once is what made an
    earlier version look like nothing was happening. */
 .steps { list-style: none; margin: 0; padding: 0 14px 16px; display: grid; gap: 9px; }
-.steps li { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto 3px; gap: 3px 10px; align-items: center; color: var(--muted); opacity: .55; transition: opacity .3s ease, transform .3s ease; }
+/* Colour, not opacity. `opacity` composites the whole subtree, so --muted at
+   55% landed on 2.28:1 against the panel and failed AA at 11px. */
+.steps li { display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto 3px; gap: 3px 10px; align-items: center; color: var(--muted-dim); transition: color .3s ease, transform .3s ease; }
 .steps li b { grid-row: 1 / span 2; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid currentColor; border-radius: 50%; font: 700 10px var(--mono); }
 .steps li span { font: 600 11px var(--mono); }
 .steps li i { display: block; height: 3px; width: 0; background: currentColor; transition: width .4s ease; }
-.steps li[data-state="done"] { color: var(--signal); opacity: .8; }
+.steps li[data-state="done"] { color: var(--signal); }
 .steps li[data-state="done"] b { font-size: 0; }
 .steps li[data-state="done"] b::after { content: "\2713"; font-size: 12px; }
-.steps li[data-state="active"] { color: var(--ink); opacity: 1; transform: translateX(4px); }
+.steps li[data-state="active"] { color: var(--ink); transform: translateX(4px); }
 .steps li[data-state="active"] b { border-width: 2px; }
 .steps li[data-state="active"] i { animation: pulse 1.4s ease-in-out infinite; }
 .steps li.taken { animation: stepTake .42s ease-out; }
 .steps li.dropped { animation: stepDrop .42s ease-in; }
-@keyframes stepTake { from { transform: translateX(26px); opacity: .2; } to { transform: translateX(4px); opacity: 1; } }
+@keyframes stepTake { from { transform: translateX(26px); opacity: .25; } to { transform: translateX(4px); opacity: 1; } }
 @keyframes stepDrop { from { transform: translateX(4px); } to { transform: translateX(-6px); } }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .steps li[data-state="active"] i { animation: none; } }
@@ -302,7 +378,7 @@ footer p { max-width: 720px; margin: 0; }
 /* Past scans. Reports expire after 30 days and live at an unguessable URL, so
    without this a closed tab loses the report for good. The list is per-browser
    and holds no finding data, only a pointer back. */
-.history { margin: 14px 0 0; border: 1px solid var(--line); }
+.history { max-width: 700px; margin: 14px 0 0; border: 1px solid var(--line); }
 .history summary { display: flex; justify-content: space-between; padding: 11px 13px; cursor: pointer; font: 600 11px var(--mono); color: var(--muted); }
 .history summary::-webkit-details-marker { display: none; }
 .history[open] summary { border-bottom: 1px solid var(--line); }
@@ -324,6 +400,11 @@ footer p { max-width: 720px; margin: 0; }
 .report-actions { display: flex; gap: 8px; }
 /* The advice cell explains itself on hover, like a state chip does. */
 .advice { display: inline-block; border-bottom: 1px dotted currentColor; }
+
+/* Read out, never drawn. The explanation belongs in the cell's text so a
+   screen reader meets it in reading order, and in a tooltip for everyone
+   holding a mouse. */
+.reader-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 
 .download-report, .print-report { padding: 9px 14px; border: 1px solid var(--ink); background: none; color: inherit; font: 650 11px var(--mono); cursor: pointer; }
 .download-report { background: var(--ink); color: var(--paper); }
@@ -353,34 +434,30 @@ footer p { max-width: 720px; margin: 0; }
   .state-chip { border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
   /* Tooltips cannot be hovered on paper, so the explanation is printed. */
   [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; }
+  .tip { display: none !important; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
 }
 
-/* Instant explanation. The native title tooltip waits about a second, which is
-   long enough that a visitor decides hovering does nothing. No delay here, and
-   it appears on keyboard focus as well as hover. */
-[data-detail]::after {
-  content: attr(data-detail);
-  position: absolute;
-  bottom: calc(100% + 7px);
+/* The explanation, positioned in the viewport rather than inside the table.
+   A box that scrolls on one axis clips on both, so the old `::after` was cut
+   off by the table's own edge. No delay, because the native title tooltip
+   waits about a second and people conclude hovering does nothing. */
+.tip {
+  position: fixed;
   left: 0;
-  z-index: 20;
-  width: max-content;
-  max-width: 290px;
+  top: 0;
+  z-index: 40;
+  max-width: min(320px, calc(100vw - 20px));
   padding: 9px 11px;
   background: var(--ink);
   color: var(--paper);
   border: 1px solid var(--ink);
   font: 500 11px/1.5 var(--sans);
-  text-transform: none;
-  letter-spacing: 0;
   white-space: normal;
   opacity: 0;
   visibility: hidden;
   transition: opacity .06s linear;
   pointer-events: none;
 }
-[data-detail]:hover::after,
-[data-detail]:focus-visible::after { opacity: 1; visibility: visible; }
-/* The last columns sit at the right edge, so their tooltip opens leftwards. */
-td:nth-last-child(-n+2) [data-detail]::after { left: auto; right: 0; }
+.tip[data-open] { opacity: 1; visibility: visible; }
+@media (prefers-reduced-motion: reduce) { .tip { transition: none; } }

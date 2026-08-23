@@ -42,14 +42,17 @@
                 name="username"
                 type="text"
                 inputmode="text"
-                autocomplete="username"
+                autocomplete="off"
                 maxlength="39"
                 pattern="[A-Za-z0-9](?:-?[A-Za-z0-9])*"
                 placeholder="username"
+                title="Letters, numbers and single hyphens. It cannot start or end with a hyphen."
+                aria-describedby="username-help"
                 required
               />
               <button id="scan-button" type="submit">Start scan <span aria-hidden="true">→</span></button>
             </div>
+            <p id="username-help" class="field-help" role="alert"></p>
             <div id="email-option" class="email-option" hidden>
               <label for="email">Email me when the report is ready <span>(optional)</span></label>
               <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" />
@@ -63,7 +66,7 @@
               <div class="quota-track">
                 <i id="quota-bar"></i>
               </div>
-              <p class="quota-line" id="quota-line" role="status">Checking how much is left today.</p>
+              <p class="quota-line" id="quota-line">Checking how much is left today.</p>
               <p class="quota-sub" id="quota-sub"></p>
             </section>
             <details class="history" id="history" hidden>
@@ -118,8 +121,8 @@
             <h2 id="status-title">Scan in progress</h2>
           </div>
         </div>
-        <p id="verdict" class="verdict" hidden><span class="verdict-mark" aria-hidden="true"></span><span id="verdict-text"></span></p>
-        <div id="live-status" class="live-status" aria-live="polite"></div>
+        <p id="verdict" class="verdict" role="status" hidden><span class="verdict-mark" aria-hidden="true"></span><span id="verdict-text"></span></p>
+        <div id="live-status" class="live-status"></div>
         <div class="progress-track" aria-hidden="true"><i id="progress-bar"></i></div>
         <div id="summary-grid" class="summary-grid"></div>
       </section>
@@ -133,10 +136,10 @@
           <p class="legend"><span class="dot complete"></span>scanned <span class="dot skipped"></span>skipped <span class="dot waiting"></span>running <span class="dot failed"></span>problem</p>
         </div>
         <p id="ledger-note" class="findings-note"></p>
-        <div class="table-shell" tabindex="0" aria-label="Scrollable table of repositories">
+        <div class="table-shell" role="region" tabindex="0" aria-label="Table of repositories, scrolls sideways">
           <table>
             <thead>
-              <tr><th>Repository</th><th>Status</th><th>Secret scan</th><th>AI code review</th></tr>
+              <tr><th scope="col">Repository</th><th scope="col">Status</th><th scope="col">Secret scan</th><th scope="col">AI code review</th></tr>
             </thead>
             <tbody id="repository-rows"></tbody>
           </table>
@@ -162,17 +165,18 @@
         </div>
         <p class="findings-note">Findings are public. Each one names the file and the line, so you can go straight to it. Secret values, code snippets, and raw matches never enter this report. "How many" is a range rather than an exact count, and several matches can land on the same line, so one location can still cover more than one.</p>
         <p id="nothing-found" class="nothing-found" hidden>Nothing was found. No exposed credential matched any of the rules this scan runs.</p>
-        <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable table of findings">
+        <div id="finding-table" class="table-shell" role="region" tabindex="0" aria-label="Table of findings, scrolls sideways">
           <table>
             <thead>
-              <tr><th>Repository</th><th>What was found</th><th>Severity</th><th>How many</th><th>Location</th><th>What to do</th></tr>
+              <tr><th scope="col">Repository</th><th scope="col">What was found</th><th scope="col">Severity</th><th scope="col">How many</th><th scope="col">Location</th><th scope="col">What to do</th></tr>
             </thead>
             <tbody id="finding-rows"></tbody>
           </table>
         </div>
       </section>
 
-      <section class="principles" aria-label="Product principles">
+      <section class="principles" aria-labelledby="principles-title">
+        <h2 id="principles-title" class="reader-only">How this works</h2>
         <article><span>01</span><h3>Complete inventory</h3><p>Forks and empty repositories stay visible. Nothing quietly disappears.</p></article>
         <article><span>02</span><h3>Evidence you can re-check</h3><p>Every scan records the exact commit it read. The AI review can add a finding but can never delete one the secret scanner produced.</p></article>
         <article><span>03</span><h3>Explicit limits</h3><p>Rate limits, unsupported checks, and partial results are labeled instead of guessed away.</p></article>

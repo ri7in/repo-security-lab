@@ -115,6 +115,37 @@ describe("acceptable use", () => {
   });
 });
 
+describe("the two dark palettes", () => {
+  it("define exactly the same tokens with the same values", () => {
+    // One block serves an explicit choice and the other serves a machine
+    // already in dark mode. They are duplicated on purpose, so they are also
+    // checked against each other rather than trusted to stay in step.
+    const css = read("src/style.css");
+    const explicit = /:root\[data-theme="dark"\] \{\n([\s\S]*?)\n\}/.exec(css);
+    const system =
+      /@media \(prefers-color-scheme: dark\) \{\n\s*:root:not\(\[data-theme="light"\]\) \{\n([\s\S]*?)\n\s*\}\n\}/.exec(
+        css,
+      );
+    expect(explicit).not.toBeNull();
+    expect(system).not.toBeNull();
+    const tokens = (body: string): string =>
+      body
+        .split("\n")
+        .map((line) => line.trim())
+        .filter((line) => line !== "")
+        .join("\n");
+    expect(tokens(system?.[1] ?? "")).toBe(tokens(explicit?.[1] ?? ""));
+    expect(tokens(explicit?.[1] ?? "")).toContain("--paper:");
+  });
+
+  it("does not leave the page following the system with no dark palette", () => {
+    // The meta tag advertises both schemes, so without this rule the browser
+    // renders dark form controls and scrollbars against a white page.
+    expect(read("src/style.css")).toContain("@media (prefers-color-scheme: dark)");
+    expect(read("index.html")).toContain('content="light dark"');
+  });
+});
+
 describe("the owner's hard rule about em dashes", () => {
   it("finds no em dash in anything that ships", () => {
     const offenders: string[] = [];

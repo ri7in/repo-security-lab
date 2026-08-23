@@ -36,6 +36,8 @@ import {
   type ReportState,
 } from "./report.js";
 import { remediationLabel } from "./remediation.js";
+import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
+import { installTooltips } from "./tooltip.js";
 import { summarizeVerdict } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
@@ -99,12 +101,57 @@ $("#footer-name").textContent = `${branding.productDisplayName}. Free and open s
 document.title = `${branding.productDisplayName}: public repository security`;
 
 const themeToggle = $<HTMLButtonElement>("#theme-toggle");
-themeToggle.addEventListener("click", () => {
+
+function safeStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+function applyTheme(dark: boolean, attribute: "light" | "dark" | null): void {
   const root = document.documentElement;
-  const dark = root.dataset["theme"] !== "dark";
-  root.dataset["theme"] = dark ? "dark" : "light";
+  if (attribute === null) {
+    delete root.dataset["theme"];
+  } else {
+    root.dataset["theme"] = attribute;
+  }
   themeToggle.setAttribute("aria-pressed", String(dark));
+  themeToggle.setAttribute(
+    "aria-label",
+    dark ? "Switch to the light theme" : "Switch to the dark theme",
+  );
+}
+
+const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
+let themeChosen = readStoredTheme(safeStorage());
+{
+  const opening = initialTheme(themeChosen, systemDark.matches);
+  applyTheme(opening.dark, opening.attribute);
+}
+// Follows the system while the visitor has not chosen for themselves.
+systemDark.addEventListener("change", (event) => {
+  if (themeChosen !== null) return;
+  applyTheme(event.matches, null);
 });
+
+themeToggle.addEventListener("click", () => {
+  const chosen = document.documentElement.dataset["theme"];
+  const showingDark =
+    chosen === "dark" || (chosen === undefined && systemDark.matches);
+  themeChosen = showingDark ? "light" : "dark";
+  storeTheme(safeStorage(), themeChosen);
+  applyTheme(!showingDark, themeChosen);
+});
+
+const usernameHelp = $<HTMLElement>("#username-help");
+
+/** Busy without removing the button from the tab order. */
+function setButtonBusy(busy: boolean): void {
+  button.setAttribute("aria-disabled", String(busy));
+  button.classList.toggle("is-busy", busy);
+}
 
 function setScanState(state: "idle" | "scanning" | "complete" | "failed"): void {
   document.body.dataset["scanState"] = state;
@@ -181,7 +228,12 @@ function renderSteps(summary: ScanRequestSummary): void {
 seeResults.addEventListener("click", () => {
   document
     .querySelector(findingsSection.hidden ? "#ledger-section" : "#findings-section")
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    ?.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        ? "instant"
+        : "smooth",
+      block: "start",
+    });
 });
 
 /**
@@ -194,14 +246,29 @@ seeResults.addEventListener("click", () => {
 function labelChip(label: Label): HTMLElement {
   const chip = document.createElement("span");
   chip.className = `state-chip tone-${label.tone}`;
-  chip.textContent = label.text;
+  const text = document.createElement("span");
+  text.textContent = label.text;
+  chip.append(text, explanation(label.detail));
   // Not `title`. The browser's own tooltip waits about a second before it
   // appears, which is long enough that a visitor concludes hovering does
-  // nothing and stops trying. This one is CSS and shows immediately.
+  // nothing and stops trying.
   chip.dataset["detail"] = label.detail;
-  chip.setAttribute("aria-label", `${label.text}. ${label.detail}`);
-  chip.tabIndex = 0;
   return chip;
+}
+
+/**
+ * The explanation, in the page rather than only in a tooltip.
+ *
+ * The chips used to be focusable spans carrying an `aria-label`, which put 69
+ * dead tab stops on a 23-repository report, each one revealing a tooltip that
+ * the table then clipped. As part of the cell's own text this is read in
+ * order, in table context, and costs nobody a keystroke.
+ */
+function explanation(detail: string): HTMLElement {
+  const hidden = document.createElement("span");
+  hidden.className = "reader-only";
+  hidden.textContent = ` ${detail}`;
+  return hidden;
 }
 
 /**
@@ -308,7 +375,9 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       row.dataset["active"] = String(!["complete", "empty", "partial", "failed", "cancelled"].includes(repository.state));
       const name = document.createElement("td");
       name.className = "repo-name";
-      name.textContent = repository.name;
+      const label = document.createElement("span");
+      label.textContent = repository.name;
+      name.append(label);
       // The one value that identifies the row, so it must stay recoverable
       // even where the column runs out of width.
       name.title = repository.name;
@@ -367,10 +436,10 @@ function renderFindings(
       const todo = document.createElement("td");
       const action = document.createElement("span");
       action.className = "advice";
-      action.textContent = advice.short;
       action.dataset["detail"] = advice.detail;
-      action.setAttribute("aria-label", `${advice.short}. ${advice.detail}`);
-      action.tabIndex = 0;
+      const short = document.createElement("span");
+      short.textContent = advice.short;
+      action.append(short, explanation(advice.detail));
       todo.append(action);
       row.append(todo);
       return row;
@@ -500,22 +569,46 @@ async function poll(requestId: string): Promise<void> {
   }
 }
 
+/**
+ * Says what is wrong and leaves it on the page.
+ *
+ * `reportValidity()` alone showed "Please match the format requested." over a
+ * field whose pattern was never described, in a bubble that disappears and
+ * cannot be read again.
+ */
+function reportUsernameProblem(): void {
+  const value = username.value.trim();
+  usernameHelp.textContent =
+    value === ""
+      ? "Enter a GitHub username."
+      : "A GitHub username is letters, numbers and single hyphens, and cannot start or end with a hyphen.";
+  username.setAttribute("aria-invalid", "true");
+  username.focus();
+}
+
 form.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (button.getAttribute("aria-disabled") === "true") return;
   if (!username.checkValidity()) {
-    username.reportValidity();
+    reportUsernameProblem();
     return;
   }
+  usernameHelp.textContent = "";
+  username.removeAttribute("aria-invalid");
   if (emailEnabled && email.value !== "" && !email.checkValidity()) {
     email.reportValidity();
     return;
   }
-  button.disabled = true;
+  // Not `disabled`. Disabling the element that holds focus takes it out of the
+  // tab order and drops focus at the document root, so a keyboard user who
+  // starts a scan is silently returned to the top of the page.
+  setButtonBusy(true);
   findingsSection.hidden = true;
   findingRows.replaceChildren();
   setScanState("scanning");
   statusSection.hidden = false;
   liveStatus.textContent = "Looking up the account on GitHub.";
+  verdict.hidden = true;
   void (async () => {
     try {
       const accepted = scanRequestAcceptedSchema.parse(
@@ -537,7 +630,7 @@ form.addEventListener("submit", (event) => {
       setScanState("failed");
       liveStatus.textContent = `Scan stopped. ${explainFailure(error instanceof Error ? error.message : undefined)}`;
     } finally {
-      button.disabled = false;
+      setButtonBusy(false);
     }
   })();
 });
@@ -614,13 +707,15 @@ void requestJson("/api/capabilities")
 
 const existingRequest = new URLSearchParams(location.search).get("request");
 if (existingRequest !== null) {
+  // Someone arriving on a shared link came for the result, not for the form.
+  document.body.dataset["view"] = "report";
   statusSection.hidden = false;
   const parsedRequest = opaqueIdSchema.safeParse(existingRequest);
   if (!parsedRequest.success) {
     setScanState("failed");
     liveStatus.textContent = "That request is unavailable.";
   } else {
-    button.disabled = true;
+    setButtonBusy(true);
     setScanState("scanning");
     void poll(parsedRequest.data)
       .catch(() => {
@@ -628,7 +723,7 @@ if (existingRequest !== null) {
         liveStatus.textContent = "That request is unavailable.";
       })
       .finally(() => {
-        button.disabled = false;
+        setButtonBusy(false);
       });
   }
 }
@@ -682,6 +777,7 @@ function renderHistory(entries: readonly HistoryEntry[]): void {
 historyClear.addEventListener("click", () => {
   for (const entry of readHistory()) forgetScan(entry.requestId);
   renderHistory(readHistory());
+installTooltips();
 });
 
 renderHistory(readHistory());

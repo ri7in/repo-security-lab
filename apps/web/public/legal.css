@@ -4,5 +4,11 @@ h1, h2 { line-height: 1.2; }
 h1 { font-size: clamp(2rem, 6vw, 3.5rem); }
 h2 { margin-top: 2.2rem; }
 a { color: #057d72; }
+
+/* The page declares it supports both schemes, so the browser paints a dark
+   canvas from the system setting while this colour stayed put at 3.7:1. */
+@media (prefers-color-scheme: dark) {
+  a { color: #45c995; }
+}
 .meta { opacity: .7; }
 li { margin-block: .5rem; }
