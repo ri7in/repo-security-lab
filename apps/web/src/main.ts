@@ -22,7 +22,6 @@ import {
 import {
   aiCoverageLabel,
   coverageLabel,
-  failureDetail,
   repositoryLabel,
   type Label,
 } from "./labels.js";
@@ -37,6 +36,13 @@ import {
 } from "./report.js";
 import { remediationLabel } from "./remediation.js";
 import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
+import {
+  explainFailure,
+  percentDone,
+  statusHeading,
+  statusLine,
+  summaryCards,
+} from "./summary.js";
 import { installTooltips } from "./tooltip.js";
 import { summarizeVerdict } from "./verdict.js";
 
@@ -271,77 +277,26 @@ function explanation(detail: string): HTMLElement {
   return hidden;
 }
 
-/**
- * Turns a stored failure code into a sentence.
- *
- * The status line used to print the code with its underscores swapped for
- * spaces, so a visitor who hit the daily database ceiling read "Request
- * stopped: d1 write reserve." D1 is Cloudflare's database product. The
- * explanations already existed one file away and were never consulted.
- */
-function explainFailure(code: string | undefined): string {
-  const explained = code === undefined ? undefined : failureDetail(code);
-  return (
-    explained ??
-    "Something went wrong that this page cannot explain. Try again in a few minutes; the report id in the address bar is what to send in if it keeps happening."
-  );
-}
-
-function terminalCount(summary: ScanRequestSummary): number {
-  return ["complete", "empty", "partial", "failed", "cancelled"].reduce(
-    (total, state) => total + summary.repositoryTotals[state as keyof typeof summary.repositoryTotals],
-    0,
-  );
-}
-
+// Counted from the rows and the findings page, both of which arrive after
+// the summary does, so the cards are repainted once they are in.
 let findingsShown = 0;
 let reviewedShown = 0;
 
 function renderSummary(summary: ScanRequestSummary): void {
-  const total = Object.values(summary.repositoryTotals).reduce(
-    (sum, count) => sum + count,
-    0,
-  );
-  const terminal = terminalCount(summary);
-  const notChecked =
-    summary.repositoryTotals.failed +
-    summary.repositoryTotals.partial +
-    summary.repositoryTotals.cancelled;
-  // "Terminal" is a word from the state machine, and a skipped fork was being
-  // counted under "needs attention" as though the visitor had to do something
-  // about it.
-  //
-  // The two scans are counted separately on purpose. "Fully scanned" over a
-  // table where most rows read "Not reviewed" was a contradiction a reader
-  // could see without scrolling: the secret scan reaches every repository, the
-  // code review reaches three.
-  const values = [
-    [String(total), "public repositories"],
-    [String(summary.repositoryTotals.complete), "secret-scanned"],
-    [String(reviewedShown), "code-reviewed"],
-    [String(notChecked), "not fully checked"],
-    [String(findingsShown), findingsShown === 1 ? "finding" : "findings"],
-  ];
   summaryGrid.replaceChildren(
-    ...values.map(([value, label]) => {
+    ...summaryCards(summary, reviewedShown, findingsShown).map((entry) => {
       const card = document.createElement("div");
       card.className = "summary-card";
       const strong = document.createElement("strong");
-      strong.textContent = value ?? "0";
+      strong.textContent = String(entry.value);
       const span = document.createElement("span");
-      span.textContent = label ?? "";
+      span.textContent = entry.label;
       card.append(strong, span);
       return card;
     }),
   );
-  const percent = total === 0 ? 100 : Math.round((terminal / total) * 100);
-  progressBar.style.width = `${percent}%`;
-  liveStatus.textContent =
-    summary.state === "failed"
-      ? `Scan stopped. ${explainFailure(summary.reason)}`
-      : summary.state === "complete"
-        ? `All ${String(total)} ${total === 1 ? "repository" : "repositories"} finished.`
-        : `${String(terminal)} of ${String(total)} repositories finished so far.`;
+  progressBar.style.width = `${String(percentDone(summary))}%`;
+  liveStatus.textContent = statusLine(summary);
   if (notificationStatus === "queued") {
     liveStatus.textContent += " A report email is queued.";
   } else if (notificationStatus === "rate_limited") {
@@ -350,17 +305,14 @@ function renderSummary(summary: ScanRequestSummary): void {
     liveStatus.textContent += " Email is unavailable, so keep this link.";
   }
   liveStatus.textContent += ` Updated ${new Date(summary.updatedAt).toLocaleString()}.`;
-  // "Coverage in progress" over a finished ledger is the kind of stale heading
-  // that makes a visitor doubt the numbers under it.
-  // "Coverage" is the word from the design doctrine. On a security page a
-  // stranger reads it as test coverage or as insurance.
-  statusTitle.textContent =
+  statusTitle.textContent = statusHeading(summary);
+  setScanState(
     summary.state === "complete"
-      ? "Scan finished"
+      ? "complete"
       : summary.state === "failed"
-        ? "Scan stopped early"
-        : "Scan in progress";
-  setScanState(summary.state === "complete" ? "complete" : summary.state === "failed" ? "failed" : "scanning");
+        ? "failed"
+        : "scanning",
+  );
 }
 
 function renderRepositories(repositories: readonly RepositoryRow[]): void {
@@ -425,8 +377,18 @@ function renderFindings(
       row.append(
         ...values.map((value, index) => {
           const cell = document.createElement("td");
+          if (index === 0) {
+            // Same truncation contract as the ledger: the ellipsis needs an
+            // element of its own to act on, and the full name stays on the
+            // cell so it is still recoverable.
+            cell.className = "repo-name";
+            cell.title = value;
+            const label = document.createElement("span");
+            label.textContent = value;
+            cell.append(label);
+            return cell;
+          }
           cell.textContent = value;
-          if (index === 0) cell.className = "repo-name";
           return cell;
         }),
       );
@@ -777,8 +739,10 @@ function renderHistory(entries: readonly HistoryEntry[]): void {
 historyClear.addEventListener("click", () => {
   for (const entry of readHistory()) forgetScan(entry.requestId);
   renderHistory(readHistory());
-installTooltips();
 });
+
+// Delegated on the document, so a chip the ledger adds later is covered too.
+installTooltips();
 
 renderHistory(readHistory());
 

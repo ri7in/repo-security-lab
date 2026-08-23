@@ -20,6 +20,37 @@
 const OFFSET = 8;
 const EDGE = 10;
 
+export interface Box {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+/**
+ * Where the tooltip goes, given what it is pointing at and how big it is.
+ *
+ * Above the target by preference, below it when there is not enough room, and
+ * always clamped inside the viewport. Separated from the DOM because the
+ * arithmetic is the part that was wrong before and the part worth pinning.
+ */
+export function place(
+  anchor: Box,
+  tip: { readonly width: number; readonly height: number },
+  viewport: { readonly width: number; readonly height: number },
+): { readonly left: number; readonly top: number } {
+  const above = anchor.top - tip.height - OFFSET;
+  const below = anchor.bottom + OFFSET;
+  const top = above >= EDGE ? above : below;
+  const rightmost = Math.max(EDGE, viewport.width - tip.width - EDGE);
+  return {
+    left: Math.min(Math.max(EDGE, anchor.left), rightmost),
+    // A tooltip taller than the space below still has to start on screen.
+    top: Math.max(EDGE, Math.min(top, viewport.height - tip.height - EDGE)),
+  };
+}
+
 let tip: HTMLElement | null = null;
 
 function element(): HTMLElement {
@@ -44,15 +75,13 @@ function show(target: HTMLElement): void {
   node.style.top = "0px";
   const anchor = target.getBoundingClientRect();
   const box = node.getBoundingClientRect();
-  const above = anchor.top - box.height - OFFSET;
-  const below = anchor.bottom + OFFSET;
-  const top = above >= EDGE ? above : below;
-  const left = Math.min(
-    Math.max(EDGE, anchor.left),
-    Math.max(EDGE, window.innerWidth - box.width - EDGE),
+  const at = place(
+    anchor,
+    { width: box.width, height: box.height },
+    { width: window.innerWidth, height: window.innerHeight },
   );
-  node.style.left = `${String(Math.round(left))}px`;
-  node.style.top = `${String(Math.round(top))}px`;
+  node.style.left = `${String(Math.round(at.left))}px`;
+  node.style.top = `${String(Math.round(at.top))}px`;
 }
 
 function hide(): void {

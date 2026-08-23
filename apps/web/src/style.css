@@ -218,7 +218,11 @@ body[data-view="report"] .eyebrow,
 body[data-view="report"] .email-option { display: none; }
 body[data-view="report"] .hero { grid-template-columns: 1fr; gap: 0; }
 body[data-view="report"] .status-section { border-top: 0; padding-top: 20px; }
+body[data-view="report"] .scan-form { margin-top: 18px; }
 body[data-view="report"] .scan-form label { margin-bottom: 6px; }
+/* Two long stretches of nothing between the verdict and the ledger. */
+body[data-view="report"] .status-section { padding-bottom: 34px; }
+body[data-view="report"] .ledger-section { padding-top: 32px; }
 
 .status-section, .ledger-section { border-top: 1px solid var(--ink); padding: 48px 0 70px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
@@ -231,7 +235,7 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 /* auto-fit rather than a fixed count: the card set has grown once and the
    grid should not have to be edited again when it grows twice. */
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); }
-.summary-card { padding: 20px; border-right: 1px solid var(--line); }
+.summary-card { padding: 18px; border-right: 1px solid var(--line); }
 .summary-card:last-child { border: 0; }
 .summary-card strong { display: block; font: 700 28px var(--mono); }
 .summary-card span { color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
@@ -252,7 +256,7 @@ th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1
 td { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
 tbody tr:last-child td { border-bottom: 0; }
 tbody tr[data-active="true"] { background: var(--signal-soft); box-shadow: inset 3px 0 0 var(--signal); }
-.repo-name { width: 1%; }
+.repo-name { width: 1%; white-space: nowrap; }
 .state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
 /* Tone, not state name. A skipped fork and a checker with nothing to do are
    correct outcomes and must not wear the same colour as a real failure, or a
@@ -296,7 +300,6 @@ footer p { max-width: 720px; margin: 0; }
   .report-actions { width: 100%; }
   .input-row { flex-wrap: wrap; }.prompt { padding-right: 0; }.input-row input { width: 50%; }.input-row button { width: 100%; min-height: 50px; border-left: 0; border-top: 1px solid var(--ink); }
   .section-heading, footer { align-items: start; flex-direction: column; }
-  .summary-grid { grid-template-columns: 1fr; }.summary-card { border-right: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
