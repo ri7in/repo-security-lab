@@ -10,7 +10,7 @@ repositories of a GitHub account. A visitor enters a GitHub username; a
 backend agent system attempts every owned public repository and returns one
 clear combined report with exact per-repository, per-specialist coverage.
 
-**Private production preview.** The website and D1 control plane are live at
+**Live and open.** The website and D1 control plane are live at
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
 Public scanning is live: anyone can scan any public GitHub account, with no
 sign-up, and the pull worker runs on GitHub Actions under enforced Bubblewrap
@@ -19,16 +19,23 @@ Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
   no dependencies, scripts, tests, builds, or hooks of scanned repositories run.
-- Deterministic findings are immutable evidence; AI may never suppress them or
-  declare a repository safe.
-- Hosted scan egress carries no archive-derived strings: only manifest-issued
-  numeric tokens and four count-bucket codes cross the source-blind broker.
+- A scanner finding is deleted only when every judge on the council rejects it,
+  and the council is two models from different families. Fewer than two judges,
+  two of one family, an exhausted quota, a provider timing out, a partly
+  reviewed repository or any thrown error all keep the finding. No model
+  declares a repository safe; the verdict is computed from coverage.
+- The evidence channel out of the sandbox carries no archive-derived strings:
+  only manifest-issued numeric tokens and four count-bucket codes cross the
+  source-blind broker. Locations travel separately and deliberately: a
+  validated relative path and a line number, capped per finding, with traversal
+  and absolute paths refused at the source. Matches, snippets and secret values
+  are on neither channel.
 - Gitleaks and Zizmor have exact version/hash pins, strict adapters, and
   source-blind manifests. Zizmor remains runtime-default-off outside the Linux
   scan domain and cannot silently claim coverage.
-- Optional private-preview report email uses an encrypted one-shot queue and
-  one operator-controlled address. Public scanning disables it until a
-  recipient-consent flow exists.
+- Report email is off. If it is ever switched on it uses an encrypted one-shot
+  queue, and public scanning keeps it disabled until a recipient-consent flow
+  exists.
 - Abandoned active reports fail after 24 hours, and terminal reports expire 30
   days after their last update; privacy and acceptable-use policies ship with
   the site.

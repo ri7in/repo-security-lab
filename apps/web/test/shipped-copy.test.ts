@@ -71,6 +71,33 @@ describe("links between the shipped pages", () => {
   });
 });
 
+describe("the public documentation", () => {
+  const docs = (relative: string): string =>
+    readFileSync(path.join(ROOT, relative), "utf8");
+
+  it("does not claim a model can never suppress a scanner finding", () => {
+    // The council deletes a secret-scan finding when every judge rejects it.
+    // The README, the threat model and the landing page all said otherwise.
+    for (const file of ["README.md", "docs/threat-model.md"]) {
+      const body = docs(file).toLowerCase();
+      expect(body, file).not.toContain("may never suppress");
+      expect(body, file).not.toContain("immutable evidence;");
+    }
+  });
+
+  it("does not describe itself as a private preview", () => {
+    // Anyone can scan any public account, and both the site and the API say so.
+    for (const file of ["README.md", "docs/threat-model.md", "docs/privacy.md"]) {
+      expect(docs(file).toLowerCase(), file).not.toContain("private production preview");
+    }
+  });
+
+  it("says source is sent to model providers", () => {
+    expect(docs("docs/privacy.md").toLowerCase()).toContain("is sent to model providers");
+    expect(docs("docs/privacy.md").toLowerCase()).not.toContain("ai source lane remains disabled");
+  });
+});
+
 describe("the privacy policy", () => {
   it("says the code review sends source out, while it does", () => {
     // The default is on, so the policy has to say so. If the reader is ever

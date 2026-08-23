@@ -200,7 +200,7 @@ runtime.
 `apps/control-plane` serves the production web bundle and API from one
 Cloudflare Worker. It uses D1, public write/read admission limits, a separate
 worker-edge limit, cron discovery recovery, 24-hour abandoned-work expiry,
-30-day terminal-report deletion, security headers, a private-preview
+30-day terminal-report deletion, security headers, a switched-off
 operator-only encrypted email queue, and a default-off public scanning switch.
 Completed reports require no identity or
 session. Legacy `/auth/` and `/api/owner/` routes return fixed 404 responses.

@@ -153,7 +153,7 @@ The local runtime is intentionally single-operator and sequentially paced. The
 deployed control-plane code has public source-blind reports, durable capacity
 reservations, a protected 40%-to-60% privacy-maintenance write band, 240-report
 daily admission, bounded read/write/internal
-rate limits, private-preview operator-only encrypted email, 24-hour abandoned
+rate limits, switched-off encrypted email, 24-hour abandoned
 work expiry, and automatic 30-day terminal-report deletion, but no public scan worker is
 attached. The application does not persist requester IPs. Email ciphertext is
 erased after delivery or final failure; a keyed abuse-control hash disappears
