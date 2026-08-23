@@ -81,3 +81,42 @@ workflow/source-rule specialists, or real AI vulnerability detection. The
 frontend is buildable but has not been deployed because the available Vercel
 session could not be positively identified as the owner's personal account.
 Those are release gates, not details to hide behind optimistic wording.
+
+## 2026-08-24: the redaction that never fired
+
+The privacy page, the site footer and the architecture doc all promised that
+every line where the secret scanner matched a credential is blanked before a
+file is sent to a model. The lookup is an exact match on the file path. The
+scanner reports `src/config.ts`; the reader's file walk reported
+`owner-repo-sha/src/config.ts`, because GitHub wraps every tarball in one
+directory and the scanner strips it while the reader did not. The map was
+queried with a key that could never be present, so no line was ever blanked.
+
+Every test of that behaviour used a flat fixture, so the promise held in the
+tests and nowhere else. This is the second time in a week that a fixture which
+did not model reality hid a credential-handling bug: the first was review
+context, where the fixture literally contained the word REDACTED. Fixtures for
+anything that touches a secret now have to be shaped like the real input.
+
+**What was actually exposed: nothing that can be found.** Every scan since the
+reader went live was checked, and no repository the reader read had any
+secret-scanner finding at all:
+
+| Scan | Repositories read | Secret findings in them |
+| --- | --- | --- |
+| ri7in (23 repos) | Task-Management-App, Smart-FE | none |
+| octocat (8 repos) | octocat.github.io | none |
+| defunkt (107 repos) | exception_logger, starling, cijoe, metaid, burn | none |
+| ri7in, second run | Task-Management-App, W-Tech, Smart-FE | none |
+
+The pack also only carries 27 source extensions, and the one live finding to
+date sits in `infrastructure/k8s/secrets.yaml`, which is not among them, so it
+was never a candidate for the pack in the first place. The bound on what could
+have happened is three repositories per scan since 23 August; the observed
+number is zero.
+
+The bug surfaced from reading the first AI finding to reach a live report. It
+pointed at `ri7in-W-Tech-6feceed/php/Job Insert.php`, a path that exists
+nowhere in the repository, and the wrapper was in the location because it was
+in the pack. A wrong-looking path was the only visible symptom of a silent
+security control doing nothing.
