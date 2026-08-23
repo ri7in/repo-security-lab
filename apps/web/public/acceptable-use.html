@@ -11,10 +11,25 @@
     <nav><a href="/">← scanner</a></nav>
     <main>
       <h1>Acceptable use</h1>
-      <p class="meta">Last updated: 17 August 2026</p>
-      <p>Use this service only for public GitHub repository security review. Reports are informational coverage records, not a guarantee that a repository is secure and not a replacement for a professional assessment.</p>
-      <p>Do not disrupt availability, evade rate or quota controls, scan private or unlawfully obtained data, probe the service without authorization, or deliberately place personal data, credentials, or exploit payloads into the report workflow. A report is not permission to exploit a finding. Disclose issues responsibly to the repository owner.</p>
-      <p>The service may refuse, delay, or remove requests to protect its zero-cost capacity, users, and upstream services. Honest partial, failed, and unsupported outcomes are part of the product contract.</p>
+      <p class="meta">Last updated: 24 August 2026</p>
+      <p>A report says which checks ran and what they matched. It is not a guarantee that a repository is secure, and it is not a substitute for someone reviewing the code. A quiet report means the checks that ran matched nothing, which is a much smaller claim than "this is safe".</p>
+
+      <h2 id="scanning-other-people">Scanning an account that is not yours</h2>
+      <p>You can. Anyone can scan any public GitHub account, and this page is not going to pretend otherwise. Everything a report prints is already readable by anyone who clones those repositories: a file path, a line number, and the name of a rule that matched. Nothing secret is in the report, because secret values never leave the sandbox.</p>
+      <p>What that does change is convenience. A report gathers into one page what would otherwise take someone an afternoon, it lives at a URL you can send to anyone, and it stays there for 30 days. So:</p>
+      <ul>
+        <li>If you scan someone else's account and it finds something, tell them. Privately, first, and before you tell anybody else.</li>
+        <li>A finding is not permission to use it. Logging in with a key this tool found is unauthorised access wherever you are reading this from.</li>
+        <li>Do not publish or pass around a report URL for an account you do not own. Send the owner the link and let them decide who else sees it.</li>
+        <li>If a report about your account exists and you want it gone before it expires, send the report id from the address bar to the operator through the GitHub profile linked on the privacy page. It gets deleted.</li>
+      </ul>
+
+      <h2 id="using-the-service">Using the service itself</h2>
+      <p>Do not disrupt availability, work around the rate limits, or probe the service for weaknesses without asking first. Do not deliberately put personal data, live credentials, or exploit payloads into a repository in order to get them into a report.</p>
+      <p>This runs on free tiers with a small daily budget shared by everyone using it, so requests may be refused, delayed, or removed to keep it running. A partial, failed, or skipped result is a real answer and is reported as one rather than smoothed over.</p>
+
+      <h2 id="security">If you find a problem in this tool</h2>
+      <p>Report it through the GitHub profile linked on the <a href="/privacy.html">privacy page</a> rather than opening a public issue, and give me a chance to fix it before it goes anywhere else.</p>
     </main>
   </body>
 </html>
