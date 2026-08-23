@@ -56,11 +56,15 @@ export interface ScanWorkerConfiguration {
 function scoutConfig(
   environment: NodeJS.ProcessEnv,
 ): null | { readonly apiKey: string; readonly models: readonly string[] } {
-  // Off unless explicitly switched on. The reader is new, and a repository it
-  // cannot publish keeps its lease, which stalls the queue behind it. Until
-  // that failure is understood, a scan without an AI pass is a far better
-  // outcome than a scan that does not finish.
-  if (environment["AI_REVIEW_ENABLED"] !== "true") return null;
+  // On wherever a key exists, off with one variable.
+  //
+  // It was off while the stall that followed it was unexplained. The cause was
+  // a plain contract violation: a reader that could not reach its provider set
+  // the AI engine to failed without attaching a reason, the ledger refuses an
+  // unattributed failure, and a refused publication keeps its lease, which this
+  // worker will not claim past. Both halves are fixed, so the default is back
+  // to on.
+  if (environment["AI_REVIEW_ENABLED"] === "false") return null;
   const apiKey = environment["OPENROUTER_API_KEY"];
   if (apiKey === undefined || apiKey.trim() === "") return null;
   const preferred = environment["OPENROUTER_SCOUT_MODEL"];

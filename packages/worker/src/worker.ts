@@ -197,7 +197,17 @@ function leaseRef(repository: RepositoryRecord, workerId: OpaqueId): LeaseRef {
  * as UNCLASSIFIED with only a length, which is enough to tell a large echoed
  * body from a short internal string without printing either.
  */
-const SAFE_MESSAGE = /^[A-Za-z0-9 _.,'-]{1,160}$/;
+/**
+ * A colon is allowed because the message that actually mattered carried one.
+ *
+ * The worker reaches the ledger over HTTP, so a rejected publication arrives as
+ * "control plane rejected request: INVALID_BODY", where the tail is a fixed
+ * protocol reason. Without the colon that whole message was withheld as
+ * UNCLASSIFIED, which is how a plain contract violation stayed unexplained
+ * through a production stall. A scanner path or a code excerpt still fails this
+ * shape on its slashes, braces, or newlines.
+ */
+const SAFE_MESSAGE = /^[A-Za-z0-9 _.,:'-]{1,160}$/;
 
 function reportPublishFailure(error: unknown): void {
   const message = error instanceof Error ? error.message : "";
@@ -632,6 +642,14 @@ export class RepositoryWorker {
               tokenBudget: AI_TOKEN_BUDGET,
             });
             coverage.ai = reviewed.coverage;
+            // A failed engine must always carry a reason. Publication refuses
+            // an unattributed failure, and the refusal keeps the lease, which
+            // stalls every repository queued behind this one. The reader
+            // returns "failed" rather than throwing when a provider is
+            // unreachable, so the catch below never saw this case.
+            if (reviewed.coverage === "failed") {
+              specialistReasons.ai = "SCANNER_INTERNAL";
+            }
             if (reviewed.packet !== null && reviewed.packet.groups.length > 0) {
               normalizedByEngine.set("ai", {
                 normalized: {
@@ -738,7 +756,9 @@ export class RepositoryWorker {
         }
       } catch (error) {
         reportPublishFailure(error);
-        return "publish_deferred";
+        return (await this.#publishFailClosed(lease, coverage, specialistReasons))
+          ? "failed"
+          : "publish_deferred";
       }
       if (publication !== "published" && publication !== "idempotent") {
         return publication === "stale_lease" ? "stale_lease" : "publish_deferred";
@@ -825,10 +845,91 @@ export class RepositoryWorker {
           nowMs: this.#now(),
         });
         return publication === "published" ? "failed" : "stale_lease";
-      } catch (error) {
-        reportPublishFailure(error);
-        return "publish_deferred";
+      } catch (publishError) {
+        reportPublishFailure(publishError);
+        return (await this.#publishFailClosed(
+          lease,
+          coverage,
+          specialistReasons,
+          reason,
+        ))
+          ? "failed"
+          : "publish_deferred";
       }
+    }
+  }
+
+  /**
+   * Publishes a repository as failed when its real result could not be.
+   *
+   * A refused publication keeps the lease, and this worker will not claim
+   * while it holds one, so a single repository whose result cannot be
+   * represented stalls every repository queued behind it. That is exactly what
+   * happened in production, and it took deleting the row by hand to clear.
+   *
+   * The escape is a publication that is certainly representable: every engine
+   * that had succeeded is demoted to failed, because its findings are being
+   * discarded either way, and the repository is published as failed. That
+   * costs this repository its findings, which is a real loss, and it is the
+   * smaller one. The alternative loses every other repository in the request
+   * as well, and leaves the ledger claiming they are still scanning.
+   */
+  async #publishFailClosed(
+    lease: LeaseRef,
+    coverage: Record<
+      (typeof SPECIALISTS)[number],
+      SpecialistOutcomes[(typeof SPECIALISTS)[number]]
+    >,
+    specialistReasons: Partial<Record<ScanEngine, FailureClass>>,
+    /** The reason the refused publication carried, kept where it still fits. */
+    preferredReason?: FailureClass,
+  ): Promise<boolean> {
+    const failed = { ...coverage };
+    for (const engine of SCAN_ENGINES) {
+      if (["complete", "partial"].includes(failed[engine])) {
+        failed[engine] = "failed";
+      }
+    }
+    // A failed publication has to name something that failed. If nothing did,
+    // the secret scan is the one that produced no recorded result, and saying
+    // so is more honest than publishing a repository as failed with every
+    // check reading clean.
+    if (!SCAN_ENGINES.some((engine) => failed[engine] === "failed")) {
+      failed.gitleaks = "failed";
+    }
+    // A failed snapshot or archive guard already explains the whole
+    // repository, and the contract refuses per-engine reasons alongside one.
+    const baseFailed =
+      failed.snapshot === "failed" || failed.archive_guard === "failed";
+    const reasons: Partial<Record<ScanEngine, FailureClass>> = {};
+    if (!baseFailed) {
+      for (const engine of SCAN_ENGINES) {
+        if (failed[engine] !== "failed") continue;
+        reasons[engine] = specialistReasons[engine] ?? "SCANNER_INTERNAL";
+      }
+    }
+    // The truthful reason survives wherever the contract still allows it. A
+    // repository whose download was refused should say so, not report a
+    // generic internal fault because the recovery path had nothing better.
+    const attributed = baseFailed
+      ? preferredReason
+      : (SCAN_ENGINES.map((engine) => reasons[engine]).find(
+          (reason) => reason !== undefined,
+        ) ?? preferredReason);
+    try {
+      const publication = await this.#store.publish({
+        ...lease,
+        terminalState: "failed",
+        reason: attributed ?? "SCANNER_INTERNAL",
+        coverage: failed,
+        specialistReasons: reasons,
+        findings: [],
+        nowMs: this.#now(),
+      });
+      return publication === "published" || publication === "idempotent";
+    } catch (error) {
+      reportPublishFailure(error);
+      return false;
     }
   }
 

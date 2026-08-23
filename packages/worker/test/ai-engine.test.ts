@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -175,6 +175,74 @@ describe("the AI engine", () => {
     // Failed, never "complete with no findings", which would read as clean.
     expect(result.coverage).toBe("failed");
     expect(result.packet).toBeNull();
+  }, 30_000);
+
+  it("reports a capped review as partial, never as a finished one", async () => {
+    // Twenty is the judge cap. Twenty five grounded flags means five were
+    // never judged, and a review that did not finish must not be published as
+    // one that did.
+    const lines = Array.from({ length: 25 }, () => VULNERABLE.trim()).join("\n");
+    const sourcePath = await sourceTree({ "src/db.ts": `${lines}\n` });
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() =>
+        Array.from({ length: 25 }, (_, index) =>
+          flag({ lineStart: index + 1, lineEnd: index + 1 }),
+        ),
+      ),
+      judges: JUDGES,
+      tokenBudget: 200_000,
+    });
+    expect(result.coverage).toBe("partial");
+  }, 30_000);
+
+  it("reports a review the council could not finish as partial", async () => {
+    // Fewer than two usable verdicts is no council at all for that flag.
+    const sourcePath = await sourceTree({ "src/db.ts": VULNERABLE });
+    const failing: JudgePort = {
+      family: "gamma",
+      review: () => Promise.reject(new Error("provider down")),
+    };
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() => [flag()]),
+      judges: [judge("alpha", "real"), failing],
+      tokenBudget: 50_000,
+    });
+    expect(result.coverage).toBe("partial");
+    expect(result.packet?.groups ?? []).toEqual([]);
+  }, 30_000);
+
+  it("keeps reading when a directory cannot be listed", async () => {
+    // An unreadable directory is skipped, never fatal: one bad permission bit
+    // must not cost a repository its entire code review.
+    const sourcePath = await sourceTree({
+      "src/app.ts": VULNERABLE,
+      "locked/inner.ts": "export const b = 2;\n",
+    });
+    await chmod(path.join(sourcePath, "locked"), 0o000);
+    const scout = scoutReturning(() => []);
+    try {
+      const result = await runAiEngine({
+        sourcePath,
+        repositoryId: 7,
+        repositoryName: "fixture",
+        review: [],
+        scout,
+        judges: JUDGES,
+        tokenBudget: 50_000,
+      });
+      expect(result.coverage).toBe("complete");
+      expect(scout.seen.join("\n")).toContain("app.ts");
+    } finally {
+      await chmod(path.join(sourcePath, "locked"), 0o700);
+    }
   }, 30_000);
 
   it("does not walk into dependency or build directories", async () => {
