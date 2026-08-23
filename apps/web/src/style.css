@@ -11,6 +11,7 @@
   /* For anything that bounds a control or signals a state, where --line's
      1.4:1 leaves no perceivable edge. */
   --line-strong: #8b8d86;
+  --shadow: #16181d;
   --soft: #efefe9;
   --signal: #087a55;
   --signal-contrast: #ffffff;
@@ -32,6 +33,7 @@
   --muted-dim: #8d939b;
   --line: #34383e;
   --line-strong: #6b7079;
+  --shadow: #2a2f36;
   --soft: #20242a;
   --signal: #45c995;
   --signal-contrast: #101216;
@@ -62,6 +64,7 @@
     --muted-dim: #8d939b;
     --line: #34383e;
     --line-strong: #6b7079;
+    --shadow: #2a2f36;
     --soft: #20242a;
     --signal: #45c995;
     --signal-contrast: #101216;
@@ -117,7 +120,11 @@ h1 { margin: 0; font-size: clamp(2.7rem, 5.4vw, 4.7rem); line-height: .98; lette
 h1 span { color: var(--muted); font-weight: 520; }
 .lede { max-width: 620px; margin: 16px 0 22px; color: var(--muted); font-size: clamp(.98rem, 1.3vw, 1.08rem); line-height: 1.6; }
 .scan-form label { display: block; margin-bottom: 9px; font: 700 12px var(--mono); }
-.input-row { display: flex; align-items: stretch; max-width: 700px; border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 5px 5px 0 var(--ink); }
+/* The offset shadow is a light-mode idiom: --ink is near white in dark, so a
+   solid --ink shadow painted a bright bar under the field and read as a
+   rendering fault. It follows the border colour instead, which is the same
+   near-black in light and a quiet grey in dark. */
+.input-row { display: flex; align-items: stretch; max-width: 700px; border: 1px solid var(--ink); background: var(--paper-raised); box-shadow: 5px 5px 0 var(--shadow); }
 .prompt { padding: 16px 0 16px 16px; color: var(--muted); font: 500 14px var(--mono); display: flex; align-items: center; }
 /* No `outline: 0` here. It used to sit later in the file at the same
    specificity as the shared focus rule, so the primary control of the whole
@@ -422,24 +429,49 @@ footer p { max-width: 720px; margin: 0; }
    read away from the tooltips. */
 @media print {
   @page { margin: 16mm; }
-  nav, footer, .hero-copy form, .bot-panel, .quota-meter, .history,
-  .download-report, .print-report, .see-results, .bot-live, .theme-toggle, #progress-track, .progress-track { display: none !important; }
+  /* Everything that exists to get you to press a button. The header, the
+     headline and the three principle blocks all used to print, and the fixed
+     skip link stamped a black box over a table row on every page. */
+  nav, footer, .site-header, .skip-link, .hero-copy form, .hero-copy .eyebrow,
+  .hero-copy h1, .hero-copy .lede, .principles, .bot-panel, .quota-meter,
+  .history, .report-actions, .see-results, .bot-live, .theme-toggle,
+  .legend, .progress-track, .reader-only { display: none !important; }
   body { background: #fff; color: #000; font-size: 10.5pt; }
-  .print-cover { display: block; margin: 0 0 14mm; }
+  main { max-width: none; padding: 0; }
+  /* The cover sits between the ledger and the findings in source order, so on
+     paper the title page came out in the middle of the document. */
+  .print-cover { display: block !important; margin: 0 0 10mm; }
   .print-cover h1 { font-size: 20pt; letter-spacing: -.01em; margin: 0 0 4mm; }
   .print-cover p { margin: 0; font-size: 9pt; color: #444; }
+  .hero { display: block; padding: 0; }
+  .status-section { border: 0; padding: 0 0 6mm; }
   section { break-inside: auto; }
-  .ledger-section { display: block !important; margin: 0 0 10mm; }
+  .ledger-section { display: block !important; border: 0; margin: 0 0 8mm; padding: 0; }
+  .section-heading { display: block; margin-bottom: 4mm; }
+  h2 { font-size: 14pt; }
+  .verdict { border: 1px solid #999; padding: 3mm; font-size: 11pt; }
+  .summary-grid { display: flex; border: 0; }
+  .summary-card { padding: 0 6mm 0 0; border: 0; }
+  .summary-card strong { font-size: 14pt; }
+  /* The scroller and its 760px floor both have to go, or two of the four
+     columns print off the edge of the page. */
   .table-shell { overflow: visible !important; border: 0; }
-  table { width: 100%; border-collapse: collapse; }
-  th, td { border-bottom: 1px solid #ddd; padding: 2mm 1mm; font-size: 9pt; }
+  .table-shell::after { display: none !important; }
+  table { width: 100%; min-width: 0 !important; table-layout: fixed; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #ddd; padding: 2mm 1mm; font-size: 9pt; vertical-align: top; }
+  .repo-name { width: auto; white-space: normal; }
+  .repo-name > span { max-width: none; overflow: visible; white-space: normal; }
   tr { break-inside: avoid; }
-  .state-chip { border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
-  /* Tooltips cannot be hovered on paper, so the explanation is printed. */
-  [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; }
+  .state-chip { display: inline; border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
+  /* An explanation that cannot wrap is an explanation chopped mid-word. */
+  .state-chip, .advice { white-space: normal !important; }
+  .state-chip::before { display: none; }
+  /* Nothing can be hovered on paper, so the explanation is printed. */
+  [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; font-weight: 400; }
   .tip { display: none !important; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
 }
+
 
 /* The explanation, positioned in the viewport rather than inside the table.
    A box that scrolls on one axis clips on both, so the old `::after` was cut

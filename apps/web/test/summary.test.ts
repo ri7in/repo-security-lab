@@ -102,7 +102,7 @@ describe("the status line", () => {
     // "Request stopped: d1 write reserve." D1 is Cloudflare's database.
     const line = statusLine(summary("failed", { waiting: 3 }, "D1_WRITE_RESERVE"));
     expect(line).not.toContain("d1 write reserve");
-    expect(line.toLowerCase()).toContain("daily");
+    expect(line.toLowerCase()).toContain("free database allowance");
   });
 
   it("says something useful for a code it has never seen", () => {
@@ -138,5 +138,38 @@ describe("the heading over the result", () => {
     for (const state of ["scanning", "complete", "failed"] as const) {
       expect(statusHeading(summary(state)).toLowerCase()).not.toContain("coverage");
     }
+  });
+});
+
+describe("explaining why a scan stopped", () => {
+  it("explains every code the API can reject a request with", () => {
+    // All six used to collapse into "something went wrong that this page
+    // cannot explain, and the report id in the address bar is what to send
+    // in", over a request that was never created and had no report id.
+    for (const code of [
+      "INVALID_USERNAME",
+      "PRIVATE_SLICE_SCOPE",
+      "DUPLICATE_ACTIVE_REQUEST",
+      "RATE_LIMITED",
+      "CAPACITY_EXHAUSTED",
+      "EMAIL_UNAVAILABLE",
+    ]) {
+      const line = explainFailure(code);
+      expect(line, `${code} is unexplained`).not.toContain("cannot explain");
+      expect(line.length, `${code} is too thin`).toBeGreaterThan(40);
+    }
+  });
+
+  it("explains a stopped request in request terms, not repository terms", () => {
+    // GITHUB_NOT_FOUND against a repository means it disappeared mid-scan.
+    // Against a request it means the username does not exist, and the status
+    // line was reading the repository wording.
+    const line = explainFailure("GITHUB_NOT_FOUND");
+    expect(line).toContain("no user account");
+    expect(line).not.toContain("became private");
+  });
+
+  it("tells someone who typed an organisation what is wrong", () => {
+    expect(explainFailure("GITHUB_NOT_FOUND")).toContain("organisation");
   });
 });

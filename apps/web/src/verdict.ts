@@ -29,7 +29,19 @@ export function summarizeVerdict(
   username: string,
   repositories: readonly RepositoryRow[],
   findings: readonly PublicFinding[],
+  /** Why the request stopped, if it stopped. There is no verdict then. */
+  stoppedBecause?: string,
 ): Verdict {
+  // A scan that never ran has no result, and the empty ledger under it used to
+  // produce "Nothing to check. someone has no public repositories", which is a
+  // reassuring sentence about a lookup that failed. On a security tool a false
+  // all-clear is the worst output there is.
+  if (stoppedBecause !== undefined) {
+    return {
+      tone: "concern",
+      text: `This scan stopped before it finished, so it has no result. ${stoppedBecause}`,
+    };
+  }
   const total = repositories.length;
   const skipped = uncheckedCount(repositories);
   const checked = total - skipped;

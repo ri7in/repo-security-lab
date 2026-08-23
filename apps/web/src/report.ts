@@ -130,7 +130,18 @@ export function formatCount(bucket: string): string {
   return COUNTS[bucket] ?? bucket.replaceAll("_", " ");
 }
 
-/** The file name a downloaded report lands under. */
+/**
+ * The file name a downloaded report lands under.
+ *
+ * Dated the way the page dates it. `toISOString` gave the UTC day, so a report
+ * the page labelled 24 August downloaded as `...-2026-08-23.pdf`.
+ */
 export function reportFileName(summary: ScanRequestSummary): string {
-  return `security-report-${summary.username}-${new Date(summary.updatedAt).toISOString().slice(0, 10)}.pdf`;
+  const at = new Date(summary.updatedAt);
+  const day = [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, "0"),
+    String(at.getDate()).padStart(2, "0"),
+  ].join("-");
+  return `security-report-${summary.username}-${day}.pdf`;
 }

@@ -44,6 +44,7 @@ import {
   summaryCards,
 } from "./summary.js";
 import { installTooltips } from "./tooltip.js";
+import { usernameProblem } from "./username.js";
 import { summarizeVerdict } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
@@ -152,6 +153,23 @@ themeToggle.addEventListener("click", () => {
 });
 
 const usernameHelp = $<HTMLElement>("#username-help");
+const announcer = $<HTMLElement>("#announce");
+
+let lastAnnounced = "";
+
+/**
+ * Says something once, when it changes.
+ *
+ * The page used to hold three live regions rewriting near-identical text on
+ * every three-second poll, timestamp included, which is about forty
+ * announcements on a twenty-three repository scan. This one speaks when the
+ * step changes and when the scan ends, so roughly five times.
+ */
+function announce(message: string): void {
+  if (message === lastAnnounced) return;
+  lastAnnounced = message;
+  announcer.textContent = message;
+}
 
 /** Busy without removing the button from the tab order. */
 function setButtonBusy(busy: boolean): void {
@@ -223,6 +241,11 @@ function renderSteps(summary: ScanRequestSummary): void {
   signText.textContent = model.signText;
   signFill.style.width = `${String(model.signPercent)}%`;
 
+  announce(
+    model.finished
+      ? `${model.livePhase}. ${model.liveDetail}`
+      : `${model.livePhase}, ${String(model.livePercent)} percent.`,
+  );
   botLive.dataset["state"] = model.liveState;
   livePhase.textContent = model.livePhase;
   livePercent.textContent = `${String(model.livePercent)}%`;
@@ -358,6 +381,7 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
 function renderFindings(
   findings: readonly PublicFinding[],
   repositories: readonly RepositoryRow[],
+  stopped: boolean,
 ): void {
   const repositoryNames = new Map(
     repositories.map((repository) => [repository.repositoryId, repository.name]),
@@ -407,7 +431,10 @@ function renderFindings(
       return row;
     }),
   );
-  findingsSection.hidden = false;
+  // A stopped scan has nothing to report either way, and offering it a
+  // findings section at all invites the reader to conclude it came back clean.
+  findingsSection.hidden = stopped;
+  if (stopped) return;
   $("#finding-count").textContent =
     findings.length === 0
       ? "nothing found"
@@ -495,7 +522,7 @@ async function poll(requestId: string): Promise<void> {
         const findings = await loadFindings(requestId);
         loadedFindings = findings;
         findingCount = findings.length;
-        renderFindings(findings, repositories);
+        renderFindings(findings, repositories, summary.state === "failed");
       } catch {
         // Finding detail is a separate public-safe plane. Its failure must never
         // relabel a valid coverage request as failed.
@@ -535,15 +562,10 @@ async function poll(requestId: string): Promise<void> {
  * Says what is wrong and leaves it on the page.
  *
  * `reportValidity()` alone showed "Please match the format requested." over a
- * field whose pattern was never described, in a bubble that disappears and
- * cannot be read again.
+ * field whose pattern was described nowhere, in a bubble that disappears.
  */
-function reportUsernameProblem(): void {
-  const value = username.value.trim();
-  usernameHelp.textContent =
-    value === ""
-      ? "Enter a GitHub username."
-      : "A GitHub username is letters, numbers and single hyphens, and cannot start or end with a hyphen.";
+function showUsernameProblem(problem: string): void {
+  usernameHelp.textContent = problem;
   username.setAttribute("aria-invalid", "true");
   username.focus();
 }
@@ -551,8 +573,9 @@ function reportUsernameProblem(): void {
 form.addEventListener("submit", (event) => {
   event.preventDefault();
   if (button.getAttribute("aria-disabled") === "true") return;
-  if (!username.checkValidity()) {
-    reportUsernameProblem();
+  const problem = usernameProblem(username.value);
+  if (problem !== null) {
+    showUsernameProblem(problem);
     return;
   }
   usernameHelp.textContent = "";
@@ -667,6 +690,28 @@ void requestJson("/api/capabilities")
     quotaSub.textContent = "The secret scan does not depend on it and still runs on every repository.";
   });
 
+/**
+ * A report that is not there.
+ *
+ * The heading and the agent panel used to keep saying "Scan in progress" and
+ * "Idle, 0 percent, enter a username to start" underneath the message, because
+ * both are only ever written from a summary that this path never receives.
+ */
+function showUnavailable(): void {
+  setScanState("failed");
+  statusTitle.textContent = "Report not found";
+  liveStatus.textContent =
+    "That report link is not valid, or it has passed its 30 day expiry and been deleted.";
+  livePhase.textContent = "Not found";
+  livePercent.textContent = "";
+  liveBar.style.width = "0%";
+  liveDetail.textContent = "Enter a username above to run a new scan.";
+  botLive.dataset["state"] = "failed";
+  signText.textContent = "Nothing to show";
+  seeResults.hidden = true;
+  verdict.hidden = true;
+}
+
 const existingRequest = new URLSearchParams(location.search).get("request");
 if (existingRequest !== null) {
   // Someone arriving on a shared link came for the result, not for the form.
@@ -674,15 +719,13 @@ if (existingRequest !== null) {
   statusSection.hidden = false;
   const parsedRequest = opaqueIdSchema.safeParse(existingRequest);
   if (!parsedRequest.success) {
-    setScanState("failed");
-    liveStatus.textContent = "That request is unavailable.";
+    showUnavailable();
   } else {
     setButtonBusy(true);
     setScanState("scanning");
     void poll(parsedRequest.data)
       .catch(() => {
-        setScanState("failed");
-        liveStatus.textContent = "That request is unavailable.";
+        showUnavailable();
       })
       .finally(() => {
         setButtonBusy(false);
@@ -773,7 +816,12 @@ function renderVerdict(
     verdict.hidden = true;
     return;
   }
-  const decided = summarizeVerdict(summary.username, repositories, findings);
+  const decided = summarizeVerdict(
+    summary.username,
+    repositories,
+    findings,
+    summary.state === "failed" ? explainFailure(summary.reason) : undefined,
+  );
   verdict.hidden = false;
   verdict.dataset["tone"] = decided.tone;
   verdictText.textContent = decided.text;

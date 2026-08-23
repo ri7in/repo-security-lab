@@ -282,6 +282,15 @@ export class GithubDiscoveryClient {
             this.#retryAfterSeconds(response.headers),
           );
         }
+        // GitHub answers a login that is not a user account, whether it does
+        // not exist or belongs to an organisation, with data.user null AND a
+        // NOT_FOUND entry here. The null branch below was therefore never
+        // reached, and every one of those lookups came back to the visitor as
+        // "the download failed part way through, running the scan again
+        // usually works", which can never work.
+        if (parsed.data.errors.some((error) => error.type === "NOT_FOUND")) {
+          throw new GithubClientError("ACCOUNT_NOT_FOUND");
+        }
         reportGithubFailure("graphql_errors", {
           errorType: parsed.data.errors[0]?.type ?? "unknown",
         });

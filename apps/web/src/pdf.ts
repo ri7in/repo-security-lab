@@ -182,8 +182,14 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
   advance(19);
   write(page, MARGIN, page.cursor, "F1", 9, report.meta);
   advance(20);
-  write(page, MARGIN, page.cursor, "F2", 11, report.verdict);
-  advance(10);
+  // Helvetica-Bold at 11pt averages a little over half its point size per
+  // character. The verdict is a sentence, and as one unwrapped line it ran
+  // about 200pt off the right edge of the page.
+  for (const line of wrap(report.verdict, Math.floor(CONTENT_WIDTH / 5.4))) {
+    write(page, MARGIN, page.cursor, "F2", 11, line);
+    advance(14);
+  }
+  advance(-4);
   rule(page, page.cursor);
   advance(20);
 
@@ -198,8 +204,12 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
       advance(13);
     }
     if (section.rows.length === 0) {
-      write(page, MARGIN, page.cursor, "F3", MONO_SIZE, section.emptyText);
-      advance(24);
+      const budget = Math.max(1, Math.floor(CONTENT_WIDTH / MONO_ADVANCE) - 1);
+      for (const line of wrap(section.emptyText, budget)) {
+        write(page, MARGIN, page.cursor, "F3", MONO_SIZE, line);
+        advance(ROW_HEIGHT);
+      }
+      advance(14);
       continue;
     }
     if (section.layout === "list") {

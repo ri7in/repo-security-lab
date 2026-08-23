@@ -131,6 +131,10 @@ function discoveryFailure(error: unknown) {
   if (error instanceof GithubClientError) {
     if (error.code === "RATE_LIMITED") return "GITHUB_RATE_LIMIT" as const;
     if (error.code === "ACCOUNT_NOT_FOUND") return "GITHUB_NOT_FOUND" as const;
+    // An organisation is not a user account, and the REST fallback says so.
+    // Without this case it fell through to REPOSITORY_CHANGED, which describes
+    // something else entirely.
+    if (error.code === "ACCOUNT_NOT_PERSONAL") return "GITHUB_NOT_FOUND" as const;
     if (error.code === "AUTH_REQUIRED") return "GITHUB_AUTH" as const;
     if (
       error.code === "NETWORK_FAILED" ||

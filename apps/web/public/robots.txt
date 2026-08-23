@@ -1,0 +1,4 @@
+# Reports are public to anyone holding the link and are deliberately not
+# indexed: the pages carry noindex, and a report URL is unguessable.
+User-agent: *
+Disallow: /

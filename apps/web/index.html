@@ -7,6 +7,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta name="referrer" content="no-referrer" />
     <meta name="robots" content="noindex,nofollow" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'" />
     <title>Repository security ledger</title>
     <script type="module" src="/src/main.ts"></script>
@@ -24,6 +25,7 @@
       </div>
     </header>
 
+    <p id="announce" class="reader-only" role="status" aria-live="polite"></p>
     <main id="main">
       <section class="hero" aria-labelledby="headline">
         <div class="hero-copy">
@@ -43,7 +45,7 @@
                 type="text"
                 inputmode="text"
                 autocomplete="off"
-                maxlength="39"
+                maxlength="60"
                 pattern="[A-Za-z0-9](?:-?[A-Za-z0-9])*"
                 placeholder="username"
                 title="Letters, numbers and single hyphens. It cannot start or end with a hyphen."
@@ -101,7 +103,7 @@
               <strong id="live-percent">0%</strong>
             </div>
             <div class="live-track"><i id="live-bar"></i></div>
-            <p id="live-detail" role="status">Enter a username to start.</p>
+            <p id="live-detail">Enter a username to start.</p>
             <button type="button" id="see-results" class="see-results" hidden>See the result below</button>
           </div>
 
@@ -112,6 +114,11 @@
             <li data-step="review"><b>4</b><span>Reviewing findings</span><i></i></li>
           </ol>
         </div>
+      </section>
+
+      <section id="print-cover" class="print-cover" aria-hidden="true">
+        <h1 id="print-title"></h1>
+        <p id="print-meta"></p>
       </section>
 
       <section id="status-section" class="status-section" hidden aria-labelledby="status-title">
@@ -144,11 +151,6 @@
             <tbody id="repository-rows"></tbody>
           </table>
         </div>
-      </section>
-
-      <section id="print-cover" class="print-cover" aria-hidden="true">
-        <h1 id="print-title"></h1>
-        <p id="print-meta"></p>
       </section>
 
       <section id="findings-section" class="ledger-section" hidden aria-labelledby="findings-title">

@@ -213,10 +213,58 @@ const UNKNOWN: Label = {
     "An unrecognized state, which is a bug in this tool rather than a problem with your code. The report id is in the address bar if you want to send it in.",
 };
 
+/**
+ * Why a whole scan stopped, as opposed to why one repository did.
+ *
+ * These are separate maps on purpose. GITHUB_NOT_FOUND against a repository
+ * means it disappeared between being listed and being scanned; against a
+ * request it means the account does not exist. The status line was reading the
+ * repository wording, so a mistyped username was told a repository had gone
+ * private.
+ *
+ * The API's own rejection codes live here too. Every one of them used to
+ * collapse into "something went wrong that this page cannot explain, and the
+ * report id in the address bar is what to send in", over a request that was
+ * never created and therefore had no report id.
+ */
+const REQUEST_REASONS: Record<string, string> = {
+  GITHUB_NOT_FOUND:
+    "GitHub has no user account with that name. Check the spelling. This scans user accounts, so an organisation will not work here either.",
+  GITHUB_RATE_LIMIT:
+    "GitHub is rate limiting this service right now. It clears on its own, usually within the hour.",
+  GITHUB_AUTH:
+    "GitHub refused this service's credentials. That is a fault at this end, not yours.",
+  GITHUB_NETWORK:
+    "The connection to GitHub failed part way through. Running the scan again usually works.",
+  D1_WRITE_RESERVE:
+    "This service has used its free database allowance for the day. It resets overnight.",
+  REPOSITORY_CHANGED:
+    "The account changed while it was being read. Running the scan again picks up the new state.",
+  CANCELLED: "This scan was cancelled before it finished.",
+  PRIVATE_SLICE_SCOPE:
+    "Scanning is limited to the operator's own account at the moment. Existing report links still work.",
+  INVALID_USERNAME:
+    "That is not a GitHub username. Letters, numbers and single hyphens, and it cannot start or end with a hyphen.",
+  DUPLICATE_ACTIVE_REQUEST:
+    "A scan of that account is already running. Wait for it to finish rather than starting a second one.",
+  RATE_LIMITED:
+    "Too many scans too quickly. This service allows two a minute per account and five a minute per visitor.",
+  CAPACITY_EXHAUSTED:
+    "This service has used its free allowance for the day. It resets overnight.",
+  EMAIL_UNAVAILABLE:
+    "The email option is not available right now. The scan itself is unaffected.",
+  REQUEST_FAILED:
+    "The service did not answer. Check your connection and try again.",
+};
+
 /** The written explanation for a stored failure code, if there is one. */
 export function failureDetail(code: string): string | undefined {
-  return REASONS[code]?.detail;
+  return REQUEST_REASONS[code] ?? REASONS[code]?.detail;
 }
+
+/** Every request-level code this page can explain, for the guard test. */
+export const EXPLAINED_REQUEST_CODES: readonly string[] =
+  Object.keys(REQUEST_REASONS);
 
 /** The visible outcome for a repository row, reason folded into the label. */
 export function repositoryLabel(state: string, reason?: string): Label {

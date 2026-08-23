@@ -38,6 +38,32 @@ function finding(): PublicFinding {
   } as PublicFinding;
 }
 
+describe("a scan that stopped", () => {
+  it("has no verdict at all, reassuring or otherwise", () => {
+    // A failed lookup left an empty ledger, and an empty ledger produced
+    // "Nothing to check, this account has no public repositories", which is a
+    // clean bill of health for a scan that never ran. On a security tool a
+    // false all-clear is the worst output there is.
+    const decided = summarizeVerdict("ri7in", [], [], "GitHub had no such account.");
+    expect(decided.tone).toBe("concern");
+    expect(decided.text).toContain("no result");
+    expect(decided.text).toContain("GitHub had no such account.");
+    expect(decided.text.toLowerCase()).not.toContain("nothing to check");
+    expect(decided.text.toLowerCase()).not.toContain("nothing exposed");
+  });
+
+  it("stays a concern even when repositories did finish before it stopped", () => {
+    const decided = summarizeVerdict(
+      "ri7in",
+      [repository(), repository({ repositoryId: 2 })],
+      [],
+      "The download failed part way through.",
+    );
+    expect(decided.tone).toBe("concern");
+    expect(decided.text).not.toContain("came back clean");
+  });
+});
+
 describe("the verdict", () => {
   it("reads clear only when every repository was actually checked", () => {
     const decided = summarizeVerdict(
