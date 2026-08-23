@@ -176,18 +176,27 @@ describe("the progress model", () => {
     expect(model.finished).toBe(true);
   });
 
-  it("leaves a step that has not started with no progress to show", () => {
-    // Four bars advancing at once undercuts the panel's own claim that a step
-    // is handed over only when the previous one genuinely finished.
-    const model = progressModel(summary("scanning", { waiting: 6, complete: 4 }));
-    for (const step of model.steps) {
-      if (step.state !== "todo") continue;
-      expect(step.percent, `${step.step} shows progress it has not made`).toBe(
-        model.steps.find((entry) => entry.step === step.step)?.percent,
-      );
-    }
-    // The bar itself is suppressed in CSS for a todo step; the model still
-    // reports the underlying count, which is what the done/active steps use.
-    expect(model.steps.some((step) => step.state === "todo")).toBe(true);
+  it("reports each step's own progress, not one running total", () => {
+    // With one repository scanned and one still being scanned out of eight,
+    // the download has happened for two and the review for one. Each figure
+    // counts what genuinely passed that step.
+    const model = progressModel(
+      summary("scanning", { complete: 1, scanning: 1, waiting: 6 }),
+    );
+    const percent = (step: string) =>
+      model.steps.find((entry) => entry.step === step)?.percent;
+    expect(percent("discover")).toBe(100);
+    expect(percent("download")).toBe(25);
+    expect(percent("scan")).toBe(13);
+    expect(percent("review")).toBe(13);
+  });
+
+  it("shows nothing on a step nothing has reached", () => {
+    const model = progressModel(summary("scanning", { waiting: 8 }));
+    const percent = (step: string) =>
+      model.steps.find((entry) => entry.step === step)?.percent;
+    expect(percent("download")).toBe(0);
+    expect(percent("scan")).toBe(0);
+    expect(percent("review")).toBe(0);
   });
 });

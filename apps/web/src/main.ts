@@ -238,11 +238,12 @@ function renderSteps(summary: ScanRequestSummary): void {
     );
     if (element === null) continue;
     element.dataset["state"] = entry.state;
+    // Every step shows its own progress. That is honest now: each figure
+    // counts the repositories that have actually passed that step, where the
+    // earlier version derived all four from one running total and so painted a
+    // bar on steps nothing had reached.
     const meter = element.querySelector("i");
-    if (meter !== null) {
-      meter.style.width =
-        entry.state === "todo" ? "0%" : `${String(entry.percent)}%`;
-    }
+    if (meter !== null) meter.style.width = `${String(entry.percent)}%`;
   }
 
   handOver(model.active);
