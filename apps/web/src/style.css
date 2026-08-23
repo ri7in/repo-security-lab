@@ -451,6 +451,9 @@ footer p { max-width: 720px; margin: 0; }
 
 /* Shown in place of a header-only table, which reads as a rendering fault. */
 .nothing-found { margin: 0 0 8px; padding: 22px 18px; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); font: 650 13px var(--mono); }
+/* Green means a check ran and found nothing. A scan that stopped before it
+   started is not that. */
+.nothing-found.is-neutral { border-color: var(--line-strong); background: transparent; color: var(--muted); }
 
 .report-actions { display: flex; gap: 8px; }
 /* The advice cell explains itself on hover, like a state chip does. */

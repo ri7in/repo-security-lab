@@ -572,6 +572,9 @@ async function poll(requestId: string): Promise<void> {
     ledgerTable.hidden = nothingListed;
     ledgerColumns.hidden = nothingListed;
     noRepositories.hidden = !nothingListed;
+    // Five zeros under a scan that never started is noise, not information.
+    summaryGrid.hidden = nothingListed;
+    progressBar.parentElement?.toggleAttribute("hidden", nothingListed);
     let findingCount = 0;
     let loadedFindings: PublicFinding[] = [];
     if (terminal) {
@@ -656,6 +659,11 @@ form.addEventListener("submit", (event) => {
   findingsShown = 0;
   reviewedShown = 0;
   statusSection.hidden = false;
+  summaryGrid.hidden = false;
+  progressBar.parentElement?.removeAttribute("hidden");
+  noRepositories.hidden = true;
+  ledgerTable.hidden = false;
+  ledgerColumns.hidden = false;
   liveStatus.textContent = "Looking up the account on GitHub.";
   verdict.hidden = true;
   void (async () => {
