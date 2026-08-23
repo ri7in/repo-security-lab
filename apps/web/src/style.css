@@ -259,9 +259,10 @@ table { width: 100%; border-collapse: collapse; min-width: 760px; }
 /* max-width is ignored on a table cell in auto layout, so the truncation has
    to live on something inside it. The full name is on the cell's title. */
 .repo-name > span { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
-td { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
-tbody tr:last-child td { border-bottom: 0; }
+thead th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+tbody th { text-align: left; font: inherit; }
+td, tbody th { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
+tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
 tbody tr[data-active="true"] { background: var(--signal-soft); box-shadow: inset 3px 0 0 var(--signal); }
 .repo-name { width: 1%; white-space: nowrap; }
 .state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
@@ -301,6 +302,21 @@ footer p { max-width: 720px; margin: 0; }
 }
 @media (max-width: 580px) {
   .site-header, main, footer { padding-left: 18px; padding-right: 18px; }
+  /* A 760px table in a 284px shell showed a column of names and nothing else,
+     with no sign that the rest was one swipe away. Each row becomes a block
+     with its own labels instead, and nothing scrolls sideways at all. */
+  .table-shell { overflow-x: visible; }
+  .table-shell::after { display: none; }
+  table { min-width: 0; }
+  thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  tbody tr { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody th, tbody td { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; padding: 4px 14px; border: 0; }
+  tbody th::before, tbody td::before { content: attr(data-label); color: var(--muted); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+  tbody th::before { content: "Repository"; }
+  .repo-name { width: auto; white-space: normal; }
+  .repo-name > span { max-width: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--signal); }
   .cost-badge { display: none; }
   .hero { padding-top: 20px; }
   h1 { font-size: 2.7rem; }

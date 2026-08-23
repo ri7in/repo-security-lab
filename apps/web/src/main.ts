@@ -348,7 +348,10 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
     ...repositories.map((repository) => {
       const row = document.createElement("tr");
       row.dataset["active"] = String(!["complete", "empty", "partial", "failed", "cancelled"].includes(repository.state));
-      const name = document.createElement("td");
+      // A row header rather than a cell: navigating the ledger cell by cell
+      // otherwise never re-announces which repository you are in.
+      const name = document.createElement("th");
+      name.scope = "row";
       name.className = "repo-name";
       const label = document.createElement("span");
       label.textContent = repository.name;
@@ -368,11 +371,18 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
         ),
         aiCoverageLabel(repository.coverage.ai),
       ];
-      row.append(name, ...cells.map((label) => {
-        const cell = document.createElement("td");
-        cell.append(labelChip(label));
-        return cell;
-      }));
+      const headings = ["Status", "Secret scan", "AI code review"];
+      row.append(
+        name,
+        ...cells.map((label, index) => {
+          const cell = document.createElement("td");
+          // Read out by the stacked layout on a phone, where there is no
+          // header row left to tell you which column this is.
+          cell.dataset["label"] = headings[index] ?? "";
+          cell.append(labelChip(label));
+          return cell;
+        }),
+      );
       return row;
     }),
   );
@@ -398,9 +408,17 @@ function renderFindings(
         formatCount(finding.occurrence_bucket),
         formatLocations(finding.locations),
       ];
+      const headings = [
+        "Repository",
+        "What was found",
+        "Severity",
+        "How many",
+        "Location",
+      ];
       row.append(
         ...values.map((value, index) => {
           const cell = document.createElement("td");
+          cell.dataset["label"] = headings[index] ?? "";
           if (index === 0) {
             // Same truncation contract as the ledger: the ellipsis needs an
             // element of its own to act on, and the full name stays on the
@@ -426,6 +444,7 @@ function renderFindings(
       const short = document.createElement("span");
       short.textContent = advice.short;
       action.append(short, explanation(advice.detail));
+      todo.dataset["label"] = "What to do";
       todo.append(action);
       row.append(todo);
       return row;
