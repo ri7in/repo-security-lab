@@ -640,6 +640,26 @@ form.addEventListener("submit", (event) => {
 });
 
 /**
+ * The providers, as a person would write them.
+ *
+ * The ids are internal and lowercase, and joining three of them with "and"
+ * produced "openrouter and groq and gemini" in the footer sentence that tells
+ * people where their code goes.
+ */
+const PROVIDER_NAMES: Record<string, string> = {
+  openrouter: "OpenRouter",
+  groq: "Groq",
+  gemini: "Google",
+};
+
+function providerNames(providers: readonly string[]): string {
+  const named = providers.map((id) => PROVIDER_NAMES[id] ?? id);
+  if (named.length === 0) return "an external model provider";
+  if (named.length === 1) return named[0] ?? "";
+  return `${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
+}
+
+/**
  * Paints the deep-read meter.
  *
  * The number shown is the scarcest council member's remaining share of its own
@@ -659,10 +679,7 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   // The disclosure appears only while the lane can actually run. A standing
   // warning about a disabled feature trains people to skip the footer.
   aiDisclosure.hidden = !budget.available;
-  aiProviderName.textContent =
-    budget.providers.length === 0
-      ? "an external model provider"
-      : budget.providers.join(" and ");
+  aiProviderName.textContent = providerNames(budget.providers);
 
   quotaMeter.dataset["level"] = level;
   // The number, not a percentage of it. Nothing records what a scan spends, so
