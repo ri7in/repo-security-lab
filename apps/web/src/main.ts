@@ -689,7 +689,27 @@ form.addEventListener("submit", (event) => {
       await poll(accepted.requestId);
     } catch (error) {
       setScanState("failed");
-      liveStatus.textContent = `Scan stopped. ${explainFailure(error instanceof Error ? error.message : undefined)}`;
+      const why = explainFailure(
+        error instanceof Error ? error.message : undefined,
+      );
+      // The panel is only ever written from a summary, and a request that
+      // never produced one left step one pulsing forever and the heading
+      // reading "Scan in progress" directly over the words "Scan stopped".
+      statusTitle.textContent = "Scan stopped early";
+      botLive.dataset["state"] = "failed";
+      livePhase.textContent = "Stopped";
+      livePercent.textContent = "";
+      liveDetail.textContent = why;
+      signText.textContent = "Stopped";
+      seeResults.hidden = true;
+      for (const step of stepsList.querySelectorAll<HTMLElement>("li")) {
+        if (step.dataset["state"] === "active") step.dataset["state"] = "todo";
+      }
+      verdict.hidden = false;
+      verdict.dataset["tone"] = "concern";
+      verdictText.textContent = `This scan could not start. ${why}`;
+      announce(`Scan stopped. ${why}`);
+      liveStatus.textContent = `Scan stopped. ${why}`;
     } finally {
       setButtonBusy(false);
     }
@@ -793,6 +813,27 @@ function showUnavailable(): void {
   verdict.hidden = true;
 }
 
+/**
+ * The service stopped answering, but the report is not gone.
+ *
+ * Everything already on the page stays where it is. The alternative, which is
+ * what this used to do, was to wipe a fully populated twenty-three row ledger
+ * and print "that report link is not valid" above it.
+ */
+function showLostContact(): void {
+  setScanState("failed");
+  statusTitle.textContent = "Lost contact with the service";
+  liveStatus.textContent =
+    "The service stopped answering while this report was loading. Anything already shown below is real. Reload the page to pick it up again.";
+  botLive.dataset["state"] = "failed";
+  livePhase.textContent = "Lost contact";
+  livePercent.textContent = "";
+  liveDetail.textContent = "Reload the page to try again.";
+  signText.textContent = "Lost contact";
+  seeResults.hidden = true;
+  announce("Lost contact with the service. Reload the page to try again.");
+}
+
 const existingRequest = new URLSearchParams(location.search).get("request");
 if (existingRequest !== null) {
   // Someone arriving on a shared link came for the result, not for the form.
@@ -805,8 +846,14 @@ if (existingRequest !== null) {
     setButtonBusy(true);
     setScanState("scanning");
     void poll(parsedRequest.data)
-      .catch(() => {
-        showUnavailable();
+      .catch((error: unknown) => {
+        // A report that is genuinely gone is a different thing from a service
+        // that stopped answering, and only one of them should say "not found".
+        if (error instanceof Error && error.message === "REQUEST_GONE") {
+          showUnavailable();
+          return;
+        }
+        showLostContact();
       })
       .finally(() => {
         setButtonBusy(false);
