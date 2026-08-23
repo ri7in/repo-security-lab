@@ -62,7 +62,7 @@ function discovery(repositoryCount = 2, githubAccountId = 123): DiscoveryPort {
 const UNTOUCHED_DEEP_READ_BUDGET = {
   available: true,
   percentRemaining: 100,
-  scarcestModelId: "qwen/qwen3.6-27b",
+  scarcestModelId: "openai/gpt-oss-120b",
   deepReadsRemaining: 16,
   deepReadsPerDay: 16,
   repoLimitPerRequest: 3,
@@ -119,7 +119,7 @@ describe("anonymous-safe control-plane API", () => {
         providers: ["openrouter", "groq"],
         available: false,
         percentRemaining: 0,
-        scarcestModelId: "qwen/qwen3.6-27b",
+        scarcestModelId: "openai/gpt-oss-120b",
         deepReadsRemaining: 0,
         deepReadsPerDay: 16,
         repoLimitPerRequest: 3,

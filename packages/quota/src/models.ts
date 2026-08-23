@@ -35,22 +35,11 @@ export interface ModelAllowance {
 /**
  * Groq free tier, read from the provider's own rate-limit table.
  *
- * The binding constraint is `tokensPerMinute`, not `tokensPerDay`. At 8,000
- * tokens per minute a Groq free request cannot carry a whole repository, so
- * these models are judges over single findings and can never be readers.
+ * Row for this model on 2026-08-24: RPM 30, RPD 1K, TPM 8K, TPD 200K. The
+ * binding constraint is tokens, not requests. At 8,000 tokens per minute a
+ * Groq free request cannot carry a whole repository, so this model is a judge
+ * over single findings and can never be a reader.
  */
-export const GROQ_QWEN: ModelAllowance = {
-  id: "qwen/qwen3.6-27b",
-  provider: "groq",
-  role: "judge",
-  tokensPerDay: 200_000,
-  tokensPerMinute: 8_000,
-  contextWindow: 131_072,
-  requestsPerDay: 1_000,
-  sourceUrl: "https://console.groq.com/docs/rate-limits",
-  verifiedOn: "2026-08-21",
-};
-
 export const GROQ_GPT_OSS: ModelAllowance = {
   id: "openai/gpt-oss-120b",
   provider: "groq",
@@ -60,66 +49,72 @@ export const GROQ_GPT_OSS: ModelAllowance = {
   contextWindow: 131_072,
   requestsPerDay: 1_000,
   sourceUrl: "https://console.groq.com/docs/rate-limits",
-  verifiedOn: "2026-08-21",
+  verifiedOn: "2026-08-24",
 };
 
 /**
- * Gemini free tier.
+ * The reader, verified on OpenRouter's own model and rate-limit pages.
  *
- * Google's public rate-limit page defers to each project's AI Studio dashboard
- * rather than publishing a table, so these numbers are UNCONFIRMED against a
- * primary source and are marked as such. `tokensPerDay` is null because no
- * daily token cap is published; the daily bound is `requestsPerDay`. Read the
- * live figures from AI Studio before enabling the lane.
+ * A million-token window at zero cost for both prompt and completion, which is
+ * what lets one request carry a whole repository rather than a sampled slice.
+ * The free tier meters REQUESTS, not tokens, so no token figures are published
+ * and both are null; 50 a day is the documented ceiling below ten dollars of
+ * lifetime credit, and taking the lower row is the honest floor for a meter a
+ * visitor reads before deciding to wait.
+ *
+ * The worker actually prefers `stealth/ox-alpha`, which is the sharper reader
+ * and also free at a million tokens. It is deliberately NOT registered here:
+ * it is an unbranded preview whose id does not end in `:free`, so the
+ * documented free-variant caps do not describe it and its real limit is
+ * published nowhere. Budgeting on the named fallback is the conservative
+ * choice, and it is the model that carries the load the moment the preview
+ * disappears.
  */
-export const GEMINI_FLASH: ModelAllowance = {
-  id: "gemini-3-flash",
-  provider: "gemini",
+export const OPENROUTER_NEMOTRON: ModelAllowance = {
+  id: "nvidia/nemotron-3-ultra-550b-a55b:free",
+  provider: "openrouter",
   role: "reader",
   tokensPerDay: null,
-  tokensPerMinute: 250_000,
+  tokensPerMinute: null,
+  contextWindow: 1_000_000,
+  requestsPerDay: 50,
+  sourceUrl: "https://openrouter.ai/docs/api-reference/limits",
+  verifiedOn: "2026-08-24",
+};
+
+/**
+ * Gemini, defined but out of the budget.
+ *
+ * Google's rate-limit page no longer publishes a per-model free-tier table; it
+ * says to read the active limits in AI Studio. That makes any number here a
+ * guess, and this file does not carry guesses, so the model stays out of the
+ * council budget even though the worker runs it as a second judge. The cost of
+ * that is understated scarcity if Gemini is the first to run out, and the
+ * funnel already reports a judge it could not reach as a partial review rather
+ * than a clean one.
+ */
+export const GEMINI_FLASH_LITE: ModelAllowance = {
+  id: "gemini-flash-lite-latest",
+  provider: "gemini",
+  role: "judge",
+  tokensPerDay: null,
+  tokensPerMinute: null,
   contextWindow: 1_048_576,
-  requestsPerDay: 1_500,
+  requestsPerDay: 0,
   sourceUrl: "https://ai.google.dev/gemini-api/docs/rate-limits",
   verifiedOn: "unconfirmed",
 };
 
 /**
- * The scout. Verified on OpenRouter's own model and rate-limit pages.
+ * The council as the worker actually runs it, minus what cannot be verified.
  *
- * This is the only free endpoint confirmed to hold an entire account in one
- * request: a 1,048,576-token window at zero cost for both prompt and
- * completion. Critically, the free tier meters REQUESTS, not tokens, so a
- * single large request is the efficient shape and 50/day is the real ceiling.
- * No tokens-per-minute figure is published, hence null.
- *
- * Fragility to keep in view: free endpoints on this surface are spare provider
- * capacity offered as a marketing or data-collection channel. The roster
- * changes without notice, so the lane must degrade to deterministic-only
- * rather than assume this model exists.
- */
-export const OPENROUTER_QWEN_CODER: ModelAllowance = {
-  id: "qwen/qwen3-coder:free",
-  provider: "openrouter",
-  role: "reader",
-  tokensPerDay: null,
-  tokensPerMinute: null,
-  contextWindow: 1_048_576,
-  requestsPerDay: 50,
-  sourceUrl: "https://openrouter.ai/qwen/qwen3-coder:free",
-  verifiedOn: "2026-08-21",
-};
-
-/**
- * The council: one reader, two judges from different model families.
- *
- * Gemini stays defined but out of the default council until its limits are
- * read from AI Studio. Depending on one unverified allowance would make the
- * whole lane's capacity a guess.
+ * Every id here is one the scan worker really calls, which was not true
+ * before: the budget was computed from a reader OpenRouter has since removed
+ * and a judge the worker never used, so the figure on the landing page was
+ * arithmetic on models that were not doing the work.
  */
 export const COUNCIL: readonly ModelAllowance[] = [
-  OPENROUTER_QWEN_CODER,
-  GROQ_QWEN,
+  OPENROUTER_NEMOTRON,
   GROQ_GPT_OSS,
 ];
 
