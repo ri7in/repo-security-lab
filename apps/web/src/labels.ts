@@ -71,16 +71,16 @@ const REPOSITORY_STATES: Record<string, Label> = {
  */
 const REASONS: Record<string, Label> = {
   PRIVATE_SLICE_SCOPE: {
-    text: "Fork",
+    text: "Not checked",
     tone: "skipped",
     detail:
-      "Forks are skipped. The code belongs to the original project, so a leaked secret found here would be someone else's to fix, and reporting it against you would be wrong.",
+      "This is a fork, so it was not checked. The code belongs to the original project: anything found here would be someone else's to fix, and reporting it against you would be wrong.",
   },
   ARCHIVE_LIMIT: {
-    text: "Too large",
+    text: "Not checked",
     tone: "skipped",
     detail:
-      "This repository is larger than the scanner accepts: 250 MB compressed, 1 GB unpacked, 50 MB per file, or 200,000 files. The scan runs on free shared compute, so there has to be a ceiling somewhere.",
+      "This repository is too big to check on the free compute this runs on: over 250 MB packed or 1 GB unpacked. When there is enough free compute to afford it, it will be checked. Not today.",
   },
   ARCHIVE_UNSAFE: {
     text: "Unsafe archive",

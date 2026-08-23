@@ -164,7 +164,12 @@ function labelChip(label: Label): HTMLElement {
   const chip = document.createElement("span");
   chip.className = `state-chip tone-${label.tone}`;
   chip.textContent = label.text;
-  chip.title = label.detail;
+  // Not `title`. The browser's own tooltip waits about a second before it
+  // appears, which is long enough that a visitor concludes hovering does
+  // nothing and stops trying. This one is CSS and shows immediately.
+  chip.dataset["detail"] = label.detail;
+  chip.setAttribute("aria-label", `${label.text}. ${label.detail}`);
+  chip.tabIndex = 0;
   return chip;
 }
 

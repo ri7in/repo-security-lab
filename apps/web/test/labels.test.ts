@@ -10,12 +10,12 @@ import { FAILURE_CLASSES } from "@app/contracts";
  */
 
 describe("repository labels", () => {
-  it("calls a skipped fork a fork", () => {
+  it("says a fork was not checked, and why", () => {
     // The stored reason is PRIVATE_SLICE_SCOPE, left over from when the tool
     // ran against an allowlist. On the public service a fork is the only thing
     // that triggers it, and "PRIVATE SLICE SCOPE" tells a visitor nothing.
     const label = repositoryLabel("cancelled", "PRIVATE_SLICE_SCOPE");
-    expect(label.text).toBe("Fork");
+    expect(label.text).toBe("Not checked");
     expect(label.tone).toBe("skipped");
     expect(label.detail.toLowerCase()).toContain("fork");
   });
@@ -32,10 +32,12 @@ describe("repository labels", () => {
     }
   });
 
-  it("explains a size refusal with the actual ceiling", () => {
+  it("says a size refusal is temporary, not a verdict", () => {
     const label = repositoryLabel("failed", "ARCHIVE_LIMIT");
-    expect(label.text).toBe("Too large");
+    expect(label.text).toBe("Not checked");
     expect(label.detail).toContain("250 MB");
+    // "Not checked" must not read as "checked and fine".
+    expect(label.detail.toLowerCase()).toContain("free compute");
   });
 
   it("marks a finished repository as scanned", () => {
@@ -76,7 +78,7 @@ describe("coverage labels", () => {
   });
 
   it("lets a specific reason override the generic coverage state", () => {
-    expect(coverageLabel("failed", "ARCHIVE_LIMIT").text).toBe("Too large");
+    expect(coverageLabel("failed", "ARCHIVE_LIMIT").text).toBe("Not checked");
   });
 });
 

@@ -136,7 +136,7 @@ tbody tr[data-active="true"] { background: var(--signal-soft); }
    correct outcomes and must not wear the same colour as a real failure, or a
    visitor reads a healthy report as a broken one. `cursor: help` advertises
    that the full explanation is one hover away. */
-.state-chip[title] { cursor: help; }
+.state-chip[data-detail] { cursor: help; position: relative; }
 .state-chip::before { content: "○"; }
 .state-chip.tone-ok::before { content: "✓"; }
 .state-chip.tone-problem::before { content: "!"; }
@@ -272,6 +272,35 @@ footer p { max-width: 720px; margin: 0; }
   tr { break-inside: avoid; }
   .state-chip { border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
   /* Tooltips cannot be hovered on paper, so the explanation is printed. */
-  .state-chip[title]::after { content: " — " attr(title); color: #444; font-size: 8pt; text-transform: none; }
+  .state-chip[data-detail]::after { content: " — " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
 }
+
+/* Instant explanation. The native title tooltip waits about a second, which is
+   long enough that a visitor decides hovering does nothing. No delay here, and
+   it appears on keyboard focus as well as hover. */
+.state-chip[data-detail]::after {
+  content: attr(data-detail);
+  position: absolute;
+  bottom: calc(100% + 7px);
+  left: 0;
+  z-index: 20;
+  width: max-content;
+  max-width: 290px;
+  padding: 9px 11px;
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  font: 500 11px/1.5 var(--sans);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .06s linear;
+  pointer-events: none;
+}
+.state-chip[data-detail]:hover::after,
+.state-chip[data-detail]:focus-visible::after { opacity: 1; visibility: visible; }
+/* The last columns sit at the right edge, so their tooltip opens leftwards. */
+td:nth-last-child(-n+2) .state-chip[data-detail]::after { left: auto; right: 0; }
