@@ -225,7 +225,9 @@ body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="fail
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .quota-meter,
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .bot-panel,
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .eyebrow,
-body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .email-option { display: none; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .email-option,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .form-note,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .cost-badge { display: none; }
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .status-section { border-top: 0; padding-top: 20px; }
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .scan-form { margin-top: 18px; }
 body[data-view="report"] .scan-form label { margin-bottom: 6px; }
@@ -233,8 +235,9 @@ body[data-view="report"] .scan-form label { margin-bottom: 6px; }
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .status-section { padding-bottom: 34px; }
 body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .ledger-section { padding-top: 32px; }
 
-.status-section, .ledger-section { border-top: 1px solid var(--ink); padding: 48px 0 70px; }
-.section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
+.status-section, .ledger-section { border-top: 1px solid var(--ink); padding: 48px 0 40px; }
+.section-heading { display: flex; align-items: end; gap: 24px; margin-bottom: 28px; }
+.section-heading > div:first-child { margin-right: auto; }
 .section-heading .eyebrow { margin-bottom: 8px; }
 h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .request-id { font: 600 11px var(--mono); color: var(--muted); }
@@ -251,16 +254,14 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 
 .legend { margin: 0; color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; }
 .findings-note { margin: -10px 0 18px; color: var(--muted); font-size: .82rem; }
+.findings-note:empty { display: none; }
 .dot { display: inline-block; width: 7px; height: 7px; margin: 0 5px 0 12px; border-radius: 50%; background: var(--muted); }
 .dot.complete { background: var(--signal); }.dot.skipped { background: var(--muted); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
 .table-shell { position: relative; width: 100%; overflow-x: auto; border: 1px solid var(--line); background: var(--paper-raised); }
-/* A fade at the right edge, so a table wider than the screen looks like one
-   rather than like a list that stops. */
-.table-shell::after { content: ""; position: sticky; top: 0; right: 0; float: right; width: 26px; height: 100%; margin-left: -26px; background: linear-gradient(to right, transparent, var(--paper-raised)); pointer-events: none; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
 /* max-width is ignored on a table cell in auto layout, so the truncation has
    to live on something inside it. The full name is on the cell's title. */
-.repo-name > span { display: block; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-name > span { display: block; max-width: clamp(240px, 26vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 thead th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 tbody th { text-align: left; font: inherit; }
 td, tbody th { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
@@ -294,6 +295,38 @@ footer { max-width: 1180px; margin: 0 auto; padding: 26px 28px 50px; color: var(
 footer a { color: inherit; text-underline-offset: 3px; }
 footer p { max-width: 720px; margin: 0; }
 
+/* Below this the ledger stops being a table.
+ *
+ * 815px is 760px of table plus 56px of page padding, which is where the last
+ * column starts being cut off. The fade that used to signal the sideways
+ * scroll resolved to zero height, and overlay scrollbars are invisible until
+ * you scroll, so there was no affordance at all: the findings table showed its
+ * last heading as "WHAT" and the one instruction on the report as "Rota".
+ */
+@media (max-width: 815px) {
+  .table-shell { overflow-x: visible; }
+  /* The whole table stops being a table, so the blocks lay out as blocks and
+     the head has nothing left to align. Each cell prints its own label, which
+     Chrome, Safari and Firefox all expose to a screen reader. */
+  table, tbody { display: block; width: 100%; min-width: 0; }
+  thead { display: none; }
+  tbody tr { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  tbody tr:last-child { border-bottom: 0; }
+  tbody th, tbody td { display: grid; grid-template-columns: 104px 1fr; gap: 10px; align-items: baseline; padding: 4px 14px; border: 0; }
+  tbody th::before, tbody td::before { content: attr(data-label); color: var(--muted); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
+  tbody th::before { content: "Repository"; }
+  /* An unbreakable file path cannot shrink below its own min-content, so at
+     320px it ran through the border and off the screen with no title to
+     recover it from. */
+  tbody th, tbody td { overflow-wrap: anywhere; }
+  /* The chip is a grid item here, so without this it stretches the full
+     column and reads as a full width button rather than a small state. */
+  tbody td > .state-chip, tbody td > .advice { justify-self: start; }
+  .repo-name { width: auto; white-space: normal; }
+  .repo-name > span { max-width: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
+  tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--signal); }
+}
+
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 26px; }
   /* Stacked, the panel would otherwise stretch to a metre of graph paper
@@ -304,27 +337,7 @@ footer p { max-width: 720px; margin: 0; }
 }
 @media (max-width: 580px) {
   .site-header, main, footer { padding-left: 18px; padding-right: 18px; }
-  /* A 760px table in a 284px shell showed a column of names and nothing else,
-     with no sign that the rest was one swipe away. Each row becomes a block
-     with its own labels instead, and nothing scrolls sideways at all. */
-  .table-shell { overflow-x: visible; }
-  .table-shell::after { display: none; }
-  /* The whole table stops being a table, so the blocks lay out as blocks and
-     the head has nothing left to align. Each cell prints its own label, which
-     Chrome, Safari and Firefox all expose to a screen reader. */
-  table, tbody { display: block; width: 100%; min-width: 0; }
-  thead { display: none; }
-  tbody tr { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
-  tbody tr:last-child { border-bottom: 0; }
-  tbody th, tbody td { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; padding: 4px 14px; border: 0; }
-  tbody th::before, tbody td::before { content: attr(data-label); color: var(--muted); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
-  tbody th::before { content: "Repository"; }
-  /* The chip is a grid item here, so without this it stretches the full
-     column and reads as a full width button rather than a small state. */
-  tbody td > .state-chip, tbody td > .advice { justify-self: start; }
-  .repo-name { width: auto; white-space: normal; }
-  .repo-name > span { max-width: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
-  tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--signal); }
+
   .cost-badge { display: none; }
   .hero { padding-top: 20px; }
   h1 { font-size: 2.7rem; }
@@ -373,7 +386,10 @@ footer p { max-width: 720px; margin: 0; }
 .ai-disclosure strong { color: var(--ink); }
 /* This used to override the measure set one rule above it, so the footer's
    two paragraphs ran at visibly different line lengths. */
-.ai-disclosure { flex: 1 0 100%; }
+/* Its own row, under the two short paragraphs, rather than sharing one and
+   stranding the product name level with a hairline. */
+.ai-disclosure { flex: 1 0 100%; order: 3; }
+#footer-name { order: 2; }
 
 /* The four steps.
    A step is picked up from the right when it starts and dropped to the left
@@ -434,7 +450,7 @@ footer p { max-width: 720px; margin: 0; }
 .history-clear:hover { color: var(--red); }
 
 /* Shown in place of a header-only table, which reads as a rendering fault. */
-.nothing-found { margin: 0; padding: 22px 18px; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); font: 650 13px var(--mono); }
+.nothing-found { margin: 0 0 8px; padding: 22px 18px; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); font: 650 13px var(--mono); }
 
 .report-actions { display: flex; gap: 8px; }
 /* The advice cell explains itself on hover, like a state chip does. */

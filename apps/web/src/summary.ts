@@ -43,9 +43,11 @@ export function summaryCards(
     { value: totalCount(summary), label: "public repositories" },
     { value: totals.complete, label: "secret-scanned" },
     { value: reviewed, label: "code-reviewed" },
+    // Only what went wrong. A skipped fork is a correct outcome and counting
+    // it here implied the visitor had something to do about it.
     {
-      value: totals.failed + totals.partial + totals.cancelled,
-      label: "not fully checked",
+      value: totals.failed + totals.partial,
+      label: "did not finish",
     },
     { value: findings, label: findings === 1 ? "finding" : "findings" },
   ];
@@ -75,9 +77,10 @@ export function explainFailure(code: string | undefined): string {
 
 export function statusLine(summary: ScanRequestSummary): string {
   const total = totalCount(summary);
-  if (summary.state === "failed") {
-    return `Scan stopped. ${explainFailure(summary.reason)}`;
-  }
+  // Only that it stopped. The reason belongs to the verdict banner directly
+  // above this line, and printing it in both put the same sentence on the page
+  // twice, word for word.
+  if (summary.state === "failed") return "This scan stopped before it finished.";
   if (summary.state === "complete") {
     return `All ${String(total)} ${total === 1 ? "repository" : "repositories"} finished.`;
   }

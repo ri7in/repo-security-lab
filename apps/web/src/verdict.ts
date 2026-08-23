@@ -17,17 +17,28 @@ export interface Verdict {
 }
 
 /**
- * Repositories that were not fully checked, whatever the reason.
+ * Repositories deliberately not scanned, which is not a gap in the result.
  *
- * `empty` is in the list. A repository with no commit publishes as `empty`
- * with every check `not_applicable`, and leaving it out meant an account with
- * two commitless repositories was told all of them had been read.
+ * A fork and a repository with no commit are both correct outcomes. Counting
+ * them as gaps made a report where every intended check succeeded still say
+ * "5 of 23 repositories were not fully checked, so there may be more", of
+ * which four were forks whose own label says anything found in them would be
+ * somebody else's to fix.
  */
+export function skippedOnPurposeCount(
+  repositories: readonly RepositoryRow[],
+): number {
+  return repositories.filter((repository) =>
+    ["cancelled", "empty"].includes(repository.state),
+  ).length;
+}
+
+/** Repositories that were meant to finish and did not. */
 export function uncheckedCount(
   repositories: readonly RepositoryRow[],
 ): number {
   return repositories.filter((repository) =>
-    ["cancelled", "failed", "partial", "empty"].includes(repository.state),
+    ["failed", "partial"].includes(repository.state),
   ).length;
 }
 
@@ -65,13 +76,17 @@ export function summarizeVerdict(
   }
   const total = repositories.length;
   const skipped = uncheckedCount(repositories);
-  const checked = total - skipped;
+  const onPurpose = skippedOnPurposeCount(repositories);
+  const checked = secretScannedCount(repositories);
 
   const unexamined =
     skipped === 0
       ? ""
-      : ` ${String(skipped)} of ${String(total)} ${skipped === 1 ? "repository was" : "repositories were"} ` +
-        "not fully checked, so there may be more.";
+      : ` ${String(skipped)} ${skipped === 1 ? "repository" : "repositories"} did not finish, so there may be more.`;
+  const deliberate =
+    onPurpose === 0
+      ? ""
+      : ` ${String(onPurpose)} ${onPurpose === 1 ? "was" : "were"} skipped on purpose, as forks or as repositories with no commit.`;
 
   if (findings.length > 0) {
     return {
@@ -79,7 +94,7 @@ export function summarizeVerdict(
       text:
         `${String(findings.length)} thing${findings.length === 1 ? "" : "s"} to fix in ` +
         `${username}'s public code, ${findings.length === 1 ? "listed" : "all listed"} below ` +
-        `with the file and the line.${unexamined}`,
+        `with the file and the line.${unexamined}${deliberate}`,
     };
   }
   if (total === 0) {
@@ -93,10 +108,21 @@ export function summarizeVerdict(
     return {
       tone: "partial",
       // "Could not be checked" told people something had broken when the
-      // usual cause is a fork this tool deliberately does not scan.
+      // usual cause is a fork this tool deliberately does not scan, so the
+      // two are counted and worded separately now.
       text:
         `Nothing exposed in the ${String(checked)} ${checked === 1 ? "repository" : "repositories"} that were scanned. ` +
-        `${String(skipped)} ${skipped === 1 ? "was" : "were"} skipped or could not be read, and the ledger below says which and why.`,
+        `${String(skipped)} ${skipped === 1 ? "did" : "did"} not finish, and the ledger below says why.${deliberate}`,
+    };
+  }
+  if (onPurpose > 0) {
+    // Nothing went wrong. Everything that was meant to be scanned was.
+    return {
+      tone: "clear",
+      text:
+        `No exposed credentials. The secret scan read all ${String(checked)} ` +
+        `${checked === 1 ? "repository" : "repositories"} it was meant to, at their current commit, and matched nothing.` +
+        deliberate,
     };
   }
   // Names the checker and what it does, rather than promising "clean". The

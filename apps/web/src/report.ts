@@ -66,7 +66,7 @@ export function reportDocument(
         layout: "list",
         note: "File paths and line numbers only. No source code and no secret values.",
         emptyText:
-          "Nothing was found. No exposed credential matched any of the rules gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
+          "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
         columns: [
           // Only the first value titles the block; the rest are labelled
           // lines under it, so nothing here needs a width.

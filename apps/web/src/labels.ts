@@ -39,7 +39,7 @@ const REPOSITORY_STATES: Record<string, Label> = {
     text: "Partly scanned",
     tone: "problem",
     detail:
-      "Some checks finished and at least one did not. The columns to the right say which one, and every check that did finish still counts.",
+      "Some checks finished and at least one did not. The other entries for this repository say which one, and every check that did finish still counts.",
   },
   cancelled: {
     text: "Skipped",
@@ -332,7 +332,7 @@ const AI_COVERAGE: Record<string, Label> = {
     text: "Not reviewed",
     tone: "skipped",
     detail:
-      "Up to 3 repositories per worker run get a full code review, and a run can be serving somebody else's scan at the same time. The secret scan still ran on this repository; its column says how it went.",
+      "Only 3 repositories in a scan get a full code review, and fewer when the shared daily budget is already spent. The secret scan still ran on this repository; its entry says how it went.",
   },
   // Deliberately does not name a cause. It once claimed the provider was
   // unreachable, which the stored reason often contradicted, and inventing a
@@ -341,7 +341,7 @@ const AI_COVERAGE: Record<string, Label> = {
     text: "Review failed",
     tone: "problem",
     detail:
-      "The code review did not finish for this repository. The Status column carries the reason. The secret scan is unaffected and its result stands.",
+      "The code review did not finish for this repository, usually because the model provider could not be reached or returned nothing usable. The secret scan is unaffected and its result stands.",
   },
   waiting: {
     text: "Waiting",

@@ -73,6 +73,9 @@ const findingTable = $<HTMLElement>("#finding-table");
 const nothingFound = $<HTMLElement>("#nothing-found");
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
+const ledgerTable = $<HTMLElement>("#ledger-table");
+const ledgerColumns = $<HTMLElement>("#ledger-columns");
+const noRepositories = $<HTMLElement>("#no-repositories");
 const downloadReport = $<HTMLButtonElement>("#download-report");
 const printTitle = $<HTMLElement>("#print-title");
 const printMeta = $<HTMLElement>("#print-meta");
@@ -563,6 +566,12 @@ async function poll(requestId: string): Promise<void> {
     renderRepositories(repositories);
     renderSummary(summary);
     ledgerSection.hidden = false;
+    // A header row over nothing reads as something failing to load. The
+    // findings section already says so; the ledger said nothing at all.
+    const nothingListed = repositories.length === 0 && terminal;
+    ledgerTable.hidden = nothingListed;
+    ledgerColumns.hidden = nothingListed;
+    noRepositories.hidden = !nothingListed;
     let findingCount = 0;
     let loadedFindings: PublicFinding[] = [];
     if (terminal) {
@@ -724,8 +733,8 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   // order, so that claim was falsifiable from the ledger on the same page.
   quotaLine.textContent =
     `Up to ${String(budget.deepReadsPerDay)} full code reviews a day, shared by everyone using this. ` +
-    `A worker run reads ${String(repos)} ${repos === 1 ? "repository" : "repositories"} line by line, ` +
-    "and can be serving somebody else at the same time. Every repository that is not a fork gets the secret scan.";
+    `A scan reads ${String(repos)} ${repos === 1 ? "repository" : "repositories"} line by line, ` +
+    "and fewer when the shared budget is already spent. Every repository that is not a fork gets the secret scan.";
   quotaSub.textContent =
     "Free and open source, run by one person. The daily ceiling is small on purpose and resets overnight.";
 }

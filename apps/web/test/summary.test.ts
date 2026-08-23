@@ -65,7 +65,7 @@ describe("the summary cards", () => {
       [23, "public repositories"],
       [18, "secret-scanned"],
       [2, "code-reviewed"],
-      [5, "not fully checked"],
+      [1, "did not finish"],
       [1, "finding"],
     ]);
   });
@@ -75,8 +75,10 @@ describe("the summary cards", () => {
       .map((card) => card.label)
       .join(" ");
     expect(labels).not.toContain("terminal");
-    // A deliberately skipped fork is not something the visitor must act on.
+    // A deliberately skipped fork is not something the visitor must act on,
+    // so it is not counted under anything that implies they should.
     expect(labels).not.toContain("attention");
+    expect(labels).not.toContain("not fully checked");
   });
 
   it("gets the singular right for one finding", () => {
@@ -101,9 +103,17 @@ describe("the summary cards", () => {
 describe("the status line", () => {
   it("does not print a database enum at the visitor", () => {
     // "Request stopped: d1 write reserve." D1 is Cloudflare's database.
+    expect(explainFailure("D1_WRITE_RESERVE")).not.toContain("d1 write reserve");
+    expect(explainFailure("D1_WRITE_RESERVE").toLowerCase()).toContain(
+      "free database allowance",
+    );
+  });
+
+  it("does not repeat the reason the verdict banner already carries", () => {
+    // Both printed the same sentence, word for word, one directly under the
+    // other.
     const line = statusLine(summary("failed", { waiting: 3 }, "D1_WRITE_RESERVE"));
-    expect(line).not.toContain("d1 write reserve");
-    expect(line.toLowerCase()).toContain("free database allowance");
+    expect(line).toBe("This scan stopped before it finished.");
   });
 
   it("says something useful for a code it has never seen", () => {

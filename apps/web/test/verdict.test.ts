@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PublicFinding, RepositoryRow } from "@app/contracts";
 import {
   secretScannedCount,
+  skippedOnPurposeCount,
   summarizeVerdict,
   uncheckedCount,
 } from "../src/verdict.js";
@@ -85,31 +86,39 @@ describe("the verdict", () => {
     expect(decided.text).toContain("current commit");
   });
 
-  it("will not call a scan clear when a repository was skipped", () => {
-    // A fork, or a repository too large for the free tier. Neither was looked
-    // at, so neither may hold up a clean headline.
+  it("does not present a deliberately skipped fork as a gap", () => {
+    // A report where every intended check succeeded still said five of
+    // twenty-three were not fully checked, four of which were forks whose own
+    // label says anything found in them would be somebody else's to fix.
     const decided = summarizeVerdict(
       "ri7in",
       [repository({ repositoryId: 1 }), repository({ repositoryId: 2, state: "cancelled" })],
       [],
     );
-    expect(decided.tone).toBe("partial");
-    // "Could not be checked" told people something had broken when the usual
-    // cause is a fork this tool deliberately does not scan.
-    expect(decided.text).toContain("1 was skipped or could not be read");
+    expect(decided.tone).toBe("clear");
+    expect(decided.text).toContain("skipped on purpose");
+    expect(decided.text).not.toContain("did not finish");
   });
 
   it("will not call a scan clear when a repository failed", () => {
-    expect(
-      summarizeVerdict("ri7in", [repository({ state: "failed" })], []).tone,
-    ).toBe("partial");
+    const decided = summarizeVerdict(
+      "ri7in",
+      [repository({ repositoryId: 1 }), repository({ repositoryId: 2, state: "failed" })],
+      [],
+    );
+    expect(decided.tone).toBe("partial");
+    expect(decided.text).toContain("did not finish");
   });
 
   it("treats a partly finished repository as not finished", () => {
     // "partial" means at least one engine did not complete, which is exactly
     // the case where a clean-looking result is least trustworthy.
     expect(
-      summarizeVerdict("ri7in", [repository({ state: "partial" })], []).tone,
+      summarizeVerdict(
+        "ri7in",
+        [repository(), repository({ repositoryId: 2, state: "partial" })],
+        [],
+      ).tone,
     ).toBe("partial");
   });
 
@@ -135,10 +144,10 @@ describe("the verdict", () => {
     // below", claiming completeness over repositories nobody examined.
     const decided = summarizeVerdict(
       "ri7in",
-      [repository({ state: "cancelled" }), repository({ repositoryId: 2 })],
+      [repository({ state: "failed" }), repository({ repositoryId: 2 })],
       [finding()],
     );
-    expect(decided.text).toContain("not fully checked");
+    expect(decided.text).toContain("did not finish");
     expect(decided.text).toContain("there may be more");
   });
 
@@ -159,19 +168,18 @@ describe("the verdict", () => {
     ).toContain("1 thing to fix");
   });
 
-  it("counts every state that means not fully checked, empty included", () => {
-    // A repository with no commit publishes as empty with every check
-    // not_applicable, and it was not in the list, so an account holding two
-    // commitless repositories was told all of them had been read.
-    expect(
-      uncheckedCount([
-        repository({ repositoryId: 1, state: "complete" }),
-        repository({ repositoryId: 2, state: "failed" }),
-        repository({ repositoryId: 3, state: "cancelled" }),
-        repository({ repositoryId: 4, state: "partial" }),
-        repository({ repositoryId: 5, state: "empty" }),
-      ]),
-    ).toBe(4);
+  it("separates what went wrong from what was skipped on purpose", () => {
+    const rows = [
+      repository({ repositoryId: 1, state: "complete" }),
+      repository({ repositoryId: 2, state: "failed" }),
+      repository({ repositoryId: 3, state: "cancelled" }),
+      repository({ repositoryId: 4, state: "partial" }),
+      repository({ repositoryId: 5, state: "empty" }),
+    ];
+    // A fork and a repository with no commit are correct outcomes; a failed
+    // and a partly scanned repository are not.
+    expect(uncheckedCount(rows)).toBe(2);
+    expect(skippedOnPurposeCount(rows)).toBe(2);
   });
 
   it("counts what the secret scan read from its own coverage", () => {

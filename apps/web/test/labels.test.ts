@@ -50,7 +50,10 @@ describe("repository labels", () => {
     // The per-engine columns already say which one it was.
     const label = repositoryLabel("partial", "SCANNER_INTERNAL");
     expect(label.text).toBe("Partly scanned");
-    expect(label.detail).toContain("columns to the right");
+    // Not "the columns to the right": below 815px the table is stacked and
+    // there are no columns to the right, they are underneath.
+    expect(label.detail).toContain("other entries for this repository");
+    expect(label.detail).not.toContain("columns to the right");
     // The specific reason is still reachable, just not as the headline.
     expect(label.detail.toLowerCase()).toContain("scanner");
   });
@@ -149,9 +152,12 @@ describe("AI review labels", () => {
     // It used to assert the model provider was unreachable, which the stored
     // reason often contradicted. Inventing a rationale on a security page is
     // worse than saying less.
+    // It used to assert the provider was unreachable as fact, which the stored
+    // reason often contradicted, and then it pointed at a Status column that
+    // shows a state rather than a reason.
     const detail = aiCoverageLabel("failed").detail.toLowerCase();
-    expect(detail).not.toContain("could not be reached");
-    expect(detail).toContain("status column");
+    expect(detail).toContain("usually because");
+    expect(detail).not.toContain("status column");
   });
 
   it("does not claim a selection rule the queue does not follow", () => {
@@ -162,8 +168,9 @@ describe("AI review labels", () => {
     // And the budget is per worker run, not per scan: it is an instance field
     // on the worker that is never reset between requests, so a run serving two
     // visitors at once splits three reads between them.
-    expect(detail).toContain("3 repositories per worker run");
-    expect(detail).not.toContain("per scan get");
+    // "Worker run" is jargon of the same class as the words removed earlier.
+    expect(detail).toContain("3 repositories in a scan");
+    expect(detail).not.toContain("worker run");
   });
 
   it("flags a half-finished review, because the result is incomplete", () => {
