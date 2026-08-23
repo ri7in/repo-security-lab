@@ -55,7 +55,11 @@ describe("production accessibility invariants", () => {
       readFile(new URL("index.html", root), "utf8"),
       readFile(new URL("src/main.ts", root), "utf8"),
     ]);
-    expect(html).toContain("PUBLIC FINDING REPORT");
+    // The findings section exists and is reachable without any login route.
+    // Pinned by id rather than by heading text, so rewording the page does not
+    // read as a regression in the login guard this test is really about.
+    expect(html).toContain('id="findings-section"');
+    expect(html).toContain('id="finding-rows"');
     expect(html).not.toContain("owner-gate");
     expect(html).not.toContain("/auth/github");
     expect(script).toContain(

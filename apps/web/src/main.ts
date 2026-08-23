@@ -92,7 +92,7 @@ let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limit
 
 $("#product-name").textContent = branding.productDisplayName;
 $("#tagline").textContent = branding.tagline;
-$("#footer-name").textContent = `${branding.productDisplayName} · private release preview.`;
+$("#footer-name").textContent = `${branding.productDisplayName}. Free and open source.`;
 document.title = `${branding.productDisplayName}: public repository security`;
 
 const themeToggle = $<HTMLButtonElement>("#theme-toggle");
