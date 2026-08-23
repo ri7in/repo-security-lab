@@ -41,7 +41,8 @@ export interface ScanWorkerConfiguration {
    */
   readonly scout: null | {
     readonly apiKey: string;
-    readonly model: string;
+    /** Preferred reader first, stable fallback last. */
+    readonly models: readonly string[];
   };
   readonly isolation: null | {
     readonly bubblewrapPath: string;
@@ -54,16 +55,25 @@ export interface ScanWorkerConfiguration {
 /** The pass-1 reader, or null when no key is configured. */
 function scoutConfig(
   environment: NodeJS.ProcessEnv,
-): null | { readonly apiKey: string; readonly model: string } {
+): null | { readonly apiKey: string; readonly models: readonly string[] } {
   const apiKey = environment["OPENROUTER_API_KEY"];
   if (apiKey === undefined || apiKey.trim() === "") return null;
+  const preferred = environment["OPENROUTER_SCOUT_MODEL"];
+  // Both hold a million tokens, which is what lets one request carry a whole
+  // repository rather than a sampled slice.
+  //
+  // ox-alpha reads first: it is the sharper reader and cites the offending
+  // line rather than the surrounding block. It is also an unbranded preview
+  // that can be withdrawn without notice, so a named, stable model sits behind
+  // it. Losing the preview then costs a little precision instead of costing
+  // the entire AI pass silently.
+  const chain = [
+    preferred ?? "stealth/ox-alpha",
+    "nvidia/nemotron-3-ultra-550b-a55b:free",
+  ];
   return {
     apiKey,
-    // A million-token context, which is what lets one request hold a whole
-    // repository rather than a sampled slice of it.
-    model:
-      environment["OPENROUTER_SCOUT_MODEL"] ??
-      "nvidia/nemotron-3-ultra-550b-a55b:free",
+    models: [...new Set(chain)],
   };
 }
 

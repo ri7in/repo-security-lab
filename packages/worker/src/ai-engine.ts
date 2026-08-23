@@ -181,9 +181,13 @@ export async function runAiEngine(
   }
 
   return {
-    // A partly judged batch is reported as partial rather than complete, so a
-    // budget that ran out mid-review never reads as a clean bill of health.
-    coverage: result.state === "ai_partial" ? "partial" : "complete",
+    // Partial when the batch was partly judged OR when the cap left grounded
+    // flags unjudged. Either way the review did not finish, and "complete"
+    // would tell a reader the code was fully looked at when it was not.
+    coverage:
+      result.state === "ai_partial" || result.unjudged > 0
+        ? "partial"
+        : "complete",
     packet: {
       schemaVersion: 1,
       groups: [...counts.entries()].map(([token, count]) => ({

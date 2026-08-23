@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@app/ai": "workspace:*",
     "@app/ai-providers": "workspace:*",
     "@app/archive": "workspace:*",
     "@app/branding": "workspace:*",

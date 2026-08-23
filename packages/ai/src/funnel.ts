@@ -52,6 +52,14 @@ export interface FunnelResult {
   }[];
   /** Requests actually spent, for the daily budget ledger. */
   readonly requestsSpent: number;
+  /**
+   * Grounded flags the judge cap left unjudged.
+   *
+   * Reported rather than dropped in silence: a capped review is not a clean
+   * one, and a caller that cannot tell the difference will publish the second
+   * as though it were the first.
+   */
+  readonly unjudged: number;
   readonly failure: string | null;
 }
 
@@ -61,7 +69,12 @@ function tierFor(
   const real = verdicts.filter((entry) => entry.verdict === "real").length;
   const notReal = verdicts.filter((entry) => entry.verdict === "not_real").length;
   if (real === verdicts.length && real > 0) return "ai_confirmed";
-  if (real > notReal) return "ai_probable";
+  // A strict majority of ALL judges, not merely more "real" than "not_real".
+  // With two judges the old comparison published on one "real" and one
+  // "unsure", because 1 > 0, which contradicted this module's own rule that
+  // "unsure" counts against publication. An abstention is not a vote in
+  // favour.
+  if (real * 2 > verdicts.length) return "ai_probable";
   if (real === 0 && notReal === verdicts.length) return "rejected";
   return "needs_human_review";
 }
@@ -105,6 +118,7 @@ export class DetectionFunnel {
         judged: [],
         groundingRejections: [],
         requestsSpent: 0,
+        unjudged: 0,
         failure: "empty pack",
       };
     }
@@ -125,18 +139,28 @@ export class DetectionFunnel {
         judged: [],
         groundingRejections: [],
         requestsSpent: 1,
+        unjudged: 0,
         failure: typeof kind === "string" ? `scout ${kind}` : "scout failed",
       };
     }
 
     const { grounded, rejected } = groundScoutFlags(scouted.flags, pack);
 
-    // Judge the most confident first: if the cap bites, it should bite the
-    // weakest candidates rather than an arbitrary slice.
-    const order = { high: 0, medium: 1, low: 2 } as const;
+    // Ordered by location, never by the model's own confidence.
+    //
+    // Sorting on a scout-supplied field handed the scout control of the cap:
+    // mark noise "high", mark a real finding "low", and the real one falls off
+    // the end unjudged. Position in a file is not something the model chooses,
+    // so the queue is now data-ordered and the cap bites arbitrarily rather
+    // than exactly where a misbehaving scout would want it to.
     const queue = [...grounded]
-      .sort((a, b) => order[a.flag.confidence] - order[b.flag.confidence])
+      .sort(
+        (left, right) =>
+          left.file.fileToken - right.file.fileToken ||
+          left.flag.lineStart - right.flag.lineStart,
+      )
       .slice(0, this.#maxJudged);
+    const truncated = grounded.length - queue.length;
 
     const judged: JudgedFlag[] = [];
     let requestsSpent = 1;
@@ -146,7 +170,6 @@ export class DetectionFunnel {
       const userPrompt = renderJudgeUserPrompt({
         cwe: candidate.flag.cwe,
         impact: candidate.flag.impact,
-        rationale: candidate.flag.rationale,
         repositoryName: candidate.file.repositoryName,
         path: candidate.file.path,
         lineStart: candidate.flag.lineStart,
@@ -200,6 +223,7 @@ export class DetectionFunnel {
       judged,
       groundingRejections: rejected,
       requestsSpent,
+      unjudged: truncated,
       failure: null,
     };
   }

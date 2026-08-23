@@ -7,6 +7,7 @@ import {
 } from "@app/scanners";
 import { HttpWorkerStore } from "@app/store-http";
 import { branding } from "@app/branding";
+import { FallbackScout } from "@app/ai";
 import { ChatJudge, OpenRouterScout } from "@app/ai-providers";
 import { RepositoryWorker } from "@app/worker";
 import { parseScanWorkerConfiguration } from "./runtime-config.js";
@@ -63,13 +64,28 @@ const repositoryWorker = new RepositoryWorker({
   ...(configuration.scout === null
     ? {}
     : {
-        scout: new OpenRouterScout({
-          apiKey: configuration.scout.apiKey,
-          model: configuration.scout.model,
-          fetch: (input, init) => fetch(input, init),
-          dataPolicy: { allowTrainingProviders: true },
-          appTitle: branding.productDisplayName,
-        }),
+        scout: new FallbackScout(
+          configuration.scout.models.map(
+            (model) =>
+              new OpenRouterScout({
+                apiKey: configuration.scout?.apiKey ?? "",
+                model,
+                fetch: (input, init) => fetch(input, init),
+                dataPolicy: { allowTrainingProviders: true },
+                appTitle: branding.productDisplayName,
+              }),
+          ),
+          (index) => {
+            // Says which reader failed, so a chain quietly running on its last
+            // link does not look identical to one running on its first.
+            process.stderr.write(
+              `${JSON.stringify({
+                event: "scout_fallback",
+                failed: configuration.scout?.models[index] ?? "unknown",
+              })}\n`,
+            );
+          },
+        ),
       }),
   // Judges are constructed here and injected, never reached for. The worker
   // and the review logic stay network-blind; only this composition root knows

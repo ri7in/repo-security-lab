@@ -46,10 +46,18 @@ export function renderScoutUserPrompt(renderedPack: string): string {
   return `Review the following files. Report only what the rules allow.\n\n${renderedPack}`;
 }
 
+/**
+ * The judge prompt. Carries no argument from the scout.
+ *
+ * The scout's own reasoning used to be pasted in as "Reviewer's reasoning",
+ * which made every judge an anchored second reader of one model's case rather
+ * than an independent one, and gave a misbehaving scout a free-text channel
+ * into the prompt of the thing checking it. Judges get the class, the location
+ * and the code, and reach their own conclusion.
+ */
 export function renderJudgeUserPrompt(input: {
   readonly cwe: string;
   readonly impact: string;
-  readonly rationale: string;
   readonly repositoryName: string;
   readonly path: string;
   readonly lineStart: number;
@@ -59,7 +67,6 @@ export function renderJudgeUserPrompt(input: {
     .map((line, index) => `${String(input.lineStart + index)}| ${line}`)
     .join("\n");
   return `Reported issue: ${input.cwe} (${input.impact})
-Reviewer's reasoning: ${input.rationale}
 Location: ${input.repositoryName}/${input.path}, lines ${String(input.lineStart)}-${String(input.lineStart + input.excerpt.length - 1)}
 
 Code:
