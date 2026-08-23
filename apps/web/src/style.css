@@ -246,10 +246,12 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .progress-track i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .35s ease; }
 /* auto-fit rather than a fixed count: the card set has grown once and the
    grid should not have to be edited again when it grows twice. */
-.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); }
-.summary-card { padding: 18px; border-right: 1px solid var(--line); }
+/* 130px so five cards still fit one row at a 712px content width, which is
+   what a 768 tablet gives: at 150 the fifth wrapped onto a row of its own. */
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); border: 1px solid var(--line); }
+.summary-card { padding: 16px 14px; border-right: 1px solid var(--line); }
 .summary-card:last-child { border: 0; }
-.summary-card strong { display: block; font: 700 28px var(--mono); }
+.summary-card strong { display: block; font: 700 26px var(--mono); }
 .summary-card span { color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .08em; }
 
 .legend { margin: 0; color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; }
