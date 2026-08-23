@@ -60,10 +60,14 @@ describe("the summary cards", () => {
       summary("complete", { complete: 18, partial: 1, cancelled: 4 }),
       2,
       1,
+      // From the rows' own coverage: the partly scanned repository's secret
+      // scan did finish, and the card used to disagree with the ledger and the
+      // PDF about that.
+      19,
     );
     expect(cards.map((card) => [card.value, card.label])).toEqual([
       [23, "public repositories"],
-      [18, "secret-scanned"],
+      [19, "secret-scanned"],
       [2, "code-reviewed"],
       [1, "did not finish"],
       [1, "finding"],
@@ -71,7 +75,7 @@ describe("the summary cards", () => {
   });
 
   it("uses no word from the state machine", () => {
-    const labels = summaryCards(summary("complete", { complete: 3 }), 0, 0)
+    const labels = summaryCards(summary("complete", { complete: 3 }), 0, 0, 3)
       .map((card) => card.label)
       .join(" ");
     expect(labels).not.toContain("terminal");
@@ -81,10 +85,23 @@ describe("the summary cards", () => {
     expect(labels).not.toContain("not fully checked");
   });
 
+  it("counts the secret scan from coverage, not from repository state", () => {
+    // A repository whose secret scan finished and whose AI review failed is
+    // `partial`, so the state count left it out while the ledger row said
+    // "Fully scanned" and the PDF said it had been examined.
+    const cards = summaryCards(
+      summary("complete", { complete: 4, partial: 1 }),
+      0,
+      0,
+      5,
+    );
+    expect(cards[1]).toEqual({ value: 5, label: "secret-scanned" });
+  });
+
   it("gets the singular right for one finding", () => {
-    expect(summaryCards(summary("complete"), 0, 1).at(-1)?.label).toBe("finding");
-    expect(summaryCards(summary("complete"), 0, 0).at(-1)?.label).toBe("findings");
-    expect(summaryCards(summary("complete"), 0, 2).at(-1)?.label).toBe("findings");
+    expect(summaryCards(summary("complete"), 0, 1, 0).at(-1)?.label).toBe("finding");
+    expect(summaryCards(summary("complete"), 0, 0, 0).at(-1)?.label).toBe("findings");
+    expect(summaryCards(summary("complete"), 0, 2, 0).at(-1)?.label).toBe("findings");
   });
 
   it("counts a skipped and a failed repository as finished, because they are", () => {
@@ -169,6 +186,21 @@ describe("explaining why a scan stopped", () => {
       expect(line, `${code} is unexplained`).not.toContain("cannot explain");
       expect(line.length, `${code} is too thin`).toBeGreaterThan(40);
     }
+  });
+
+  it("does not point at a report id when no request was ever created", () => {
+    // The single fallback told people to send in "the report id in the address
+    // bar" over a POST that never got as far as creating one.
+    const withReport = explainFailure("SOMETHING_NEW", true);
+    const withoutReport = explainFailure("SOMETHING_NEW", false);
+    expect(withReport).toContain("report id in the address bar");
+    expect(withoutReport).not.toContain("report id");
+    expect(withoutReport).toContain("could not be started");
+  });
+
+  it("still prefers a written explanation over either fallback", () => {
+    expect(explainFailure("RATE_LIMITED", false)).toContain("Too many scans");
+    expect(explainFailure("RATE_LIMITED", true)).toContain("Too many scans");
   });
 
   it("explains a stopped request in request terms, not repository terms", () => {

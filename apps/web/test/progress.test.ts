@@ -132,7 +132,11 @@ describe("the progress model", () => {
       summary("complete", { complete: 20, cancelled: 2, failed: 1 }),
     );
     expect(model.livePercent).toBe(100);
-    expect(model.liveDetail).toContain("All 23 repositories");
+    // Not "all 23 have been checked": two were forks and were never opened,
+    // and that sentence sat in green directly above a red verdict saying so.
+    expect(model.liveDetail).toBe(
+      "21 of 23 repositories checked, 2 skipped as forks or as empty.",
+    );
   });
 
   it("holds nothing once the request is complete", () => {
@@ -158,6 +162,12 @@ describe("the progress model", () => {
   it("gets the singular right for a single repository", () => {
     expect(progressModel(summary("complete", { complete: 1 })).liveDetail).toBe(
       "All 1 repository has been checked.",
+    );
+  });
+
+  it("only says all when all of them really were", () => {
+    expect(progressModel(summary("complete", { complete: 5 })).liveDetail).toBe(
+      "All 5 repositories have been checked.",
     );
   });
 

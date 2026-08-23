@@ -143,9 +143,9 @@
           <p class="legend"><span class="dot complete"></span>scanned <span class="dot skipped"></span>skipped <span class="dot waiting"></span>running <span class="dot failed"></span>problem</p>
         </div>
         <p id="no-repositories" class="nothing-found is-neutral" hidden>No repositories were listed, because the scan stopped before it got that far.</p>
-        <p id="ledger-columns" class="findings-note">Two checks run today: the secret scan on every repository that is not a fork, and the AI code review on up to three per scan. Three more exist and are not switched on yet, so this ledger does not show a column for them: dependency CVEs, GitHub Actions workflow hardening, and static analysis.</p>
+        <p id="ledger-columns" class="findings-note">Two checks run today: the secret scan on every repository it can download that is not a fork, and the AI code review on up to three per scan. Three more exist and are not switched on yet, so this ledger does not show a column for them: dependency CVEs, GitHub Actions workflow hardening, and static analysis.</p>
         <p id="ledger-note" class="findings-note"></p>
-        <div id="ledger-table" class="table-shell" role="region" tabindex="0" aria-label="Table of repositories, scrolls sideways">
+        <div id="ledger-table" class="table-shell" aria-label="Table of repositories">
           <table>
             <thead>
               <tr><th scope="col">Repository</th><th scope="col">Status</th><th scope="col">Secret scan</th><th scope="col">AI code review</th></tr>
@@ -169,7 +169,7 @@
         </div>
         <p class="findings-note">Findings are public. Each one names the file and the line, so you can go straight to it. Secret values, code snippets, and raw matches never enter this report. "How many" is a range rather than an exact count, and several matches can land on the same line, so one location can still cover more than one.</p>
         <p id="nothing-found" class="nothing-found" hidden>Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs at the commit that was read. That is not a guarantee the code is secure.</p>
-        <div id="finding-table" class="table-shell" role="region" tabindex="0" aria-label="Table of findings, scrolls sideways">
+        <div id="finding-table" class="table-shell" aria-label="Table of findings">
           <table>
             <thead>
               <tr><th scope="col">Repository</th><th scope="col">What was found</th><th scope="col">Severity</th><th scope="col">How many</th><th scope="col">Location</th><th scope="col">What to do</th></tr>

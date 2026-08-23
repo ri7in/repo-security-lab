@@ -57,7 +57,7 @@ export function reportDocument(
     meta:
       `${String(scanned)} of ${String(state.repositories.length)} public ` +
       `${state.repositories.length === 1 ? "repository" : "repositories"} examined - ` +
-      `scanned ${scannedAt.toISOString().slice(0, 16).replace("T", " ")} UTC - ` +
+      `scanned ${scannedAt.toLocaleString()} - ` +
       branding.productDisplayName,
     verdict,
     sections: [

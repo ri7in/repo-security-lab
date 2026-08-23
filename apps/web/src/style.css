@@ -248,6 +248,7 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
    grid should not have to be edited again when it grows twice. */
 /* 130px so five cards still fit one row at a 712px content width, which is
    what a 768 tablet gives: at 150 the fifth wrapped onto a row of its own. */
+.summary-grid[hidden], .progress-track[hidden], .table-shell[hidden] { display: none; }
 .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); border: 1px solid var(--line); }
 .summary-card { padding: 16px 14px; border-right: 1px solid var(--line); }
 .summary-card:last-child { border: 0; }
@@ -263,13 +264,15 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }
 /* max-width is ignored on a table cell in auto layout, so the truncation has
    to live on something inside it. The full name is on the cell's title. */
-.repo-name > span { display: block; max-width: clamp(240px, 26vw, 520px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The cell decides, not the viewport. A 26vw cap truncated a 272px name at
+   1024 while 28px of its own column and 300px of the row sat unused. */
+.repo-name > span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 thead th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
 tbody th { text-align: left; font: inherit; }
 td, tbody th { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
 tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
 tbody tr[data-active="true"] { background: var(--signal-soft); box-shadow: inset 3px 0 0 var(--signal); }
-.repo-name { width: 1%; white-space: nowrap; }
+.repo-name { width: 34%; max-width: 520px; white-space: nowrap; }
 .state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
 /* Tone, not state name. A skipped fork and a checker with nothing to do are
    correct outcomes and must not wear the same colour as a real failure, or a
@@ -305,6 +308,18 @@ footer p { max-width: 720px; margin: 0; }
  * you scroll, so there was no affordance at all: the findings table showed its
  * last heading as "WHAT" and the one instruction on the report as "Rota".
  */
+/* Five cards need about 650px of content width. Below that auto-fit drops to
+   four and leaves the fifth, which is the finding count people came for, alone
+   on a row with most of the grid empty beside it. A clean pair is better than
+   a lone tail. */
+@media (max-width: 707px) {
+  .summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .summary-card:nth-child(odd) { border-right: 1px solid var(--line); }
+  .summary-card:nth-child(even) { border-right: 0; }
+  .summary-card { border-bottom: 1px solid var(--line); }
+  .summary-card:nth-last-child(-n+1) { border-bottom: 0; }
+}
+
 @media (max-width: 815px) {
   .table-shell { overflow-x: visible; }
   /* The whole table stops being a table, so the blocks lay out as blocks and
@@ -495,7 +510,9 @@ footer p { max-width: 720px; margin: 0; }
   .hero { display: block; padding: 0; }
   .status-section { border: 0; padding: 0 0 6mm; }
   section { break-inside: auto; }
-  .ledger-section { display: block !important; border: 0; margin: 0 0 8mm; padding: 0; }
+  .ledger-section:not([hidden]) { display: block !important; }
+  .ledger-section { border: 0; margin: 0 0 8mm; padding: 0; }
+  .ledger-section[hidden], .status-section[hidden] { display: none !important; }
   .section-heading { display: block; margin-bottom: 4mm; }
   h2 { font-size: 14pt; }
   .verdict { border: 1px solid #999; padding: 3mm; font-size: 11pt; }

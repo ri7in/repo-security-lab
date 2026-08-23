@@ -69,6 +69,7 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     );
 
   const finished = summary.state === "complete";
+  const skippedOnPurpose = count("cancelled", "empty");
   const stopped = summary.state === "failed";
 
   const progress: Record<Step, { done: number; total: number }> = {
@@ -160,7 +161,12 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     liveDetail: stopped
       ? "The request stopped before every repository was checked. Details below."
       : finished
-        ? `All ${String(all)} ${all === 1 ? "repository has" : "repositories have"} been checked.`
+        ? // Not "all N have been checked": a fork is in `all` and was never
+          // opened, so that sentence sat in green directly above a red verdict
+          // saying four were skipped.
+          skippedOnPurpose === 0
+          ? `All ${String(all)} ${all === 1 ? "repository has" : "repositories have"} been checked.`
+          : `${String(all - skippedOnPurpose)} of ${String(all)} repositories checked, ${String(skippedOnPurpose)} skipped as forks or as empty.`
         : all === 0
           ? "Looking up the account."
           : `${String(terminal)} of ${String(all)} repositories finished.`,

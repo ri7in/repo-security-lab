@@ -94,6 +94,38 @@ export function forgetScan(requestId: string): readonly HistoryEntry[] {
   return next;
 }
 
+/**
+ * How long a scan may say "still running" before nobody believes it.
+ *
+ * A scan whose tab was closed, or whose polling gave up, is written as
+ * incomplete and nothing ever ages it out, so the list kept offering "still
+ * running" for scans from hours earlier.
+ */
+export const RUNNING_GRACE_MS = 60 * 60 * 1_000;
+
+/** What the history list says happened, in the words it should use. */
+export function describeOutcome(
+  entry: HistoryEntry,
+  now: number,
+): { readonly text: string; readonly bad: boolean } {
+  if (entry.stopped === true) {
+    return { text: "stopped before it finished", bad: true };
+  }
+  if (!entry.complete) {
+    return now - entry.at > RUNNING_GRACE_MS
+      ? { text: "outcome unknown", bad: false }
+      : { text: "still running", bad: false };
+  }
+  const found =
+    entry.findings === 0
+      ? "nothing found"
+      : `${String(entry.findings)} finding${entry.findings === 1 ? "" : "s"}`;
+  return {
+    text: `${String(entry.repositories)} repos · ${found}`,
+    bad: entry.findings > 0,
+  };
+}
+
 /** "3 minutes ago", "yesterday", "12 Aug". Absolute once it stops being recent. */
 export function describeWhen(at: number, now: number): string {
   const seconds = Math.max(0, Math.round((now - at) / 1000));

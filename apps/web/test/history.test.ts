@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  describeOutcome,
   describeWhen,
   forgetScan,
   readHistory,
@@ -183,5 +184,40 @@ describe("describing when a scan ran", () => {
 
   it("never reports a future timestamp as negative", () => {
     expect(describeWhen(now + 60_000, now)).toBe("just now");
+  });
+});
+
+describe("what the history list says happened", () => {
+  const hour = 60 * 60 * 1_000;
+
+  it("does not offer a stopped scan as a clean one", () => {
+    // It used to read "5 repos, nothing found", which is what a clean scan
+    // says, contradicting the report it links to.
+    const outcome = describeOutcome(entry({ stopped: true }), 0);
+    expect(outcome.text).toBe("stopped before it finished");
+    expect(outcome.bad).toBe(true);
+  });
+
+  it("stops saying still running once nobody would believe it", () => {
+    // A scan whose tab was closed is written as incomplete and nothing ever
+    // ages it out, so the list kept offering "still running" hours later.
+    const at = 1_000_000;
+    const running = entry({ at, complete: false });
+    expect(describeOutcome(running, at + 60_000).text).toBe("still running");
+    expect(describeOutcome(running, at + hour + 1).text).toBe("outcome unknown");
+  });
+
+  it("reads a clean scan as clean and a scan with findings as a hit", () => {
+    expect(describeOutcome(entry({ repositories: 8, findings: 0 }), 0)).toEqual({
+      text: "8 repos · nothing found",
+      bad: false,
+    });
+    expect(describeOutcome(entry({ repositories: 8, findings: 1 }), 0)).toEqual({
+      text: "8 repos · 1 finding",
+      bad: true,
+    });
+    expect(describeOutcome(entry({ repositories: 8, findings: 3 }), 0).text).toBe(
+      "8 repos · 3 findings",
+    );
   });
 });

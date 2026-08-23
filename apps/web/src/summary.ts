@@ -37,11 +37,18 @@ export function summaryCards(
   summary: ScanRequestSummary,
   reviewed: number,
   findings: number,
+  /** From the rows' own coverage, not from repository state. */
+  secretScanned: number,
 ): readonly SummaryCard[] {
   const totals = summary.repositoryTotals;
   return [
     { value: totalCount(summary), label: "public repositories" },
-    { value: totals.complete, label: "secret-scanned" },
+    // `totals.complete` counts repositories where every engine finished, so a
+    // repository whose secret scan completed and whose AI review failed was
+    // missing from this card while the ledger row beside it said "Fully
+    // scanned" and the PDF said it had been examined. Three numbers for one
+    // idea, two of them disagreeing.
+    { value: secretScanned, label: "secret-scanned" },
     { value: reviewed, label: "code-reviewed" },
     // Only what went wrong. A skipped fork is a correct outcome and counting
     // it here implied the visitor had something to do about it.
@@ -68,11 +75,18 @@ export function percentDone(summary: ScanRequestSummary): number {
  * stopped: d1 write reserve." D1 is Cloudflare's database product, and the
  * explanations already existed one file away and were never consulted.
  */
-export function explainFailure(code: string | undefined): string {
-  return (
-    (code === undefined ? undefined : failureDetail(code)) ??
-    "Something went wrong that this page cannot explain. Try again in a few minutes, and the report id in the address bar is what to send in if it keeps happening."
-  );
+export function explainFailure(
+  code: string | undefined,
+  /** False before a request exists, when there is no id to send in. */
+  hasReport = true,
+): string {
+  const explained = code === undefined ? undefined : failureDetail(code);
+  if (explained !== undefined) return explained;
+  // The old single fallback told people to send in "the report id in the
+  // address bar" over a request that was never created and had no id.
+  return hasReport
+    ? "Something went wrong that this page cannot explain. Try again in a few minutes, and the report id in the address bar is what to send in if it keeps happening."
+    : "The scan could not be started. Check your connection and try again in a few minutes.";
 }
 
 export function statusLine(summary: ScanRequestSummary): string {

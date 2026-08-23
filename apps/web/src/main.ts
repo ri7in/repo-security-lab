@@ -13,6 +13,7 @@ import {
 } from "@app/contracts";
 import "./style.css";
 import {
+  describeOutcome,
   describeWhen,
   forgetScan,
   readHistory,
@@ -53,7 +54,7 @@ import {
 import { retryPlan } from "./polling.js";
 import { installTooltips } from "./tooltip.js";
 import { usernameProblem } from "./username.js";
-import { summarizeVerdict } from "./verdict.js";
+import { secretScannedCount, summarizeVerdict } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -270,6 +271,16 @@ function renderSteps(summary: ScanRequestSummary): void {
 }
 
 seeResults.addEventListener("click", () => {
+  const target = document.querySelector<HTMLElement>(
+    findingsSection.hidden ? "#ledger-section" : "#findings-section",
+  );
+  // Focus follows the scroll, or a keyboard user activates the one control
+  // whose job is to take them to the result and their next Tab returns them
+  // to the top of the page.
+  if (target !== null) {
+    target.tabIndex = -1;
+    target.focus({ preventScroll: true });
+  }
   document
     .querySelector(findingsSection.hidden ? "#ledger-section" : "#findings-section")
     ?.scrollIntoView({
@@ -319,10 +330,11 @@ function explanation(detail: string): HTMLElement {
 // the summary does, so the cards are repainted once they are in.
 let findingsShown = 0;
 let reviewedShown = 0;
+let scannedShown = 0;
 
 function renderSummary(summary: ScanRequestSummary): void {
   summaryGrid.replaceChildren(
-    ...summaryCards(summary, reviewedShown, findingsShown).map((entry) => {
+    ...summaryCards(summary, reviewedShown, findingsShown, scannedShown).map((entry) => {
       const card = document.createElement("div");
       card.className = "summary-card";
       const strong = document.createElement("strong");
@@ -359,6 +371,7 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
   reviewedShown = repositories.filter(
     (repository) => repository.coverage.ai === "complete",
   ).length;
+  scannedShown = secretScannedCount(repositories);
   rows.replaceChildren(
     ...repositories.map((repository) => {
       const row = document.createElement("tr");
@@ -580,6 +593,7 @@ async function poll(requestId: string): Promise<void> {
     // findings section already says so; the ledger said nothing at all.
     const nothingListed = repositories.length === 0 && terminal;
     ledgerTable.hidden = nothingListed;
+    markScrollRegions();
     ledgerColumns.hidden = nothingListed;
     noRepositories.hidden = !nothingListed;
     // Five zeros under a scan that never started is noise, not information.
@@ -668,6 +682,7 @@ form.addEventListener("submit", (event) => {
   // this scan, attributed to this account.
   findingsShown = 0;
   reviewedShown = 0;
+  scannedShown = 0;
   statusSection.hidden = false;
   summaryGrid.hidden = false;
   progressBar.parentElement?.removeAttribute("hidden");
@@ -696,7 +711,11 @@ form.addEventListener("submit", (event) => {
     } catch (error) {
       showPanelState(
         couldNotStart(
-          explainFailure(error instanceof Error ? error.message : undefined),
+          explainFailure(
+            error instanceof Error ? error.message : undefined,
+            // No request was created, so there is no id in the address bar.
+            false,
+          ),
         ),
       );
     } finally {
@@ -739,7 +758,7 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   // to do when it runs out.
   if (!budget.available) {
     quotaLine.textContent =
-      "Today's free compute is used up. The secret scan still runs on every repository that is not a fork.";
+      "Today's free compute is used up. The secret scan still runs on every repository it can download that is not a fork.";
     quotaSub.textContent =
       "This is a free side project, so there is only so much to go around each day. It resets overnight. Please come back tomorrow.";
     return;
@@ -755,7 +774,7 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   quotaLine.textContent =
     `Up to ${String(budget.deepReadsPerDay)} full code reviews a day, shared by everyone using this. ` +
     `A scan reads ${String(repos)} ${repos === 1 ? "repository" : "repositories"} line by line, ` +
-    "and fewer when the shared budget is already spent. Every repository that is not a fork gets the secret scan.";
+    "and fewer when the shared budget is already spent. Every repository it can download that is not a fork gets the secret scan.";
   quotaSub.textContent =
     "Free and open source, run by one person. The daily ceiling is small on purpose and resets overnight.";
 }
@@ -777,7 +796,7 @@ void requestJson("/api/capabilities")
     quotaPercent.textContent = "--%";
     quotaLine.textContent = "Today's model allowance is unavailable right now.";
     quotaSub.textContent =
-      "The secret scan does not depend on it and still runs on every repository that is not a fork.";
+      "The secret scan does not depend on it and runs on every repository it can download that is not a fork.";
   });
 
 /** Paints one of the states that has no summary behind it. */
@@ -817,6 +836,14 @@ if (existingRequest !== null) {
   } else {
     setButtonBusy(true);
     setScanState("scanning");
+    // Until the first poll answers, the panel kept the markup it ships with,
+    // so the first thing on a shared link was an instruction to do something
+    // the visitor did not come to do.
+    livePhase.textContent = "Loading";
+    livePercent.textContent = "";
+    liveDetail.textContent = "Fetching this report.";
+    signText.textContent = "Loading";
+    liveStatus.textContent = "Fetching this report.";
     void poll(parsedRequest.data)
       .catch((error: unknown) => {
         // A report that is genuinely gone is a different thing from a service
@@ -859,18 +886,10 @@ function renderHistory(entries: readonly HistoryEntry[]): void {
       when.className = "when";
       when.textContent = describeWhen(entry.at, now);
 
+      const outcome = describeOutcome(entry, now);
       const what = document.createElement("span");
-      what.className =
-        entry.findings > 0 || entry.stopped === true ? "what hit" : "what";
-      what.textContent = entry.stopped === true
-        ? "stopped before it finished"
-        : entry.complete
-          ? `${String(entry.repositories)} repos · ${
-              entry.findings === 0
-                ? "nothing found"
-                : `${String(entry.findings)} finding${entry.findings === 1 ? "" : "s"}`
-            }`
-          : "still running";
+      what.className = outcome.bad ? "what hit" : "what";
+      what.textContent = outcome.text;
 
       button.append(who, when, what);
       button.addEventListener("click", () => {
@@ -889,6 +908,29 @@ historyClear.addEventListener("click", () => {
 
 // Delegated on the document, so a chip the ledger adds later is covered too.
 installTooltips();
+
+/**
+ * A scroll region only where there is something to scroll.
+ *
+ * Both tables carried `role="region" tabindex="0" aria-label="…scrolls
+ * sideways"` at every width. Below 816px the table is stacked and does not
+ * scroll at all; above about 818px it fits. So the label described neither the
+ * layout nor the behaviour, and cost two permanent tab stops for it.
+ */
+function markScrollRegions(): void {
+  for (const shell of document.querySelectorAll<HTMLElement>(".table-shell")) {
+    const scrolls = shell.scrollWidth > shell.clientWidth + 1;
+    if (scrolls) {
+      shell.setAttribute("role", "region");
+      shell.setAttribute("tabindex", "0");
+    } else {
+      shell.removeAttribute("role");
+      shell.removeAttribute("tabindex");
+    }
+  }
+}
+
+window.addEventListener("resize", markScrollRegions, { passive: true });
 
 renderHistory(readHistory());
 
@@ -962,6 +1004,16 @@ function setPrintHeader(summary: ScanRequestSummary, findings: number): void {
     (sum, value) => sum + value,
     0,
   );
+  // A lookup that never ran was getting the wording of a clean result: "0
+  // public repositories in the account, nothing found". That is the false
+  // all-clear the on-screen verdict already refuses, still alive on paper.
+  if (summary.state === "failed") {
+    printMeta.textContent =
+      "This scan stopped before it finished, so it has no result · " +
+      `${new Date(summary.updatedAt).toLocaleString()} · ` +
+      branding.productDisplayName;
+    return;
+  }
   printMeta.textContent =
     `${String(counted)} public ${counted === 1 ? "repository" : "repositories"} in the account · ` +
     `${findings === 0 ? "nothing found" : `${String(findings)} finding${findings === 1 ? "" : "s"}`} · ` +
