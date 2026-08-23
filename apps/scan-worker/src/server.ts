@@ -6,7 +6,8 @@ import {
   ZIZMOR_BROKER_MANIFEST,
 } from "@app/scanners";
 import { HttpWorkerStore } from "@app/store-http";
-import { ChatJudge } from "@app/ai-providers";
+import { branding } from "@app/branding";
+import { ChatJudge, OpenRouterScout } from "@app/ai-providers";
 import { RepositoryWorker } from "@app/worker";
 import { parseScanWorkerConfiguration } from "./runtime-config.js";
 import { BubblewrapRepositoryScanDomain } from "./bubblewrap-domain.js";
@@ -56,6 +57,20 @@ const repositoryWorker = new RepositoryWorker({
       }
     : { scanDomain }),
   gitleaksBroker: new SourceBlindBroker("gitleaks", GITLEAKS_BROKER_MANIFEST),
+  // The reader. Its data policy is set from the site's published disclosure
+  // rather than an account default, so the routing decision is visible here
+  // instead of in a dashboard someone can change.
+  ...(configuration.scout === null
+    ? {}
+    : {
+        scout: new OpenRouterScout({
+          apiKey: configuration.scout.apiKey,
+          model: configuration.scout.model,
+          fetch: (input, init) => fetch(input, init),
+          dataPolicy: { allowTrainingProviders: true },
+          appTitle: branding.productDisplayName,
+        }),
+      }),
   // Judges are constructed here and injected, never reached for. The worker
   // and the review logic stay network-blind; only this composition root knows
   // a provider exists.

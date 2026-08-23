@@ -1,5 +1,9 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { reviewScannerFindings, type JudgePort } from "@app/ai";
+import {
+  reviewScannerFindings,
+  type JudgePort,
+  type ScoutPort,
+} from "@app/ai";
 import {
   lstat,
   mkdir,
@@ -11,8 +15,9 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
+import { runAiEngine } from "./ai-engine.js";
 import { extractTarGzip, ArchiveError } from "@app/archive";
-import { BrokerError, type SourceBlindBroker } from "@app/broker";
+import { BrokerError, SourceBlindBroker } from "@app/broker";
 import {
   SCAN_ENGINES,
   SPECIALISTS,
@@ -47,11 +52,22 @@ import {
 import {
   ScannerError,
   type GitleaksScanResult,
+  AI_BROKER_MANIFEST,
 } from "@app/scanners";
 import {
   detectSpecialistApplicability,
   type SpecialistApplicability,
 } from "./applicability.js";
+
+/**
+ * Tokens of source a single repository may cost the reader.
+ *
+ * Sized well under the smallest free context window in the panel, because the
+ * constraint that binds is the daily allowance, not the window: a pack that
+ * fills a context also empties the day in a handful of repositories.
+ */
+const AI_TOKEN_BUDGET = 120_000;
+
 
 const DEFAULT_LEASE_DURATION_MS = 20 * 60 * 1_000;
 
@@ -118,6 +134,20 @@ export interface RepositoryWorkerOptions {
    * before review existed.
    */
   readonly judges?: readonly JudgePort[];
+  /**
+   * Pass-1 reader. Absent means the AI engine never runs and every repository
+   * reports `unsupported` for it, which is honest: the check exists and did
+   * not happen here.
+   */
+  readonly scout?: ScoutPort;
+  /**
+   * Repositories per worker run that may be read by a model.
+   *
+   * The daily model budget is small and shared, so this is a hard stop rather
+   * than a target. Repositories past it report `unsupported` rather than
+   * silently looking clean.
+   */
+  readonly aiRepositoryBudget?: number;
   readonly workerId: OpaqueId;
   readonly scratchBase: string;
   /** Null enables the isolated public worker; a set retains private-slice scope. */
@@ -227,6 +257,9 @@ export class RepositoryWorker {
   readonly #additionalEngines: readonly AdditionalEngineRunner[];
   readonly #scanDomain: RepositoryScanDomain | null;
   readonly #judges: readonly JudgePort[];
+  readonly #scout: ScoutPort | null;
+  readonly #aiBroker: SourceBlindBroker | null;
+  #aiBudget: number;
   readonly #workerId: OpaqueId;
   readonly #scratchBase: string;
   readonly #allowedGithubAccountIds: ReadonlySet<number> | null;
@@ -242,6 +275,14 @@ export class RepositoryWorker {
     this.#additionalEngines = Object.freeze([...(options.additionalEngines ?? [])]);
     this.#scanDomain = options.scanDomain ?? null;
     this.#judges = options.judges ?? [];
+    this.#scout = options.scout ?? null;
+    this.#aiBudget = options.aiRepositoryBudget ?? 3;
+    // Built once. The broker validates the manifest on construction, so a
+    // malformed AI manifest fails at startup rather than mid-scan.
+    this.#aiBroker =
+      options.scout === undefined
+        ? null
+        : new SourceBlindBroker("ai", AI_BROKER_MANIFEST);
     this.#workerId = options.workerId;
     this.#scratchBase = path.resolve(options.scratchBase);
     this.#allowedGithubAccountIds = options.allowedGithubAccountIds;
@@ -541,6 +582,47 @@ export class RepositoryWorker {
         }))
       ) {
         throw new Error("stale worker lease");
+      }
+      // The AI engine runs here: after the scanners, because their findings are
+      // the lines it must blank, and before cleanup, because this is the last
+      // moment the source exists on disk.
+      if (this.#scout !== null && this.#aiBroker !== null) {
+        if (this.#aiBudget <= 0) {
+          coverage.ai = "unsupported";
+        } else {
+          this.#aiBudget -= 1;
+          try {
+            const reviewed = await runAiEngine({
+              sourcePath,
+              repositoryId: repository.repositoryId,
+              repositoryName: repository.name,
+              review: scanReview,
+              scout: this.#scout,
+              judges: this.#judges,
+              tokenBudget: AI_TOKEN_BUDGET,
+            });
+            coverage.ai = reviewed.coverage;
+            if (reviewed.packet !== null && reviewed.packet.groups.length > 0) {
+              normalizedByEngine.set("ai", {
+                normalized: {
+                  packetBytes: new TextEncoder().encode(
+                    JSON.stringify(reviewed.packet),
+                  ),
+                  coverage: reviewed.coverage === "partial" ? "partial" : "complete",
+                  reason: null,
+                },
+                broker: this.#aiBroker,
+              });
+              scanLocations = [...scanLocations, ...reviewed.locations];
+            }
+          } catch {
+            // A model outage must never fail a scan whose scanners succeeded.
+            coverage.ai = "failed";
+            specialistReasons.ai = "SCANNER_INTERNAL";
+          }
+        }
+      } else {
+        coverage.ai = "unsupported";
       }
       await advance("normalizing");
       await advance("cleaning");

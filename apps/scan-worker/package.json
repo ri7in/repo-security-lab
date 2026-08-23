@@ -10,6 +10,7 @@
   "dependencies": {
     "@app/ai-providers": "workspace:*",
     "@app/archive": "workspace:*",
+    "@app/branding": "workspace:*",
     "@app/broker": "workspace:*",
     "@app/contracts": "workspace:*",
     "@app/github": "workspace:*",

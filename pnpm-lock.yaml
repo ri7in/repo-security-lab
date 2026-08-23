@@ -141,6 +141,9 @@ importers:
       '@app/archive':
         specifier: workspace:*
         version: link:../../packages/archive
+      '@app/branding':
+        specifier: workspace:*
+        version: link:../../packages/branding
       '@app/broker':
         specifier: workspace:*
         version: link:../../packages/broker

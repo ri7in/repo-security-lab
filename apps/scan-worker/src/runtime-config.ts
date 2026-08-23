@@ -32,11 +32,38 @@ export interface ScanWorkerConfiguration {
     readonly family: string;
     readonly endpoint: string;
   }[];
+  /**
+   * Pass-1 reader. Absent means the AI engine never runs.
+   *
+   * Deliberately a different provider from every judge. A model that both
+   * raises a finding and votes on it is one opinion wearing two hats, and the
+   * council's whole value is that it is not the thing being checked.
+   */
+  readonly scout: null | {
+    readonly apiKey: string;
+    readonly model: string;
+  };
   readonly isolation: null | {
     readonly bubblewrapPath: string;
     readonly nodePath: string;
     readonly applicationBundlePath: string;
     readonly runtimeLibraryPaths: readonly string[];
+  };
+}
+
+/** The pass-1 reader, or null when no key is configured. */
+function scoutConfig(
+  environment: NodeJS.ProcessEnv,
+): null | { readonly apiKey: string; readonly model: string } {
+  const apiKey = environment["OPENROUTER_API_KEY"];
+  if (apiKey === undefined || apiKey.trim() === "") return null;
+  return {
+    apiKey,
+    // A million-token context, which is what lets one request hold a whole
+    // repository rather than a sampled slice of it.
+    model:
+      environment["OPENROUTER_SCOUT_MODEL"] ??
+      "nvidia/nemotron-3-ultra-550b-a55b:free",
   };
 }
 
@@ -58,14 +85,6 @@ function judgePanel(
       family: "groq",
       endpoint: "https://api.groq.com/openai/v1/chat/completions",
       model: environment["GROQ_JUDGE_MODEL"] ?? "openai/gpt-oss-120b",
-    },
-    {
-      keyName: "OPENROUTER_API_KEY",
-      family: "openrouter",
-      endpoint: "https://openrouter.ai/api/v1/chat/completions",
-      model:
-        environment["OPENROUTER_JUDGE_MODEL"] ??
-        "nvidia/nemotron-3-ultra-550b-a55b:free",
     },
     {
       keyName: "GEMINI_API_KEY",
@@ -215,6 +234,7 @@ export function parseScanWorkerConfiguration(
         : environment["GITHUB_TOKEN"],
     allowedGithubAccountIds: accountScope(environment),
     judges: judgePanel(environment),
+    scout: scoutConfig(environment),
     pollIntervalMs: positiveInteger(
       environment["POLL_INTERVAL_MS"] ?? "2000",
       "POLL_INTERVAL_MS",
