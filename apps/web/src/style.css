@@ -341,7 +341,10 @@ footer p { max-width: 720px; margin: 0; }
 .quota-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .quota-head .eyebrow { margin: 0; }
 .quota-head strong { font: 700 26px var(--mono); letter-spacing: -.03em; line-height: 1; color: var(--signal); }
-.quota-track { height: 7px; margin: 11px 0 10px; background: var(--soft); overflow: hidden; }
+.quota-line { margin-top: 10px; }
+/* Hidden while nothing records what a scan spends. The markup stays so that
+   wiring spend up later is a one line change rather than a redesign. */
+.quota-track { display: none; height: 7px; margin: 11px 0 10px; background: var(--soft); overflow: hidden; }
 .quota-track i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .4s ease; }
 .quota-line { margin: 0; color: var(--ink); font: 600 11px/1.55 var(--mono); }
 .quota-sub { margin: 5px 0 0; color: var(--muted); font: 500 10px/1.55 var(--mono); }

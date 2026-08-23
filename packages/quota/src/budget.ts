@@ -1,4 +1,10 @@
-import { COUNCIL, isVerified, type ModelAllowance, type ModelRole } from "./models.js";
+import {
+  COUNCIL,
+  DISCLOSED_PROVIDERS,
+  isVerified,
+  type ModelAllowance,
+  type ModelRole,
+} from "./models.js";
 
 /**
  * Deep-read budgeting across the council.
@@ -143,7 +149,7 @@ export function councilBudget(
       repoLimitPerRequest: DEEP_READ_REPO_LIMIT,
       available: false,
       limitsVerified: false,
-      providers: [],
+      providers: [...DISCLOSED_PROVIDERS],
       perModel: [],
     };
   }
@@ -178,7 +184,8 @@ export function councilBudget(
     repoLimitPerRequest: DEEP_READ_REPO_LIMIT,
     available: deepReadsRemaining > 0,
     limitsVerified: council.every(isVerified),
-    providers: [...new Set(council.map((model) => model.provider))],
+    // Every provider that can receive code, not only the budgeted ones.
+    providers: [...DISCLOSED_PROVIDERS],
     perModel,
   };
 }

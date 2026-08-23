@@ -86,7 +86,14 @@ function scoutConfig(
   };
 }
 
-/** Builds the judge panel from whichever provider keys are present. */
+/**
+ * Builds the judge panel from whichever provider keys are present.
+ *
+ * Gated on the same switch as the reader, because it was not and that made the
+ * switch a lie: the judges also review secret-scanner findings, and that path
+ * ships a twelve line window of real source to every judge. Turning the reader
+ * off while excerpts kept going to two providers is not "off".
+ */
 function judgePanel(
   environment: NodeJS.ProcessEnv,
 ): readonly {
@@ -95,6 +102,7 @@ function judgePanel(
   readonly family: string;
   readonly endpoint: string;
 }[] {
+  if (environment["AI_REVIEW_ENABLED"] === "false") return [];
   // Verified against the live providers on 2026-08-23: each of these returned
   // the correct verdict on two genuine secrets and two documentation
   // placeholders. Free model ids churn fast, hence the env overrides.

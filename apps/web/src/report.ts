@@ -5,6 +5,7 @@ import type {
   ScanRequestSummary,
 } from "@app/contracts";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
+import { secretScannedCount } from "./verdict.js";
 import type { PdfReport } from "./pdf.js";
 import { remediationLabel } from "./remediation.js";
 
@@ -48,10 +49,13 @@ export function reportDocument(
     ]),
   );
   const scannedAt = new Date(state.summary.updatedAt);
+  const scanned = secretScannedCount(state.repositories);
   return {
     title: `Security report for ${state.summary.username}`,
+    // "23 public repositories examined" sat directly above a verdict saying
+    // five of them were not fully checked.
     meta:
-      `${String(state.repositories.length)} public ` +
+      `${String(scanned)} of ${String(state.repositories.length)} public ` +
       `${state.repositories.length === 1 ? "repository" : "repositories"} examined - ` +
       `scanned ${scannedAt.toISOString().slice(0, 16).replace("T", " ")} UTC - ` +
       branding.productDisplayName,
@@ -62,7 +66,7 @@ export function reportDocument(
         layout: "list",
         note: "File paths and line numbers only. No source code and no secret values.",
         emptyText:
-          "Nothing was found. No exposed credential matched any of the rules gitleaks 8.30.1 runs. That is not a guarantee the code is secure.",
+          "Nothing was found. No exposed credential matched any of the rules gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
         columns: [
           // Only the first value titles the block; the rest are labelled
           // lines under it, so nothing here needs a width.

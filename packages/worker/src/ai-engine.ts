@@ -181,11 +181,18 @@ export async function runAiEngine(
   }
 
   return {
-    // Partial when the batch was partly judged OR when the cap left grounded
-    // flags unjudged. Either way the review did not finish, and "complete"
-    // would tell a reader the code was fully looked at when it was not.
+    // Partial when the batch was partly judged, when the cap left grounded
+    // flags unjudged, OR when the packer could not fit the whole repository.
+    //
+    // That last one was invisible: the pack reports what it dropped for being
+    // too large, past the token budget, or outside the languages it reads, and
+    // nothing consumed it, so a repository the reader saw sixty percent of
+    // still published a green "Reviewed".
     coverage:
-      result.state === "ai_partial" || result.unjudged > 0
+      result.state === "ai_partial" ||
+      result.unjudged > 0 ||
+      pack.omitted.length > 0 ||
+      files.length >= MAX_FILES
         ? "partial"
         : "complete",
     packet: {

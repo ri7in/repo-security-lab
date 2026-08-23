@@ -12,10 +12,9 @@ clear combined report with exact per-repository, per-specialist coverage.
 
 **Private production preview.** The website and D1 control plane are live at
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
-Authenticated discovery and the pull worker are implemented and live-proven
-against Rivin's account. Public third-party scanning is still disabled until
-the prepared zero-cost OCI/Linux worker is provisioned and its real isolation
-gate passes.
+Public scanning is live: anyone can scan any public GitHub account, with no
+sign-up, and the pull worker runs on GitHub Actions under enforced Bubblewrap
+isolation. The AI code review is on, and it calls OpenRouter, Groq and Google.
 Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed** —
@@ -36,15 +35,24 @@ Current guarantees:
 - Global admission is capped at 240 reports per UTC day, below the 288/day
   retention drain. Scan admission stops at 40% of the D1 Free allowance;
   privacy maintenance has a protected band up to 60%.
-- The AI pass sends public source code to a model provider. A reader on
-  OpenRouter takes a whole repository with every secret-scanner line blanked
-  first; two judges on Groq and Google vote on what it points at. Providers may
-  keep or train on what they receive, which is what pays for the free tier, and
-  the site says so whenever the pass is on. `AI_REVIEW_ENABLED=false` turns it
-  off, and the secret scan never sends code anywhere.
-- A model cannot write into a report. Everything a reader sees about an AI
-  finding, including the rule name and the severity, is looked up from a
-  numeric token in a fixed manifest of ten weaknesses.
+- The AI pass sends public source code to model providers. A reader on
+  OpenRouter takes whole source files with every secret-scanner line blanked
+  first. Separately, a twelve line excerpt around each secret-scanner finding
+  goes to Groq and to Google, so two models from different families can vote on
+  whether it is a false alarm. Providers may keep or train on what they
+  receive, which is what pays for the free tier, and the site says so.
+  `AI_REVIEW_ENABLED=false` stops both.
+- A model can delete a secret-scan finding, but only when every judge rejects
+  it. Fewer than two judges, two of one family, an exhausted quota, a provider
+  timing out, a partly reviewed repository or any thrown error all keep the
+  finding, because showing a false positive is far cheaper than deleting a
+  real one.
+- A model cannot write into a report. It picks one of ten weakness classes, and
+  every word a reader sees, the rule name and the remediation included, is
+  looked up from that class in a fixed manifest. The severity is that class's
+  fixed rating, so a reader that mislabels the class shifts the severity with
+  it; no judge is asked whether the class fits, only whether the finding is
+  real.
 - Forks are not scanned. Owning a fork does not make its upstream source
   yours, and the ledger says so rather than hiding the row.
 
@@ -72,8 +80,9 @@ Current guarantees:
   result encoder and source-blind trusted decoder.
 - `packages/worker` — lease-bound fetch, guard, scan, cleanup, broker, publish,
   and stale-generation janitor flow.
-- `packages/ai` — disabled-by-default two-scout fixture and grounding harness;
-  no external model adapter.
+- `packages/ai` — the two-pass funnel: a reader, a deterministic grounding
+  gate no model takes part in, and a judge council of distinct model families.
+  `packages/ai-providers` is the external model adapter.
 - `apps/api` — Hono control plane and loopback-only private runtime.
 - `apps/control-plane` — Cloudflare Workers, D1, Static Assets, rate limiting,
   cron recovery, public source-blind reports, and the signed worker API.
@@ -113,8 +122,9 @@ pnpm dev:api
 pnpm dev:web
 ```
 
-The Cloudflare deployment is intentionally fail-closed by default:
-`PUBLIC_SCANNING_ENABLED=false`. D1 is provisioned and migrated in APAC, the
+The checked-in Cloudflare config is fail-closed on purpose
+(`PUBLIC_SCANNING_ENABLED=false`), so a fresh clone cannot open the service by
+accident; `deploy/redeploy.sh` passes the flags the live service runs with. D1 is provisioned and migrated in APAC, the
 preview is bound to GitHub account ID `121791882`, and static/API responses pass
 through the same security-header boundary. The dedicated discovery credential,
 signed worker identity, and first 22-repository live proof are installed. The

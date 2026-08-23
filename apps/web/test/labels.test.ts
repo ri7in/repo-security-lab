@@ -67,6 +67,15 @@ describe("repository labels", () => {
     expect(label.text).toBe("Scanned");
   });
 
+  it("does not claim every applicable check ran", () => {
+    // A repository publishes complete while three engines report unsupported,
+    // which labels.ts itself defines as "there is relevant code here, but this
+    // check is not switched on yet". Sixteen rows of a live report said both.
+    const detail = repositoryLabel("complete").detail.toLowerCase();
+    expect(detail).not.toContain("every check that applies");
+    expect(detail).toContain("not switched on yet");
+  });
+
   it("treats in-flight states as active, never as failures", () => {
     for (const state of ["waiting", "acquiring", "guarding", "scanning", "uploading"]) {
       expect(repositoryLabel(state).tone).toBe("active");
@@ -150,7 +159,11 @@ describe("AI review labels", () => {
     // updated" was falsifiable from the ledger on the same page.
     const detail = aiCoverageLabel("unsupported").detail.toLowerCase();
     expect(detail).not.toContain("recently updated");
-    expect(detail).toContain("3 repositories per scan");
+    // And the budget is per worker run, not per scan: it is an instance field
+    // on the worker that is never reset between requests, so a run serving two
+    // visitors at once splits three reads between them.
+    expect(detail).toContain("3 repositories per worker run");
+    expect(detail).not.toContain("per scan get");
   });
 
   it("flags a half-finished review, because the result is incomplete", () => {

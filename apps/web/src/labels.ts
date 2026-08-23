@@ -27,7 +27,8 @@ const REPOSITORY_STATES: Record<string, Label> = {
   complete: {
     text: "Scanned",
     tone: "ok",
-    detail: "Every check that applies to this repository ran to completion.",
+    detail:
+      "Every check that ran on this repository finished. Some checks are not switched on yet, and the columns beside this one say which ones did run.",
   },
   empty: {
     text: "Empty",
@@ -180,7 +181,7 @@ const COVERAGE: Record<string, Label> = {
     text: "Fully scanned",
     tone: "ok",
     detail:
-      "Gitleaks 8.30.1 read every file in this repository. Anything it matched is in the findings table further down the page.",
+      "Gitleaks 8.30.1 read every file under 20 MB at the exact commit named for this scan. It does not read earlier commits, so a secret that was committed and then removed is not covered. Anything it matched is in the findings table further down the page.",
   },
   partial: {
     text: "Partly scanned",
@@ -319,19 +320,19 @@ const AI_COVERAGE: Record<string, Label> = {
     text: "Partly reviewed",
     tone: "problem",
     detail:
-      "The review started and did not finish, usually because there was more to check than one day's free model budget covers. Anything it did confirm is shown.",
+      "The reader saw some of this repository but not all of it. Files over 256 KB, files past the request's token budget, and files outside the languages it reads are left out, and so is anything past the four hundredth file. Whatever it did confirm is shown.",
   },
   not_applicable: {
     text: "Not reviewed",
     tone: "skipped",
     detail:
-      "No model looked at this repository. Either it was skipped before download, or it holds no source file a code reviewer reads.",
+      "The full code review did not run here: this repository was skipped before download, or it holds no source file in a language the reviewer reads. Any secret-scan finding it did produce is still put to the review council.",
   },
   unsupported: {
     text: "Not reviewed",
     tone: "skipped",
     detail:
-      "Only 3 repositories per scan get a full code review, because the free daily model budget covers 16 across everyone who uses this. The secret scan ran on this one either way.",
+      "Up to 3 repositories per worker run get a full code review, and a run can be serving somebody else's scan at the same time. The secret scan still ran on this repository; its column says how it went.",
   },
   // Deliberately does not name a cause. It once claimed the provider was
   // unreachable, which the stored reason often contradicted, and inventing a

@@ -26,8 +26,15 @@ coverage and findings report. It does not require an account, set cookies, or ru
 
 GitHub receives normal API and archive requests. If optional email is enabled,
 Google Apps Script and Gmail receive the destination address and public report
-URL solely to send one transactional message. Repository source is not sent to
-an email provider or AI provider. The AI source lane remains disabled.
+URL solely to send one transactional message.
+
+Repository source IS sent to model providers. The reader takes whole source
+files to OpenRouter, with every line the secret scanner matched blanked first.
+A twelve line excerpt around each secret-scanner finding goes to Groq and to
+Google, so two models from different families can vote on whether it is a
+false alarm. Those providers may retain or train on what they receive.
+`AI_REVIEW_ENABLED=false` stops both. The user-facing statement of this is
+`apps/web/public/privacy.html`; `docs/architecture.md` has the mechanics.
 
 ## Retention and visibility
 

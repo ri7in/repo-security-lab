@@ -178,10 +178,22 @@ describe("limit verification", () => {
 
 describe("public disclosure", () => {
   it("names every routing surface that receives source, deduplicated", () => {
-    expect(councilBudget().providers).toEqual(["openrouter", "groq"]);
+    expect(councilBudget().providers).toEqual(["openrouter", "groq", "gemini"]);
   });
 
-  it("names nothing when no council is configured", () => {
-    expect(councilBudget(new Map(), []).providers).toEqual([]);
+  it("still names every provider that can receive code with no council", () => {
+    // The disclosure is not the budget. A provider being unbudgetable, which
+    // is why Gemini is out of COUNCIL, is not a reason to leave it out of the
+    // sentence that tells people where their code goes.
+    expect(councilBudget(new Map(), []).providers).toEqual([
+      "openrouter",
+      "groq",
+      "gemini",
+    ]);
+  });
+
+  it("discloses Google, which is not budgeted and does receive code", () => {
+    expect(councilBudget().providers).toContain("gemini");
+    expect(COUNCIL.some((model) => model.provider === "gemini")).toBe(false);
   });
 });

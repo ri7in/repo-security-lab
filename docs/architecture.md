@@ -139,6 +139,11 @@ described here:
    word a reader eventually sees, including the rule name, the severity, the
    confidence and the remediation, is looked up from that CWE in a fixed
    manifest. A model that invents a class is dropped, not guessed at.
+
+   The honest limit of this: the CWE is still the model's own choice, and the
+   severity is that class's fixed rating, so a reader that calls an XSS a
+   command injection moves the severity with it. The judges are asked whether
+   the finding is real, never whether the class fits.
 2. **A deterministic grounding gate sits between the passes**, and no model
    participates in it. A flag whose quote does not appear at the line it names
    never reaches a judge.

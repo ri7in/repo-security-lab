@@ -665,7 +665,10 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
       : budget.providers.join(" and ");
 
   quotaMeter.dataset["level"] = level;
-  quotaPercent.textContent = `${String(percent)}%`;
+  // The number, not a percentage of it. Nothing records what a scan spends, so
+  // the percentage was always 100 and the bar was always full: a gauge that
+  // cannot move is a worse lie than no gauge.
+  quotaPercent.textContent = String(budget.deepReadsPerDay);
   quotaBar.style.width = `${String(percent)}%`;
 
   // Written for someone who does not know or care what a model is. No model
@@ -673,21 +676,25 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   // to do when it runs out.
   if (!budget.available) {
     quotaLine.textContent =
-      "Today's free compute is used up. Secret scanning still runs on every repository.";
+      "Today's free compute is used up. The secret scan still runs on every repository that is not a fork.";
     quotaSub.textContent =
       "This is a free side project, so there is only so much to go around each day. It resets overnight. Please come back tomorrow.";
     return;
   }
 
   const repos = budget.repoLimitPerRequest;
-  // Not "your most recently updated". Repositories are claimed in id order, so
-  // that claim was falsifiable from the ledger on the same page.
+  // A ceiling, not a reading. Nothing records what a scan spends, so the
+  // remaining figure never moves, and presenting a constant as a live gauge is
+  // worse than presenting it as the limit it actually is.
+  //
+  // Not "your most recently updated" either: repositories are claimed in id
+  // order, so that claim was falsifiable from the ledger on the same page.
   quotaLine.textContent =
-    `${String(budget.deepReadsRemaining)} of ${String(budget.deepReadsPerDay)} full code reviews left today. ` +
-    `Each scan reads ${String(repos)} of your ${repos === 1 ? "repository" : "repositories"} line by line. ` +
-    "Every repository still gets the secret scan.";
+    `Up to ${String(budget.deepReadsPerDay)} full code reviews a day, shared by everyone using this. ` +
+    `A worker run reads ${String(repos)} ${repos === 1 ? "repository" : "repositories"} line by line, ` +
+    "and can be serving somebody else at the same time. Every repository that is not a fork gets the secret scan.";
   quotaSub.textContent =
-    "Free and open source, run by one person. The daily budget is small on purpose and resets overnight.";
+    "Free and open source, run by one person. The daily ceiling is small on purpose and resets overnight.";
 }
 
 void requestJson("/api/capabilities")
@@ -706,7 +713,8 @@ void requestJson("/api/capabilities")
     quotaMeter.dataset["level"] = "unknown";
     quotaPercent.textContent = "--%";
     quotaLine.textContent = "Today's model allowance is unavailable right now.";
-    quotaSub.textContent = "The secret scan does not depend on it and still runs on every repository.";
+    quotaSub.textContent =
+      "The secret scan does not depend on it and still runs on every repository that is not a fork.";
   });
 
 /**
@@ -879,7 +887,7 @@ function setPrintHeader(summary: ScanRequestSummary, findings: number): void {
     0,
   );
   printMeta.textContent =
-    `${String(counted)} public ${counted === 1 ? "repository" : "repositories"} examined · ` +
+    `${String(counted)} public ${counted === 1 ? "repository" : "repositories"} in the account · ` +
     `${findings === 0 ? "nothing found" : `${String(findings)} finding${findings === 1 ? "" : "s"}`} · ` +
     `scanned ${new Date(summary.updatedAt).toLocaleString()} · ` +
     `${branding.productDisplayName}`;

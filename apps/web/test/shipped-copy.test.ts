@@ -115,6 +115,51 @@ describe("acceptable use", () => {
   });
 });
 
+describe("claims the code contradicts", () => {
+  it("does not say a model can never delete a scanner finding", () => {
+    // It can, and it does, on every scan: two judges that both call a
+    // secret-scan finding a false alarm remove it. The landing page said the
+    // opposite in as many words.
+    const page = read("index.html").toLowerCase();
+    expect(page).not.toContain("never delete one the secret scanner");
+    expect(page).not.toContain("can never hide");
+    expect(page).toContain("only when both call it a false alarm");
+  });
+
+  it("names every provider that can receive code", () => {
+    // The footer named the budgeted providers, and Google is deliberately
+    // unbudgetable because its free limits are no longer published, so a
+    // second judge was reading excerpts on every scan undisclosed.
+    const privacy = read("public/privacy.html").toLowerCase();
+    for (const provider of ["openrouter", "groq", "google"]) {
+      expect(privacy, `${provider} is undisclosed`).toContain(provider);
+    }
+  });
+
+  it("says the excerpt path exists, not only the reader path", () => {
+    // Two different things leave the machine: whole files to the reader, and a
+    // window around each secret-scan finding to both judges.
+    expect(read("public/privacy.html").toLowerCase()).toContain("excerpt");
+    expect(read("index.html").toLowerCase()).toContain("excerpt");
+  });
+
+  it("does not present the daily ceiling as a live reading", () => {
+    // Nothing records what a scan spends, so "16 of 16 left today" was a
+    // constant dressed as a gauge.
+    const script = read("src/main.ts");
+    expect(script).not.toContain("full code reviews left today");
+    expect(script).toContain("Up to ${String(budget.deepReadsPerDay)} full code reviews a day");
+  });
+
+  it("does not promise the secret scan runs on every repository", () => {
+    // Forks are published cancelled with every check not applicable, and no
+    // archive is ever downloaded for them.
+    const script = read("src/main.ts");
+    expect(script).not.toContain("still runs on every repository.");
+    expect(script).not.toContain("Every repository still gets the secret scan");
+  });
+});
+
 describe("the two dark palettes", () => {
   it("define exactly the same tokens with the same values", () => {
     // One block serves an explicit choice and the other serves a machine

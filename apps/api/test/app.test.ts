@@ -67,7 +67,7 @@ const UNTOUCHED_DEEP_READ_BUDGET = {
   deepReadsPerDay: 16,
   repoLimitPerRequest: 3,
   limitsVerified: true,
-  providers: ["openrouter", "groq"],
+  providers: ["openrouter", "groq", "gemini"],
 } as const;
 
 describe("anonymous-safe control-plane API", () => {
@@ -116,7 +116,7 @@ describe("anonymous-safe control-plane API", () => {
       allowedRequestedLogins: new Set(["ri7in"]),
       allowedGithubAccountIds: new Set([123]),
       deepReadBudget: () => ({
-        providers: ["openrouter", "groq"],
+        providers: ["openrouter", "groq", "gemini"],
         available: false,
         percentRemaining: 0,
         scarcestModelId: "openai/gpt-oss-120b",

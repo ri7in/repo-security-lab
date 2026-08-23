@@ -16,12 +16,33 @@ export interface Verdict {
   readonly text: string;
 }
 
-/** Repositories that were not fully examined, whatever the reason. */
+/**
+ * Repositories that were not fully checked, whatever the reason.
+ *
+ * `empty` is in the list. A repository with no commit publishes as `empty`
+ * with every check `not_applicable`, and leaving it out meant an account with
+ * two commitless repositories was told all of them had been read.
+ */
 export function uncheckedCount(
   repositories: readonly RepositoryRow[],
 ): number {
   return repositories.filter((repository) =>
-    ["cancelled", "failed", "partial"].includes(repository.state),
+    ["cancelled", "failed", "partial", "empty"].includes(repository.state),
+  ).length;
+}
+
+/**
+ * Repositories the secret scan actually read.
+ *
+ * Read from that repository's own coverage, because the clear verdict names
+ * the secret scan specifically and a repository can be terminal without the
+ * scanner ever having opened it.
+ */
+export function secretScannedCount(
+  repositories: readonly RepositoryRow[],
+): number {
+  return repositories.filter((repository) =>
+    ["complete", "partial"].includes(repository.coverage.gitleaks),
   ).length;
 }
 
@@ -81,10 +102,11 @@ export function summarizeVerdict(
   // Names the checker and what it does, rather than promising "clean". The
   // secret scan covers every repository; the code review covers at most three,
   // and a headline that blurs the two overstates the whole result.
+  const read = secretScannedCount(repositories);
   return {
     tone: "clear",
     text:
-      `No exposed credentials. The secret scan read all ${String(total)} public ` +
-      `${total === 1 ? "repository" : "repositories"} and matched nothing.`,
+      `No exposed credentials. The secret scan read ${String(read)} of ${String(total)} public ` +
+      `${total === 1 ? "repository at its" : "repositories at their"} current commit and matched nothing.`,
   };
 }

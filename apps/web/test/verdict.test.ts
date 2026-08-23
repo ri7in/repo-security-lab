@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { PublicFinding, RepositoryRow } from "@app/contracts";
-import { summarizeVerdict, uncheckedCount } from "../src/verdict.js";
+import {
+  secretScannedCount,
+  summarizeVerdict,
+  uncheckedCount,
+} from "../src/verdict.js";
 
 /**
  * The verdict is the only line most visitors will read closely, so the tests
@@ -75,8 +79,10 @@ describe("the verdict", () => {
     // Names the checker rather than promising "clean": the secret scan covers
     // every repository, the code review covers at most three, and a headline
     // that blurs the two overstates the whole result.
-    expect(decided.text).toContain("all 2 public repositories");
+    expect(decided.text).toContain("read 2 of 2 public repositories");
     expect(decided.text.toLowerCase()).not.toContain("came back clean");
+    // It reads one commit, not the history, so it says so.
+    expect(decided.text).toContain("current commit");
   });
 
   it("will not call a scan clear when a repository was skipped", () => {
@@ -146,14 +152,17 @@ describe("the verdict", () => {
 
   it("gets the singular right for one repository and one finding", () => {
     expect(summarizeVerdict("ri7in", [repository()], []).text).toContain(
-      "all 1 public repository",
+      "1 of 1 public repository at its",
     );
     expect(
       summarizeVerdict("ri7in", [repository()], [finding()]).text,
     ).toContain("1 thing to fix");
   });
 
-  it("counts every state that means not examined", () => {
+  it("counts every state that means not fully checked, empty included", () => {
+    // A repository with no commit publishes as empty with every check
+    // not_applicable, and it was not in the list, so an account holding two
+    // commitless repositories was told all of them had been read.
     expect(
       uncheckedCount([
         repository({ repositoryId: 1, state: "complete" }),
@@ -162,6 +171,29 @@ describe("the verdict", () => {
         repository({ repositoryId: 4, state: "partial" }),
         repository({ repositoryId: 5, state: "empty" }),
       ]),
-    ).toBe(3);
+    ).toBe(4);
+  });
+
+  it("counts what the secret scan read from its own coverage", () => {
+    // A repository can be terminal without the scanner ever opening it, and
+    // the clear verdict names the secret scan specifically.
+    const coverage = (gitleaks: string) =>
+      ({
+        snapshot: "complete",
+        archive_guard: "complete",
+        gitleaks,
+        osv: "unsupported",
+        zizmor: "unsupported",
+        opengrep: "unsupported",
+        ai: "unsupported",
+      }) as RepositoryRow["coverage"];
+    expect(
+      secretScannedCount([
+        repository({ repositoryId: 1, coverage: coverage("complete") }),
+        repository({ repositoryId: 2, coverage: coverage("partial") }),
+        repository({ repositoryId: 3, coverage: coverage("not_applicable") }),
+        repository({ repositoryId: 4, coverage: coverage("failed") }),
+      ]),
+    ).toBe(2);
   });
 });

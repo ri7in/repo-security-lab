@@ -1,10 +1,10 @@
 # Threat model
 
-**Scope:** private production preview. This document covers both the proven
-local scanner slice and the implemented Cloudflare Worker + D1 control plane.
-Public third-party scanning remains disabled until the separate scan-compute
-isolation gate is closed. It is not a claim that macOS process boundaries
-provide production sandboxing.
+**Scope:** the live service. This document covers the local scanner slice, the
+Cloudflare Worker and D1 control plane, and the GitHub Actions pull worker that
+runs under enforced Bubblewrap isolation. Public scanning is open to anyone.
+Nothing here claims that macOS process boundaries provide production
+sandboxing; the isolation that matters runs on Linux.
 
 ## Assets and security objectives
 
@@ -172,9 +172,12 @@ only.
 - Attach a non-root Linux or microVM scan-compute boundary with no target-code
   execution, default-deny egress after acquisition, resource ceilings, trusted
   read-only scanners, tuple cleanup, and crash/reboot proofs.
-- Keep AI source submission disabled until owner consent/provider disclosure,
-  source sanitization and opaque code mapping, Groq ZDR verification, and the
-  grounded two-scout-plus-judge benchmark all pass.
+- AI source submission is ON. Sanitization (secret lines blanked before
+  packing), opaque code mapping (numeric CWE tokens through a closed manifest),
+  provider disclosure (the privacy page and the site footer) and the grounded
+  reader-plus-council design are all in place. Zero-retention agreements with
+  the providers are NOT: the free tiers this runs on are paid for with the
+  data, the pages say so, and that is the standing trade.
 - Add project-attested/reproducible scanner provenance. A release archive hash
   proves identity, not that the upstream build is trustworthy.
 - Integrate and test dependency and source-rule specialists. The workflow lane

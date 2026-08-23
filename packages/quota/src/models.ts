@@ -118,6 +118,21 @@ export const COUNCIL: readonly ModelAllowance[] = [
   GROQ_GPT_OSS,
 ];
 
+/**
+ * Every provider that can receive repository source, budgeted or not.
+ *
+ * The footer named `COUNCIL`'s providers, and Gemini is deliberately absent
+ * from COUNCIL because its free limits are no longer published. So the page
+ * disclosed OpenRouter and Groq while a second judge on Google was reading
+ * code excerpts on every scan. A provider being unbudgetable is not a reason
+ * to leave it out of the disclosure; if anything it is the opposite.
+ */
+export const DISCLOSED_PROVIDERS: readonly ModelAllowance["provider"][] = [
+  "openrouter",
+  "groq",
+  "gemini",
+];
+
 /** True when a limit came from a primary source a human actually read. */
 export function isVerified(model: ModelAllowance): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(model.verifiedOn);
