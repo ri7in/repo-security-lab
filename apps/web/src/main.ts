@@ -13,6 +13,13 @@ import {
 } from "@app/contracts";
 import "./style.css";
 import {
+  describeWhen,
+  forgetScan,
+  readHistory,
+  rememberScan,
+  type HistoryEntry,
+} from "./history.js";
+import {
   aiLaneLabel,
   coverageLabel,
   repositoryLabel,
@@ -41,6 +48,13 @@ const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
+const downloadReport = $<HTMLButtonElement>("#download-report");
+const printTitle = $<HTMLElement>("#print-title");
+const printMeta = $<HTMLElement>("#print-meta");
+const historyPanel = $<HTMLDetailsElement>("#history");
+const historyList = $<HTMLElement>("#history-list");
+const historyCount = $<HTMLElement>("#history-count");
+const historyClear = $<HTMLButtonElement>("#history-clear");
 const stepsList = $<HTMLElement>("#steps");
 const stepsNote = $<HTMLElement>("#steps-note");
 const quotaMeter = $<HTMLElement>("#quota-meter");
@@ -346,9 +360,12 @@ async function poll(requestId: string): Promise<void> {
     const repositories = await loadRepositories(requestId, terminal);
     renderRepositories(repositories);
     ledgerSection.hidden = false;
+    let findingCount = 0;
     if (terminal) {
       try {
-        renderFindings(await loadFindings(requestId), repositories);
+        const findings = await loadFindings(requestId);
+        findingCount = findings.length;
+        renderFindings(findings, repositories);
       } catch {
         // Finding detail is a separate public-safe plane. Its failure must never
         // relabel a valid coverage request as failed.
@@ -356,6 +373,19 @@ async function poll(requestId: string): Promise<void> {
         findingRows.replaceChildren();
       }
     }
+    // Written on every poll, not only at the end, so a visitor who reloads
+    // mid-scan can still find their way back to a run that is still going.
+    setPrintHeader(summary, findingCount);
+    renderHistory(
+      rememberScan({
+        requestId,
+        username: summary.username,
+        at: Date.now(),
+        findings: findingCount,
+        repositories: repositories.length,
+        complete: terminal,
+      }),
+    );
     if (terminal) return;
     await new Promise((resolve) =>
       setTimeout(resolve, summary.retryAfterSeconds * 1_000),
@@ -513,4 +543,81 @@ function formatLocations(
   return locations.length > 3
     ? `${shown} and ${String(locations.length - 3)} more`
     : shown;
+}
+
+/**
+ * Draws the past-scan list.
+ *
+ * Entries open the report they point at rather than re-running it: a visitor
+ * coming back after a week usually wants to read what they already have, and a
+ * re-run costs shared daily compute.
+ */
+function renderHistory(entries: readonly HistoryEntry[]): void {
+  historyPanel.hidden = entries.length === 0;
+  historyCount.textContent =
+    entries.length === 0 ? "" : String(entries.length);
+  const now = Date.now();
+  historyList.replaceChildren(
+    ...entries.map((entry) => {
+      const item = document.createElement("li");
+      const button = document.createElement("button");
+      button.type = "button";
+
+      const who = document.createElement("span");
+      who.className = "who";
+      who.textContent = entry.username;
+
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = describeWhen(entry.at, now);
+
+      const what = document.createElement("span");
+      what.className = entry.findings > 0 ? "what hit" : "what";
+      what.textContent = entry.complete
+        ? `${String(entry.repositories)} repos · ${
+            entry.findings === 0
+              ? "nothing found"
+              : `${String(entry.findings)} finding${entry.findings === 1 ? "" : "s"}`
+          }`
+        : "still running";
+
+      button.append(who, when, what);
+      button.addEventListener("click", () => {
+        window.location.search = `?request=${entry.requestId}`;
+      });
+      item.append(button);
+      return item;
+    }),
+  );
+}
+
+historyClear.addEventListener("click", () => {
+  for (const entry of readHistory()) forgetScan(entry.requestId);
+  renderHistory(readHistory());
+});
+
+renderHistory(readHistory());
+
+/**
+ * Prepares the printable version and hands it to the browser.
+ *
+ * The browser's own print pipeline is the PDF generator. It costs nothing, adds
+ * no dependency, and produces real selectable text, which a canvas screenshot
+ * library would not. The visitor picks "Save as PDF" in the dialog.
+ */
+downloadReport.addEventListener("click", () => {
+  window.print();
+});
+
+function setPrintHeader(summary: ScanRequestSummary, findings: number): void {
+  printTitle.textContent = `Security report for ${summary.username}`;
+  const counted = Object.values(summary.repositoryTotals).reduce(
+    (sum, value) => sum + value,
+    0,
+  );
+  printMeta.textContent =
+    `${String(counted)} public ${counted === 1 ? "repository" : "repositories"} examined · ` +
+    `${findings === 0 ? "nothing found" : `${String(findings)} finding${findings === 1 ? "" : "s"}`} · ` +
+    `scanned ${new Date(summary.updatedAt).toLocaleString()} · ` +
+    `${branding.productDisplayName}`;
 }

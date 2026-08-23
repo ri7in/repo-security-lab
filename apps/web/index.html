@@ -67,6 +67,11 @@
               <p class="quota-line" id="quota-line" role="status">Checking how much is left today.</p>
               <p class="quota-sub" id="quota-sub"></p>
             </section>
+            <details class="history" id="history" hidden>
+              <summary><span>Your past scans</span><span id="history-count"></span></summary>
+              <ul id="history-list"></ul>
+              <button type="button" id="history-clear" class="history-clear">Clear history</button>
+            </details>
             <p class="form-note" id="service-note">Free and open source. Anyone can scan any public GitHub account.</p>
           </form>
         </div>
@@ -114,6 +119,11 @@
         </div>
       </section>
 
+      <section id="print-cover" class="print-cover" aria-hidden="true">
+        <h1 id="print-title"></h1>
+        <p id="print-meta"></p>
+      </section>
+
       <section id="findings-section" class="ledger-section" hidden aria-labelledby="findings-title">
         <div class="section-heading">
           <div>
@@ -121,6 +131,7 @@
             <h2 id="findings-title">Deterministic findings</h2>
           </div>
           <p class="legend" id="finding-count"></p>
+          <button type="button" id="download-report" class="download-report">Download report</button>
         </div>
         <p class="findings-note">Findings are public. Each shows the file and line where the scanner matched, so you can go and fix it. Secret values, code snippets, and raw matches never enter this report.</p>
         <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">

@@ -227,3 +227,51 @@ footer p { max-width: 720px; margin: 0; }
 .steps-note { margin: 0; padding: 0 16px 18px; color: var(--muted); font: 500 11px var(--mono); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
 @media (prefers-reduced-motion: reduce) { .steps li[data-state="active"] i { animation: none; } }
+
+/* Past scans. Reports expire after 30 days and live at an unguessable URL, so
+   without this a closed tab loses the report for good. The list is per-browser
+   and holds no finding data, only a pointer back. */
+.history { margin: 14px 0 0; border: 1px solid var(--line); }
+.history summary { display: flex; justify-content: space-between; padding: 11px 13px; cursor: pointer; font: 600 11px var(--mono); color: var(--muted); }
+.history summary::-webkit-details-marker { display: none; }
+.history[open] summary { border-bottom: 1px solid var(--line); }
+.history ul { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.history li { border-bottom: 1px solid var(--line); }
+.history li:last-child { border-bottom: 0; }
+.history li button { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; width: 100%; padding: 10px 13px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.history li button:hover, .history li button:focus-visible { background: var(--paper-raised); }
+.history li .who { font: 650 12px var(--mono); }
+.history li .when { color: var(--muted); font: 500 10px var(--mono); }
+.history li .what { grid-column: 1 / -1; color: var(--muted); font: 500 10px var(--mono); }
+.history li .what.hit { color: var(--red); }
+.history-clear { width: 100%; padding: 9px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: 600 10px var(--mono); cursor: pointer; }
+.history-clear:hover { color: var(--red); }
+
+.download-report { padding: 9px 14px; border: 1px solid var(--ink); background: none; color: inherit; font: 650 11px var(--mono); cursor: pointer; }
+.download-report:hover { background: var(--ink); color: var(--paper); }
+.print-cover { display: none; }
+
+/* Print, which is also how the download button produces a PDF. Using the
+   browser's own renderer keeps the feature free, adds no dependency, and gets
+   real selectable text instead of a canvas screenshot. Everything interactive
+   is dropped; everything explanatory is expanded, because a printed report is
+   read away from the tooltips. */
+@media print {
+  @page { margin: 16mm; }
+  nav, footer, .hero-copy form, .bot-panel, .quota-meter, .history,
+  .download-report, .theme-toggle, #progress-track, .progress-track { display: none !important; }
+  body { background: #fff; color: #000; font-size: 10.5pt; }
+  .print-cover { display: block; margin: 0 0 14mm; }
+  .print-cover h1 { font-size: 20pt; letter-spacing: -.01em; margin: 0 0 4mm; }
+  .print-cover p { margin: 0; font-size: 9pt; color: #444; }
+  section { break-inside: auto; }
+  .ledger-section { display: block !important; margin: 0 0 10mm; }
+  .table-shell { overflow: visible !important; border: 0; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #ddd; padding: 2mm 1mm; font-size: 9pt; }
+  tr { break-inside: avoid; }
+  .state-chip { border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
+  /* Tooltips cannot be hovered on paper, so the explanation is printed. */
+  .state-chip[title]::after { content: " — " attr(title); color: #444; font-size: 8pt; text-transform: none; }
+  a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
+}
