@@ -58,37 +58,28 @@
             </div>
             <section id="quota-meter" class="quota-meter" data-level="unknown" aria-labelledby="quota-title">
               <div class="quota-head">
-                <p class="eyebrow" id="quota-title">DEEP READ BUDGET / TODAY</p>
+                <p class="eyebrow" id="quota-title">FREE COMPUTE LEFT TODAY</p>
                 <strong id="quota-percent" aria-hidden="true">--%</strong>
               </div>
               <div class="quota-track">
                 <i id="quota-bar"></i>
               </div>
-              <p class="quota-line" id="quota-line" role="status">Checking today&rsquo;s model allowance.</p>
+              <p class="quota-line" id="quota-line" role="status">Checking how much is left today.</p>
               <p class="quota-sub" id="quota-sub"></p>
             </section>
-            <p class="form-note" id="service-note">Private production preview: scan creation is limited while the public isolation worker is commissioned.</p>
+            <p class="form-note" id="service-note">Free and open source. Anyone can scan any public GitHub account.</p>
           </form>
         </div>
 
-        <div class="bot-panel" aria-label="Scanner status illustration">
-          <div class="panel-label"><span>AGENT STATUS</span><span id="bot-code">IDLE_00</span></div>
-          <div class="scan-bot" aria-hidden="true">
-            <span class="antenna">;</span>
-            <div class="bot-head">
-              <span class="brace left">{</span>
-              <span class="eyes">• •</span>
-              <span class="brace right">}</span>
-            </div>
-            <div class="bot-body">
-              <span>[</span><span class="core">#</span><span>]</span>
-              <i class="scanline"></i>
-            </div>
-            <div class="bot-feet"><span>/_</span><span>_\</span></div>
-          </div>
-          <div class="bot-log" aria-hidden="true">
-            <span>01 enumerate</span><span>02 snapshot</span><span>03 verify</span><span>04 report</span>
-          </div>
+        <div class="bot-panel" aria-label="Scan progress">
+          <div class="panel-label"><span>PROGRESS</span><span id="bot-code">Waiting</span></div>
+          <ol class="steps" id="steps">
+            <li data-step="discover"><b>1</b><span>Finding your repositories</span><i></i></li>
+            <li data-step="download"><b>2</b><span>Downloading snapshots</span><i></i></li>
+            <li data-step="scan"><b>3</b><span>Scanning for secrets</span><i></i></li>
+            <li data-step="review"><b>4</b><span>Reviewing findings</span><i></i></li>
+          </ol>
+          <p class="steps-note" id="steps-note">Enter a username to start.</p>
         </div>
       </section>
 
@@ -98,7 +89,6 @@
             <p class="eyebrow">LIVE REQUEST</p>
             <h2 id="status-title">Coverage in progress</h2>
           </div>
-          <span class="request-id" id="request-id"></span>
         </div>
         <div id="live-status" class="live-status" aria-live="polite"></div>
         <div class="progress-track" aria-hidden="true"><i id="progress-bar"></i></div>
@@ -111,13 +101,13 @@
             <p class="eyebrow">REPOSITORY LEDGER</p>
             <h2 id="ledger-title">What was covered</h2>
           </div>
-          <p class="legend"><span class="dot complete"></span>complete <span class="dot waiting"></span>waiting <span class="dot failed"></span>failed</p>
+          <p class="legend"><span class="dot complete"></span>scanned <span class="dot waiting"></span>skipped <span class="dot failed"></span>problem</p>
         </div>
         <p id="ledger-note" class="findings-note"></p>
         <div class="table-shell" tabindex="0" aria-label="Scrollable repository coverage table">
           <table>
             <thead>
-              <tr><th>Repository</th><th>State</th><th>Snapshot</th><th>Guard</th><th>Secrets</th><th>Dependencies</th><th>Workflows (offline)</th><th>Source rules</th></tr>
+              <tr><th>Repository</th><th>Status</th><th>Secret scan</th><th>AI code review</th></tr>
             </thead>
             <tbody id="repository-rows"></tbody>
           </table>
@@ -136,7 +126,7 @@
         <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
           <table>
             <thead>
-              <tr><th>Repository</th><th>Engine</th><th>Rule</th><th>Severity</th><th>Occurrences</th><th>Location</th><th>Action</th></tr>
+              <tr><th>Repository</th><th>What was found</th><th>Severity</th><th>Occurrences</th><th>Location</th><th>What to do</th></tr>
             </thead>
             <tbody id="finding-rows"></tbody>
           </table>

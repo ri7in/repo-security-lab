@@ -5,7 +5,7 @@ import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it } from "vitest";
 import { rm } from "node:fs/promises";
-import { extractTarGzip } from "@app/archive";
+import { DEFAULT_ARCHIVE_LIMITS, extractTarGzip } from "@app/archive";
 
 const temporaryDirectories: string[] = [];
 
@@ -179,7 +179,11 @@ describe("streaming tar.gz guard and extractor", () => {
   });
 
   it("fails fixed limits before trusting declared file bytes", async () => {
-    const oversized = tar([header("root/huge", 21 * 1_024 * 1_024)]);
+    // Derived from the limit rather than hardcoded, so raising the ceiling
+    // moves the test with it instead of silently exercising a different check.
+    const oversized = tar([
+      header("root/huge", DEFAULT_ARCHIVE_LIMITS.individualFileBytes + 1),
+    ]);
     await expect(
       extractTarGzip(compressed(oversized), await destination()),
     ).rejects.toMatchObject({ code: "ARCHIVE_LIMIT" });

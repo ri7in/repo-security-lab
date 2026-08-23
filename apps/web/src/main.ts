@@ -12,6 +12,12 @@ import {
   type ScanRequestSummary,
 } from "@app/contracts";
 import "./style.css";
+import {
+  aiLaneLabel,
+  coverageLabel,
+  repositoryLabel,
+  type Label,
+} from "./labels.js";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -33,9 +39,10 @@ const progressBar = $<HTMLElement>("#progress-bar");
 const summaryGrid = $<HTMLElement>("#summary-grid");
 const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
-const requestIdLabel = $<HTMLElement>("#request-id");
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
+const stepsList = $<HTMLElement>("#steps");
+const stepsNote = $<HTMLElement>("#steps-note");
 const quotaMeter = $<HTMLElement>("#quota-meter");
 const quotaPercent = $<HTMLElement>("#quota-percent");
 const quotaBar = $<HTMLElement>("#quota-bar");
@@ -62,20 +69,88 @@ themeToggle.addEventListener("click", () => {
 function setScanState(state: "idle" | "scanning" | "complete" | "failed"): void {
   document.body.dataset["scanState"] = state;
   botCode.textContent = {
-    idle: "IDLE_00",
-    scanning: "SCAN_01",
-    complete: "DONE_10",
-    failed: "HOLD_11",
+    idle: "Waiting",
+    scanning: "Running",
+    complete: "Done",
+    failed: "Stopped",
   }[state];
 }
 
-function stateChip(state: string, reason?: string): HTMLElement {
+const STEP_ORDER = ["discover", "download", "scan", "review"] as const;
+type Step = (typeof STEP_ORDER)[number];
+
+/**
+ * Drives the four progress steps from the real ledger.
+ *
+ * The panel used to be an ASCII robot with a fixed caption, so it looked alive
+ * while telling a visitor nothing. Every step here is derived from counts the
+ * server actually reports, and a step only turns green once that many
+ * repositories have genuinely passed it.
+ */
+function renderSteps(summary: ScanRequestSummary): void {
+  const totals = summary.repositoryTotals;
+  const count = (...states: readonly string[]): number =>
+    states.reduce(
+      (sum, state) =>
+        sum + (totals[state as keyof typeof totals] ?? 0),
+      0,
+    );
+
+  const all = Object.values(totals).reduce((sum, value) => sum + value, 0);
+  const terminal = count("complete", "empty", "partial", "failed", "cancelled");
+  const downloaded = all - count("discovered", "waiting", "leased");
+  const scanned = all - count("discovered", "waiting", "leased", "acquiring", "guarding");
+  const reviewed = terminal;
+
+  const progress: Record<Step, { done: number; total: number }> = {
+    // Discovery is finished once the request has left the "accepted" and
+    // "discovering" states, which is the only signal the summary carries.
+    discover: {
+      done: summary.state === "accepted" || summary.state === "discovering" ? 0 : all,
+      total: all || 1,
+    },
+    download: { done: downloaded, total: all || 1 },
+    scan: { done: scanned, total: all || 1 },
+    review: { done: reviewed, total: all || 1 },
+  };
+
+  let activeFound = false;
+  for (const step of STEP_ORDER) {
+    const element = stepsList.querySelector<HTMLElement>(`[data-step="${step}"]`);
+    if (element === null) continue;
+    const { done, total } = progress[step];
+    const complete = all > 0 && done >= total;
+    // Exactly one step is "active": the first unfinished one. Marking several
+    // at once is what made the old panel look like nothing was happening.
+    const active = !complete && !activeFound && summary.state !== "complete";
+    if (active) activeFound = true;
+    element.dataset["state"] = complete ? "done" : active ? "active" : "todo";
+    const meter = element.querySelector("i");
+    if (meter !== null) {
+      meter.style.width = `${String(all === 0 ? 0 : Math.round((done / total) * 100))}%`;
+    }
+  }
+
+  stepsNote.textContent =
+    summary.state === "complete"
+      ? `Finished. ${String(terminal)} of ${String(all)} repositories accounted for.`
+      : all === 0
+        ? "Looking up the account."
+        : `${String(terminal)} of ${String(all)} repositories finished.`;
+}
+
+/**
+ * Renders one outcome as a chip.
+ *
+ * The tone class carries the colour, so "nothing to check" reads as fine and
+ * only a real problem reads as a problem. The explanation goes in `title`
+ * because a chip has room for two words and a visitor needs a sentence.
+ */
+function labelChip(label: Label): HTMLElement {
   const chip = document.createElement("span");
-  chip.className = `state-chip ${state}`;
-  chip.textContent = [state, reason]
-    .filter((value): value is string => value !== undefined)
-    .map((value) => value.replaceAll("_", " "))
-    .join(" · ");
+  chip.className = `state-chip tone-${label.tone}`;
+  chip.textContent = label.text;
+  chip.title = label.detail;
   return chip;
 }
 
@@ -144,18 +219,21 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       const name = document.createElement("td");
       name.className = "repo-name";
       name.textContent = repository.name;
-      const states: ReadonlyArray<readonly [string, string | undefined]> = [
-        [repository.state, repository.reason],
-        [repository.coverage.snapshot, undefined],
-        [repository.coverage.archive_guard, undefined],
-        [repository.coverage.gitleaks, repository.specialistReasons?.gitleaks],
-        [repository.coverage.osv, repository.specialistReasons?.osv],
-        [repository.coverage.zizmor, repository.specialistReasons?.zizmor],
-        [repository.coverage.opengrep, repository.specialistReasons?.opengrep],
+      // Three columns a visitor can act on. The pipeline stages that used to
+      // sit here (snapshot, guard, normalize) are internal bookkeeping, and
+      // the checkers that are not switched on yet only ever said "not
+      // applicable", which read as a fault rather than as nothing to do.
+      const cells: readonly Label[] = [
+        repositoryLabel(repository.state, repository.reason),
+        coverageLabel(
+          repository.coverage.gitleaks,
+          repository.specialistReasons?.gitleaks,
+        ),
+        aiLaneLabel(repository.aiLane),
       ];
-      row.append(name, ...states.map(([state, reason]) => {
+      row.append(name, ...cells.map((label) => {
         const cell = document.createElement("td");
-        cell.append(stateChip(state, reason));
+        cell.append(labelChip(label));
         return cell;
       }));
       return row;
@@ -176,8 +254,7 @@ function renderFindings(
       const values = [
         repositoryNames.get(finding.repository_id) ??
           `repository ${finding.repository_id}`,
-        finding.engine,
-        finding.rule_id,
+        finding.rule_id.replaceAll("-", " "),
         finding.severity,
         finding.occurrence_bucket.replaceAll("_", " "),
         formatLocations(finding.locations),
@@ -264,6 +341,7 @@ async function poll(requestId: string): Promise<void> {
     retryAfterSeconds = summary.retryAfterSeconds;
     etag = response.headers.get("etag") ?? undefined;
     renderSummary(summary);
+    renderSteps(summary);
     const terminal = summary.state === "complete" || summary.state === "failed";
     const repositories = await loadRepositories(requestId, terminal);
     renderRepositories(repositories);
@@ -316,7 +394,6 @@ form.addEventListener("submit", (event) => {
         }),
       );
       notificationStatus = accepted.notification;
-      requestIdLabel.textContent = accepted.requestId;
       history.replaceState(null, "", `?request=${accepted.requestId}`);
       await poll(accepted.requestId);
     } catch (error) {
@@ -357,20 +434,23 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   quotaPercent.textContent = `${String(percent)}%`;
   quotaBar.style.width = `${String(percent)}%`;
 
+  // Written for someone who does not know or care what a model is. No model
+  // names, no provider names, no "deep read". Just how much is left and what
+  // to do when it runs out.
   if (!budget.available) {
     quotaLine.textContent =
-      "Deep read is used up for today. Every repository still gets the full secret scan.";
-    quotaSub.textContent = `The daily allowance resets at 00:00 UTC. Add your own model key to read without the shared limit.`;
+      "Today's free compute is used up. Secret scanning still runs on every repository.";
+    quotaSub.textContent =
+      "This is a free side project, so there is only so much to go around each day. It resets overnight. Please come back tomorrow.";
     return;
   }
 
   const repos = budget.repoLimitPerRequest;
   quotaLine.textContent =
-    `${String(budget.deepReadsRemaining)} of ${String(budget.deepReadsPerDay)} deep reads left today. ` +
-    `Each scan reads your ${String(repos)} most recently committed ${repos === 1 ? "repository" : "repositories"} in full; the rest get the secret scan.`;
-  quotaSub.textContent = budget.limitsVerified
-    ? `Limited by ${budget.scarcestModelId}, the tightest free allowance in the council.`
-    : `Limited by ${budget.scarcestModelId}. One member's published limit is unconfirmed upstream, so treat this figure as provisional.`;
+    `${String(budget.deepReadsRemaining)} of ${String(budget.deepReadsPerDay)} full code reviews left today. ` +
+    `Each scan reviews your ${String(repos)} most recently updated ${repos === 1 ? "repository" : "repositories"} line by line. Every other repository still gets the secret scan.`;
+  quotaSub.textContent =
+    "Free and open source, run by one person. The daily budget is small on purpose and resets overnight.";
 }
 
 void requestJson("/api/capabilities")
@@ -381,8 +461,8 @@ void requestJson("/api/capabilities")
     renderDeepReadBudget(capabilities.deepRead);
     serviceNote.textContent =
       capabilities.scanCreation === "public"
-        ? "No install. No card. No target code is executed. Reports update live; queue time depends on current worker capacity."
-        : `Private production preview: scan creation is currently limited to the operator account while the public isolation worker is commissioned. Existing report links remain public.`;
+        ? "No sign-up, no card, and your code is never run. Results appear as each repository finishes."
+        : "Scanning is limited to the operator account right now. Existing report links still work.";
   })
   .catch(() => {
     emailOption.hidden = true;
@@ -400,7 +480,6 @@ if (existingRequest !== null) {
     setScanState("failed");
     liveStatus.textContent = "That request is unavailable.";
   } else {
-    requestIdLabel.textContent = parsedRequest.data;
     button.disabled = true;
     setScanState("scanning");
     void poll(parsedRequest.data)

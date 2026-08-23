@@ -14,7 +14,8 @@ const CODELOAD_HOST = "codeload.github.com";
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const DEFAULT_MINIMUM_INTERVAL_MS = 2_000;
 
-export const MAX_COMPRESSED_ARCHIVE_BYTES = 50 * 1_024 * 1_024;
+/** Matches the archive parser's compressed ceiling; both move together. */
+export const MAX_COMPRESSED_ARCHIVE_BYTES = 250 * 1_024 * 1_024;
 
 export interface ArchiveRef {
   readonly owner: GithubLogin;

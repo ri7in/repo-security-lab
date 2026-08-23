@@ -27,11 +27,22 @@ export interface ArchiveLimits {
   readonly paxBytes: number;
 }
 
+/**
+ * Sized against the free GitHub Actions runner that does the scanning: 7 GB of
+ * RAM, 14 GB of disk, one repository unpacked at a time, and extraction that
+ * streams rather than buffering. The old ceilings were a private-preview
+ * caution and refused ordinary projects, which read to a visitor as a broken
+ * tool rather than a deliberate limit.
+ *
+ * The compression ratio, path and depth ceilings deliberately do NOT move.
+ * Those defend against archive bombs and traversal, and they are unrelated to
+ * how large an honest repository is.
+ */
 export const DEFAULT_ARCHIVE_LIMITS: ArchiveLimits = Object.freeze({
-  compressedBytes: 50 * 1_024 * 1_024,
-  extractedBytes: 250 * 1_024 * 1_024,
-  individualFileBytes: 20 * 1_024 * 1_024,
-  entries: 50_000,
+  compressedBytes: 250 * 1_024 * 1_024,
+  extractedBytes: 1_024 * 1_024 * 1_024,
+  individualFileBytes: 50 * 1_024 * 1_024,
+  entries: 200_000,
   compressionRatio: 200,
   pathBytes: 4_096,
   pathDepth: 32,
