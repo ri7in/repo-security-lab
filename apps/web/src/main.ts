@@ -593,7 +593,6 @@ async function poll(requestId: string): Promise<void> {
     // findings section already says so; the ledger said nothing at all.
     const nothingListed = repositories.length === 0 && terminal;
     ledgerTable.hidden = nothingListed;
-    markScrollRegions();
     ledgerColumns.hidden = nothingListed;
     noRepositories.hidden = !nothingListed;
     // Five zeros under a scan that never started is noise, not information.
@@ -616,6 +615,9 @@ async function poll(requestId: string): Promise<void> {
     }
     // Written on every poll, not only at the end, so a visitor who reloads
     // mid-scan can still find their way back to a run that is still going.
+    // After both tables are populated, so the findings table is measured with
+    // its rows in it rather than empty.
+    markScrollRegions();
     setPrintHeader(summary, findingCount);
     latest = { summary, repositories, findings: loadedFindings };
     renderVerdict(summary, repositories, loadedFindings, terminal);
