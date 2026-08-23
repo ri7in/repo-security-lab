@@ -64,7 +64,7 @@ export function isTerminalRepositoryState(
  * - `discovering`: enumerating owned public repositories.
  * - `scanning`: ledger exists; at least one repository is non-terminal.
  * - `complete`: every ledger repository reached a terminal state. This is
- *   the ONLY success terminal — per-repository `partial`/`failed`/`cancelled`
+ *   the ONLY success terminal. Per-repository `partial`/`failed`/`cancelled`
  *   detail lives in `repositoryTotals`, so there is no request-level
  *   `partial` or `cancelled` state to keep in sync.
  * - `failed`: the request itself could not proceed (e.g. discovery failed,

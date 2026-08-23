@@ -30,8 +30,7 @@
           <p class="eyebrow">PUBLIC REPOSITORY SECURITY / COVERAGE-FIRST</p>
           <h1 id="headline">Every public repo.<br /><span>One honest security ledger.</span></h1>
           <p class="lede" id="tagline">
-            Enter a GitHub username. The backend inventories every owned public repository,
-            scans immutable snapshots, and shows exactly what ran—or why it did not.
+            One clear security report for every public repository you own.
           </p>
 
           <form id="scan-form" class="scan-form" novalidate>
@@ -77,14 +76,38 @@
         </div>
 
         <div class="bot-panel" aria-label="Scan progress">
-          <div class="panel-label"><span>PROGRESS</span><span id="bot-code">Waiting</span></div>
+          <div class="panel-label"><span>SCAN AGENT</span><span id="bot-code">Waiting</span></div>
+
+          <div class="bot-stage" aria-hidden="true">
+            <div class="bot-sign" id="bot-sign">
+              <i class="sign-fill" id="sign-fill"></i>
+              <span class="sign-text" id="sign-text">Ready</span>
+            </div>
+            <div class="bot-arms"><i></i><i></i></div>
+            <div class="scan-bot">
+              <span class="antenna"></span>
+              <div class="bot-head"><span class="eyes">&#9673;&#9673;</span></div>
+              <div class="bot-body"><span class="core">&#9635;</span><i class="scanline"></i></div>
+              <div class="bot-feet"><span></span><span></span></div>
+            </div>
+          </div>
+
+          <div class="bot-live" id="bot-live" data-state="idle">
+            <div class="live-head">
+              <span id="live-phase">Idle</span>
+              <strong id="live-percent">0%</strong>
+            </div>
+            <div class="live-track"><i id="live-bar"></i></div>
+            <p id="live-detail" role="status">Enter a username to start.</p>
+            <button type="button" id="see-results" class="see-results" hidden>See the result below</button>
+          </div>
+
           <ol class="steps" id="steps">
-            <li data-step="discover"><b>1</b><span>Finding your repositories</span><i></i></li>
+            <li data-step="discover"><b>1</b><span>Finding repositories</span><i></i></li>
             <li data-step="download"><b>2</b><span>Downloading snapshots</span><i></i></li>
             <li data-step="scan"><b>3</b><span>Scanning for secrets</span><i></i></li>
             <li data-step="review"><b>4</b><span>Reviewing findings</span><i></i></li>
           </ol>
-          <p class="steps-note" id="steps-note">Enter a username to start.</p>
         </div>
       </section>
 
@@ -95,6 +118,7 @@
             <h2 id="status-title">Coverage in progress</h2>
           </div>
         </div>
+        <p id="verdict" class="verdict" hidden><span class="verdict-mark" aria-hidden="true"></span><span id="verdict-text"></span></p>
         <div id="live-status" class="live-status" aria-live="polite"></div>
         <div class="progress-track" aria-hidden="true"><i id="progress-bar"></i></div>
         <div id="summary-grid" class="summary-grid"></div>
@@ -131,7 +155,10 @@
             <h2 id="findings-title">Deterministic findings</h2>
           </div>
           <p class="legend" id="finding-count"></p>
-          <button type="button" id="download-report" class="download-report">Download report</button>
+          <div class="report-actions">
+            <button type="button" id="download-report" class="download-report">Download PDF</button>
+            <button type="button" id="print-report" class="print-report">Print</button>
+          </div>
         </div>
         <p class="findings-note">Findings are public. Each shows the file and line where the scanner matched, so you can go and fix it. Secret values, code snippets, and raw matches never enter this report.</p>
         <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">

@@ -25,6 +25,15 @@ import {
   repositoryLabel,
   type Label,
 } from "./labels.js";
+import { progressModel, type Step } from "./progress.js";
+import { buildPdf } from "./pdf.js";
+import {
+  formatLocations,
+  reportDocument,
+  reportFileName,
+  type ReportState,
+} from "./report.js";
+import { summarizeVerdict } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -56,7 +65,19 @@ const historyList = $<HTMLElement>("#history-list");
 const historyCount = $<HTMLElement>("#history-count");
 const historyClear = $<HTMLButtonElement>("#history-clear");
 const stepsList = $<HTMLElement>("#steps");
-const stepsNote = $<HTMLElement>("#steps-note");
+const botSign = $<HTMLElement>("#bot-sign");
+const signFill = $<HTMLElement>("#sign-fill");
+const signText = $<HTMLElement>("#sign-text");
+const botLive = $<HTMLElement>("#bot-live");
+const livePhase = $<HTMLElement>("#live-phase");
+const livePercent = $<HTMLElement>("#live-percent");
+const liveBar = $<HTMLElement>("#live-bar");
+const liveDetail = $<HTMLElement>("#live-detail");
+const seeResults = $<HTMLButtonElement>("#see-results");
+const statusTitle = $<HTMLElement>("#status-title");
+const verdict = $<HTMLElement>("#verdict");
+const verdictText = $<HTMLElement>("#verdict-text");
+const printReport = $<HTMLButtonElement>("#print-report");
 const quotaMeter = $<HTMLElement>("#quota-meter");
 const quotaPercent = $<HTMLElement>("#quota-percent");
 const quotaBar = $<HTMLElement>("#quota-bar");
@@ -70,7 +91,7 @@ let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limit
 $("#product-name").textContent = branding.productDisplayName;
 $("#tagline").textContent = branding.tagline;
 $("#footer-name").textContent = `${branding.productDisplayName} · private release preview.`;
-document.title = `${branding.productDisplayName} — public repository security`;
+document.title = `${branding.productDisplayName}: public repository security`;
 
 const themeToggle = $<HTMLButtonElement>("#theme-toggle");
 themeToggle.addEventListener("click", () => {
@@ -90,68 +111,73 @@ function setScanState(state: "idle" | "scanning" | "complete" | "failed"): void 
   }[state];
 }
 
-const STEP_ORDER = ["discover", "download", "scan", "review"] as const;
-type Step = (typeof STEP_ORDER)[number];
+let heldStep: Step | null = null;
+
+/** Replays a one-shot animation, which needs the class off before it goes on. */
+function replay(element: Element, className: string): void {
+  element.classList.remove(className);
+  void (element as HTMLElement).offsetWidth;
+  element.classList.add(className);
+  setTimeout(() => {
+    element.classList.remove(className);
+  }, 500);
+}
 
 /**
- * Drives the four progress steps from the real ledger.
+ * Hands a step to the agent, or takes the finished one away.
  *
- * The panel used to be an ASCII robot with a fixed caption, so it looked alive
- * while telling a visitor nothing. Every step here is derived from counts the
- * server actually reports, and a step only turns green once that many
- * repositories have genuinely passed it.
+ * The sign is swapped rather than relabelled in place: a caption that changes
+ * silently is easy to miss, and the whole point of the panel is that a visitor
+ * can tell at a glance that something moved since they last looked.
  */
+function handOver(next: Step | null): void {
+  if (next === heldStep) return;
+  const previous =
+    heldStep === null
+      ? null
+      : stepsList.querySelector(`[data-step="${heldStep}"]`);
+  if (previous !== null) replay(previous, "dropped");
+  if (next !== null) {
+    const taken = stepsList.querySelector(`[data-step="${next}"]`);
+    if (taken !== null) replay(taken, "taken");
+    botSign.dataset["swap"] = "1";
+    setTimeout(() => {
+      delete botSign.dataset["swap"];
+    }, 500);
+  }
+  heldStep = next;
+}
+
+/** Paints the agent panel from the model. */
 function renderSteps(summary: ScanRequestSummary): void {
-  const totals = summary.repositoryTotals;
-  const count = (...states: readonly string[]): number =>
-    states.reduce(
-      (sum, state) =>
-        sum + (totals[state as keyof typeof totals] ?? 0),
-      0,
+  const model = progressModel(summary);
+  for (const entry of model.steps) {
+    const element = stepsList.querySelector<HTMLElement>(
+      `[data-step="${entry.step}"]`,
     );
-
-  const all = Object.values(totals).reduce((sum, value) => sum + value, 0);
-  const terminal = count("complete", "empty", "partial", "failed", "cancelled");
-  const downloaded = all - count("discovered", "waiting", "leased");
-  const scanned = all - count("discovered", "waiting", "leased", "acquiring", "guarding");
-  const reviewed = terminal;
-
-  const progress: Record<Step, { done: number; total: number }> = {
-    // Discovery is finished once the request has left the "accepted" and
-    // "discovering" states, which is the only signal the summary carries.
-    discover: {
-      done: summary.state === "accepted" || summary.state === "discovering" ? 0 : all,
-      total: all || 1,
-    },
-    download: { done: downloaded, total: all || 1 },
-    scan: { done: scanned, total: all || 1 },
-    review: { done: reviewed, total: all || 1 },
-  };
-
-  let activeFound = false;
-  for (const step of STEP_ORDER) {
-    const element = stepsList.querySelector<HTMLElement>(`[data-step="${step}"]`);
     if (element === null) continue;
-    const { done, total } = progress[step];
-    const complete = all > 0 && done >= total;
-    // Exactly one step is "active": the first unfinished one. Marking several
-    // at once is what made the old panel look like nothing was happening.
-    const active = !complete && !activeFound && summary.state !== "complete";
-    if (active) activeFound = true;
-    element.dataset["state"] = complete ? "done" : active ? "active" : "todo";
+    element.dataset["state"] = entry.state;
     const meter = element.querySelector("i");
-    if (meter !== null) {
-      meter.style.width = `${String(all === 0 ? 0 : Math.round((done / total) * 100))}%`;
-    }
+    if (meter !== null) meter.style.width = `${String(entry.percent)}%`;
   }
 
-  stepsNote.textContent =
-    summary.state === "complete"
-      ? `Finished. ${String(terminal)} of ${String(all)} repositories accounted for.`
-      : all === 0
-        ? "Looking up the account."
-        : `${String(terminal)} of ${String(all)} repositories finished.`;
+  handOver(model.active);
+  signText.textContent = model.signText;
+  signFill.style.width = `${String(model.signPercent)}%`;
+
+  botLive.dataset["state"] = model.liveState;
+  livePhase.textContent = model.livePhase;
+  livePercent.textContent = `${String(model.livePercent)}%`;
+  liveBar.style.width = `${String(model.livePercent)}%`;
+  liveDetail.textContent = model.liveDetail;
+  seeResults.hidden = !model.finished;
 }
+
+seeResults.addEventListener("click", () => {
+  document
+    .querySelector(findingsSection.hidden ? "#ledger-section" : "#findings-section")
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
 
 /**
  * Renders one outcome as a chip.
@@ -227,6 +253,14 @@ function renderSummary(summary: ScanRequestSummary): void {
     liveStatus.textContent += " · email unavailable; keep this report link.";
   }
   liveStatus.textContent += ` · updated ${new Date(summary.updatedAt).toLocaleString()}`;
+  // "Coverage in progress" over a finished ledger is the kind of stale heading
+  // that makes a visitor doubt the numbers under it.
+  statusTitle.textContent =
+    summary.state === "complete"
+      ? "Coverage complete"
+      : summary.state === "failed"
+        ? "Coverage stopped"
+        : "Coverage in progress";
   setScanState(summary.state === "complete" ? "complete" : summary.state === "failed" ? "failed" : "scanning");
 }
 
@@ -366,9 +400,11 @@ async function poll(requestId: string): Promise<void> {
     renderRepositories(repositories);
     ledgerSection.hidden = false;
     let findingCount = 0;
+    let loadedFindings: PublicFinding[] = [];
     if (terminal) {
       try {
         const findings = await loadFindings(requestId);
+        loadedFindings = findings;
         findingCount = findings.length;
         renderFindings(findings, repositories);
       } catch {
@@ -381,6 +417,8 @@ async function poll(requestId: string): Promise<void> {
     // Written on every poll, not only at the end, so a visitor who reloads
     // mid-scan can still find their way back to a run that is still going.
     setPrintHeader(summary, findingCount);
+    latest = { summary, repositories, findings: loadedFindings };
+    renderVerdict(summary, repositories, loadedFindings, terminal);
     renderHistory(
       rememberScan({
         requestId,
@@ -529,28 +567,6 @@ if (existingRequest !== null) {
 }
 
 /**
- * Renders where a finding sits.
- *
- * Always set with textContent by the caller, never innerHTML: a path comes
- * from the scanned repository, so it is attacker-controlled text and must
- * never be parsed as markup. Findings with no location render as a dash
- * rather than an empty cell, so "we did not locate this" stays distinct from
- * "this has no location".
- */
-function formatLocations(
-  locations: readonly { path: string; startLine: number }[] | undefined,
-): string {
-  if (locations === undefined || locations.length === 0) return "not located";
-  const shown = locations
-    .slice(0, 3)
-    .map((entry) => `${entry.path}:${String(entry.startLine)}`)
-    .join(", ");
-  return locations.length > 3
-    ? `${shown} and ${String(locations.length - 3)} more`
-    : shown;
-}
-
-/**
  * Draws the past-scan list.
  *
  * Entries open the report they point at rather than re-running it: a visitor
@@ -604,13 +620,61 @@ historyClear.addEventListener("click", () => {
 renderHistory(readHistory());
 
 /**
- * Prepares the printable version and hands it to the browser.
+ * Writes the report to a file.
  *
- * The browser's own print pipeline is the PDF generator. It costs nothing, adds
- * no dependency, and produces real selectable text, which a canvas screenshot
- * library would not. The visitor picks "Save as PDF" in the dialog.
+ * This used to call `window.print()`, which opens a dialog and asks the visitor
+ * to choose "Save as PDF" themselves. Clicking download and getting a print
+ * preview is not what download means anywhere else on the web, so the PDF is
+ * built here and handed over as a file. Printing is still one button along, for
+ * anyone who wants paper or their browser's own layout.
  */
+let latest: ReportState | null = null;
+
+/**
+ * Says what the scan found, in one sentence, before any table.
+ *
+ * Hidden until the request is terminal: a verdict on a half-finished scan is a
+ * guess, and a reassuring guess is the worst kind.
+ */
+function renderVerdict(
+  summary: ScanRequestSummary,
+  repositories: readonly RepositoryRow[],
+  findings: readonly PublicFinding[],
+  terminal: boolean,
+): void {
+  if (!terminal) {
+    verdict.hidden = true;
+    return;
+  }
+  const decided = summarizeVerdict(summary.username, repositories, findings);
+  verdict.hidden = false;
+  verdict.dataset["tone"] = decided.tone;
+  verdictText.textContent = decided.text;
+}
+
 downloadReport.addEventListener("click", () => {
+  if (latest === null) return;
+  const document_ = reportDocument(
+    latest,
+    verdictText.textContent ?? "",
+    location.origin,
+  );
+  const blob = new Blob([buildPdf(document_)], { type: "application/pdf" });
+  const href = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = href;
+  anchor.download = reportFileName(latest.summary);
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  // Revoked on the next tick rather than immediately: the download is still
+  // reading the blob when the click handler returns.
+  setTimeout(() => {
+    URL.revokeObjectURL(href);
+  }, 30_000);
+});
+
+printReport.addEventListener("click", () => {
   window.print();
 });
 
