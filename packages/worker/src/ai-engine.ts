@@ -182,16 +182,20 @@ export async function runAiEngine(
 
   return {
     // Partial when the batch was partly judged, when the cap left grounded
-    // flags unjudged, OR when the packer could not fit the whole repository.
+    // flags unjudged, or when the packer could not fit code it would otherwise
+    // have read.
     //
-    // That last one was invisible: the pack reports what it dropped for being
-    // too large, past the token budget, or outside the languages it reads, and
+    // That last one was invisible: the pack reports what it dropped and
     // nothing consumed it, so a repository the reader saw sixty percent of
     // still published a green "Reviewed".
+    //
+    // `not_code` is deliberately not counted. The reader reads source, so a
+    // README or a lockfile being left out is the design working, not a gap,
+    // and counting it turned every reviewed repository into a partial one.
     coverage:
       result.state === "ai_partial" ||
       result.unjudged > 0 ||
-      pack.omitted.length > 0 ||
+      pack.omitted.some((entry) => entry.reason !== "not_code") ||
       files.length >= MAX_FILES
         ? "partial"
         : "complete",

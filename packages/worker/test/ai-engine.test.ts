@@ -145,6 +145,49 @@ describe("the AI engine", () => {
     expect(result.packet?.groups ?? []).toEqual([]);
   }, 30_000);
 
+  it("does not call a review partial because a README was not code", async () => {
+    // The reader reads source, so a markdown file being left out is the design
+    // working. Counting it turned every reviewed repository into a partial one
+    // and the label stopped meaning anything.
+    const sourcePath = await sourceTree({
+      "src/db.ts": VULNERABLE,
+      "README.md": "# docs\n",
+      "package-lock.json": "{}\n",
+    });
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() => []),
+      judges: JUDGES,
+      tokenBudget: 50_000,
+    });
+    expect(result.coverage).toBe("complete");
+  }, 30_000);
+
+  it("does call a review partial when code did not fit", async () => {
+    // A file past the token budget is code the reader would have read.
+    const big = `${VULNERABLE}${"// filler filler filler\n".repeat(500)}`;
+    const sourcePath = await sourceTree({
+      "src/one.ts": big,
+      "src/two.ts": big,
+      "src/three.ts": big,
+    });
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() => []),
+      judges: JUDGES,
+      // Room for one of the three, so the other two are code the reader
+      // would have read and did not.
+      tokenBudget: 5_000,
+    });
+    expect(result.coverage).toBe("partial");
+  }, 30_000);
+
   it("reports nothing to read as clean, not as failure", async () => {
     const sourcePath = await sourceTree({ "README.md": "# docs only\n" });
     const result = await runAiEngine({
