@@ -15,6 +15,8 @@ import {
  */
 
 function memoryStorage(): Storage {
+  // Returned as a plain object: the shape already satisfies Storage, and an
+  // assertion here is both redundant and a lint error.
   const map = new Map<string, string>();
   return {
     get length() {
@@ -24,8 +26,10 @@ function memoryStorage(): Storage {
     getItem: (key: string) => map.get(key) ?? null,
     key: (index: number) => [...map.keys()][index] ?? null,
     removeItem: (key: string) => map.delete(key),
-    setItem: (key: string, value: string) => map.set(key, value),
-  } as Storage;
+    setItem: (key: string, value: string) => {
+      map.set(key, value);
+    },
+  };
 }
 
 function entry(overrides: Partial<HistoryEntry> = {}): HistoryEntry {
@@ -109,7 +113,7 @@ describe("scan history", () => {
       setItem: () => {
         throw new Error("blocked");
       },
-    } as unknown as Storage);
+    });
     expect(readHistory()).toEqual([]);
   });
 
@@ -119,7 +123,7 @@ describe("scan history", () => {
       setItem: () => {
         throw new Error("quota exceeded");
       },
-    } as unknown as Storage);
+    });
     // The page must still render the entry it just created.
     expect(rememberScan(entry())).toHaveLength(1);
   });
