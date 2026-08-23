@@ -20,6 +20,16 @@ const binaryHash = process.env["GITLEAKS_SHA256"];
 const temporaryDirectories: string[] = [];
 const COMMIT_SHA = "a".repeat(40);
 const SOURCE_CANARY = "RVN_8a6d2f91c4b7e503";
+/**
+ * Canary planted in the FILE NAME rather than the file contents.
+ *
+ * Without this the proof only ever watched file contents, so a report that
+ * began publishing paths would have kept this test green and the suite would
+ * have reported the egress guarantee intact while it had actually changed.
+ * Whatever decision is taken about publishing locations, it should be taken
+ * deliberately and turn this test red on the way through.
+ */
+const PATH_CANARY = "RVN_PATH_3d9e7b41f2a6c805";
 const SYNTHETIC_SECRET = [
   "ghp",
   "_",
@@ -69,7 +79,7 @@ function fixtureArchive(): Uint8Array {
   const content = Buffer.from(`${SOURCE_CANARY}\nTOKEN=${SYNTHETIC_SECRET}\n`);
   return gzipSync(
     Buffer.concat([
-      tarEntry("fixture-repo/credential.txt", content),
+      tarEntry(`fixture-repo/${PATH_CANARY}-credential.txt`, content),
       Buffer.alloc(1_024),
     ]),
   );
@@ -241,8 +251,10 @@ test.skipIf(!enabled || binaryPath === undefined || binaryHash === undefined)(
     const forbidden = [
       SOURCE_CANARY,
       SYNTHETIC_SECRET,
+      PATH_CANARY,
       ...eightCharacterWindows(SOURCE_CANARY),
       ...eightCharacterWindows(SYNTHETIC_SECRET),
+      ...eightCharacterWindows(PATH_CANARY),
     ];
     for (const fragment of new Set(forbidden)) {
       expect(egress, `source fragment crossed egress: ${fragment}`).not.toContain(
