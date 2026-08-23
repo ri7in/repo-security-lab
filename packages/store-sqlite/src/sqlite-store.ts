@@ -62,7 +62,6 @@ import {
   MIGRATION_005,
   MIGRATION_006,
   MIGRATION_007,
-  SCHEMA_VERSION,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 
@@ -426,7 +425,10 @@ export class SqliteStore implements Store {
           .get() as { version: number } | undefined;
         if (versionSeven === undefined) {
           this.#database.exec(MIGRATION_007);
-          recordMigration.run(SCHEMA_VERSION, migrationTimeMs);
+          // Literal 7, never SCHEMA_VERSION: recording the constant here would
+          // stamp migration 7 with the NEXT version the moment one is added,
+          // and that version's own block would then find a row and skip.
+          recordMigration.run(7, migrationTimeMs);
         }
       });
       migrate();
