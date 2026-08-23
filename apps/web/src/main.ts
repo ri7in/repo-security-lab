@@ -55,6 +55,8 @@ const progressBar = $<HTMLElement>("#progress-bar");
 const summaryGrid = $<HTMLElement>("#summary-grid");
 const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
+const findingTable = $<HTMLElement>("#finding-table");
+const nothingFound = $<HTMLElement>("#nothing-found");
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
 const downloadReport = $<HTMLButtonElement>("#download-report");
@@ -206,24 +208,26 @@ function terminalCount(summary: ScanRequestSummary): number {
   );
 }
 
+let findingsShown = 0;
+
 function renderSummary(summary: ScanRequestSummary): void {
   const total = Object.values(summary.repositoryTotals).reduce(
     (sum, count) => sum + count,
     0,
   );
   const terminal = terminalCount(summary);
+  const notChecked =
+    summary.repositoryTotals.failed +
+    summary.repositoryTotals.partial +
+    summary.repositoryTotals.cancelled;
+  // "Terminal" is a word from the state machine, and a skipped fork was being
+  // counted under "needs attention" as though the visitor had to do something
+  // about it. Four numbers a visitor can act on, in the words they would use.
   const values = [
-    [String(total), "repositories"],
-    [String(terminal), "terminal"],
-    [String(summary.repositoryTotals.complete), "fully complete"],
-    [
-      String(
-        summary.repositoryTotals.failed +
-          summary.repositoryTotals.partial +
-          summary.repositoryTotals.cancelled,
-      ),
-      "needs attention",
-    ],
+    [String(total), "public repositories"],
+    [String(summary.repositoryTotals.complete), "fully scanned"],
+    [String(notChecked), "not checked"],
+    [String(findingsShown), findingsShown === 1 ? "finding" : "findings"],
   ];
   summaryGrid.replaceChildren(
     ...values.map(([value, label]) => {
@@ -241,18 +245,18 @@ function renderSummary(summary: ScanRequestSummary): void {
   progressBar.style.width = `${percent}%`;
   liveStatus.textContent =
     summary.state === "failed"
-      ? `Request stopped: ${summary.reason?.replaceAll("_", " ") ?? "fixed safety gate"}.`
+      ? `Request stopped: ${summary.reason?.replaceAll("_", " ").toLowerCase() ?? "fixed safety gate"}.`
       : summary.state === "complete"
-        ? `Coverage ledger complete · ${terminal}/${total} repositories terminal.`
-        : `Scanning immutable snapshots · ${terminal}/${total} repositories terminal.`;
+        ? `All ${String(total)} ${total === 1 ? "repository" : "repositories"} finished.`
+        : `${String(terminal)} of ${String(total)} repositories finished so far.`;
   if (notificationStatus === "queued") {
-    liveStatus.textContent += " · report email queued.";
+    liveStatus.textContent += " A report email is queued.";
   } else if (notificationStatus === "rate_limited") {
-    liveStatus.textContent += " · email quota reached; keep this report link.";
+    liveStatus.textContent += " The email quota is used up, so keep this link.";
   } else if (notificationStatus === "unavailable") {
-    liveStatus.textContent += " · email unavailable; keep this report link.";
+    liveStatus.textContent += " Email is unavailable, so keep this link.";
   }
-  liveStatus.textContent += ` · updated ${new Date(summary.updatedAt).toLocaleString()}`;
+  liveStatus.textContent += ` Updated ${new Date(summary.updatedAt).toLocaleString()}.`;
   // "Coverage in progress" over a finished ledger is the kind of stale heading
   // that makes a visitor doubt the numbers under it.
   statusTitle.textContent =
@@ -325,7 +329,13 @@ function renderFindings(
     }),
   );
   findingsSection.hidden = false;
-  $("#finding-count").textContent = `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
+  $("#finding-count").textContent =
+    findings.length === 0
+      ? "nothing found"
+      : `${String(findings.length)} finding${findings.length === 1 ? "" : "s"}`;
+  // An empty table with a header row reads as a rendering fault. Say it.
+  findingTable.hidden = findings.length === 0;
+  nothingFound.hidden = findings.length > 0;
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
@@ -419,6 +429,12 @@ async function poll(requestId: string): Promise<void> {
     setPrintHeader(summary, findingCount);
     latest = { summary, repositories, findings: loadedFindings };
     renderVerdict(summary, repositories, loadedFindings, terminal);
+    if (terminal) {
+      // Repainted once the findings are in, because the card that counts them
+      // cannot be filled before they arrive.
+      findingsShown = findingCount;
+      renderSummary(summary);
+    }
     renderHistory(
       rememberScan({
         requestId,

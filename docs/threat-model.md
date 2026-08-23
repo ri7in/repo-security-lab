@@ -128,15 +128,24 @@ reason carries the cause. Cancelled pre-source rows remain `not_applicable`.
 ### Report and AI lanes
 
 Anonymous DTOs expose exhaustive status, coverage, and closed broker-derived
-finding metadata. The public finding DTO cannot express internal IDs, detail
-references, paths, snippets, matches, or secrets. A separate full broker-record
-route exists only in explicit operator mode, which requires a literal loopback
-bind and automatically enforces a matching Host header. The composed runtime
-applies the same Host guard to every route.
+finding metadata plus a location: a validated relative path and a line number.
+The public finding DTO still cannot express internal IDs, detail references,
+snippets, matches, or secrets. Paths are refused at the source if they escape
+the repository root or are absolute, and locations are capped per finding. A
+separate full broker-record route exists only in explicit operator mode, which
+requires a literal loopback bind and automatically enforces a matching Host
+header. The composed runtime applies the same Host guard to every route.
 
-The AI package is an unnetworked fixture harness. Its only provider tag is
-`fixture`, its production default is disabled, and real adapter registration
-throws. No model client or repository-to-provider route exists in this slice.
+The AI pass is networked and does send public repository source to external
+providers. What it can send is bounded: files are collected from the extracted
+snapshot with dependency and build directories skipped, every line the secret
+scanner matched is blanked before packing, and the pack is capped in files and
+tokens. What it can return is bounded harder: a file token, a line number, an
+excerpt and a CWE from a closed vocabulary of ten. A model cannot name a rule,
+set a severity, write prose into a report, choose which of its own flags get
+judged, or address the judges reviewing it. The pass runs in the worker rather
+than the sandbox because the sandbox has no network by design and this is the
+one step that needs one.
 
 ## Abuse and privacy limits
 

@@ -1,13 +1,18 @@
 # Architecture
 
-**Status:** private production preview. The local vertical slice plus a live
-Cloudflare Workers/D1 control plane, same-origin static site, public
-source-blind report, authenticated external pull worker, credential-free Linux
-scan-domain bundle, optional encrypted email queue, and report retention are
-implemented and exercised. The deployed preview remains bound to `ri7in`;
-GitHub discovery and the authenticated private pull worker are live-proven.
-Reports are public and require no login; third-party scan creation remains
-disabled until the prepared OCI worker passes the real Linux proof.
+**Status:** live and open. Anyone can scan any public GitHub account, with no
+sign-up and no card. The Cloudflare Workers/D1 control plane, the same-origin
+static site, the public report, the authenticated external pull worker running
+under enforced Bubblewrap isolation, the credential-free Linux scan-domain
+bundle, the AI reading pass, the optional encrypted email queue, and 30-day
+report retention are all implemented and exercised against real accounts.
+
+Reports show file paths and line numbers. They do not show source code, secret
+values, or raw scanner matches. That was a deliberate reversal of the original
+source-blind design and the reasoning is in `locations-decision.md`: a report
+that says a credential exists somewhere in an account is not actionable, and
+everything it now prints is already readable by anyone who clones the public
+repository.
 
 ## Product flow
 
@@ -42,22 +47,26 @@ disabled until the prepared OCI worker passes the real Linux proof.
    isolation required for public release. A separate bounded name/type-only
    walk reports an unintegrated specialist `not_applicable` only after proving
    whole-tree absence; relevant input or an incomplete walk is `unsupported`.
-7. Each hostile scanner/normalizer lane is independent. It discards paths,
-   matches, snippets, and all other source strings, then emits only
-   manifest-issued numeric rule tokens and four count-bucket codes. One lane's
-   scanner, normalizer, or broker failure cannot discard another lane's
-   already-valid evidence.
+7. Each hostile scanner/normalizer lane is independent. The evidence channel
+   still carries only manifest-issued numeric rule tokens and four count-bucket
+   codes, so no scanner string reaches a report through it. Locations travel on
+   a separate, narrow channel: a validated relative path and a line number,
+   nothing else, capped per finding, with traversal and absolute paths refused
+   at the source. Matches, snippets and secret values are never on either
+   channel. One lane's scanner, normalizer, or broker failure cannot discard
+   another lane's already-valid evidence.
 8. The entire tuple-keyed scratch root is removed and absence is verified.
    Only then can each trusted engine-bound broker map numeric tokens to closed
    metadata and publish findings with durable lease identity. Mixed outcomes
    publish `partial` plus a closed per-engine failure map; the map cannot carry
    target text.
 9. The anonymous API exposes exhaustive status, coverage, and a strict public
-   subset of source-blind findings. That subset omits internal finding/request
-   IDs and owner-detail references and has no fields for paths, snippets,
-   matches, or secrets. The full broker record remains available only through
-   an explicitly enabled loopback operator endpoint with literal `Host`
-   validation against DNS rebinding.
+   subset of findings: the rule, the severity, the count bucket, the
+   remediation key, and where each one is. That subset omits internal
+   finding/request IDs and owner-detail references, and has no field for a
+   snippet, a match, or a secret value. The full broker record remains
+   available only through an explicitly enabled loopback operator endpoint with
+   literal `Host` validation against DNS rebinding.
 
 ## Trust boundaries
 
@@ -98,18 +107,79 @@ paths, snippets, matches, secrets, internal detail references, or free-form
 upstream errors. Responses use `no-store`, `nosniff`, and `no-referrer`;
 unexpected exceptions collapse to one fixed 500 response.
 
-## AI boundary
+## The AI pass, and which model does what
 
-The current AI lane is deliberately inert. It has strict candidate contracts,
-two family-distinct deterministic fixture scouts, an exact file/line/quote/
-symbol/trace grounding validator, and a fixture judge. The default is
-`ai_not_run`; the only provider tag is `fixture`, and registration of any real
-adapter throws. No repository byte can reach a model from this codebase.
+This section described an inert lane that could not reach a provider. That has
+not been true since the reader was wired up, and a security tool whose own
+documentation is wrong about where code goes is not one anybody should trust.
+Here is what actually happens.
 
-A real provider lane requires separate owner consent, provider/data-use proof,
-secret-sanitizer proof, family routing, benchmark evidence, quota accounting,
-and a second authorization. AI can add candidates but can never suppress a
-deterministic finding.
+The pass runs in the worker, not the sandbox, for one reason: the sandbox has
+no network and the whole point of this pass is a model call. The worker holds
+the extracted snapshot on disk until cleanup, so files are read there directly
+rather than pushed back out through a result channel built for numbers.
+
+| Role | Model | Provider | What it sees | What it can do |
+| --- | --- | --- | --- | --- |
+| Reader (pass 1) | `stealth/ox-alpha`, falling back to `nvidia/nemotron-3-ultra-550b-a55b:free` | OpenRouter | Whole repository, up to 400 files, secret lines blanked | Point at a file and line and name one of ten CWEs |
+| Judge (pass 2) | `openai/gpt-oss-120b` | Groq | One flag, its excerpt, its file and line | Vote real, not real, or unsure |
+| Judge (pass 2) | `gemini-flash-lite-latest` | Google | The same, independently | The same |
+
+Both judges also sit on a separate path where they may delete a *scanner*
+finding all of them reject as a false alarm. Every other outcome keeps the
+finding: fewer than two judges, two judges of one family, an exhausted quota, a
+provider timing out, or any thrown error at all. Deleting a real finding is far
+worse than showing a false one.
+
+Four rules hold the pass together, and each is enforced in code rather than
+described here:
+
+1. **A model cannot write into a report.** The reader's output is a file token,
+   a line number, an excerpt and a CWE from a closed vocabulary of ten. Every
+   word a reader eventually sees, including the rule name, the severity, the
+   confidence and the remediation, is looked up from that CWE in a fixed
+   manifest. A model that invents a class is dropped, not guessed at.
+2. **A deterministic grounding gate sits between the passes**, and no model
+   participates in it. A flag whose quote does not appear at the line it names
+   never reaches a judge.
+3. **The reader does not choose what gets judged.** The judge queue is ordered
+   by position in the file before the cap bites, not by the reader's own
+   confidence field. Ordering on a model-supplied field handed the reader
+   control of which findings survived.
+4. **Judges never see the reader's argument.** Its rationale is not in their
+   prompt. Passing it anchors every judge to one model's case and hands a
+   misbehaving reader a free-text channel into the prompt of the thing checking
+   it.
+
+Publication needs a strict majority of all judges to say "real". "Unsure"
+counts against, because an abstention is not a vote in favour.
+
+### What leaves the machine
+
+Public source code from public repositories, with every line the secret scanner
+matched blanked first. The pass looking for injection bugs has no use for a
+credential and must not be handed one in passing. Providers may keep or train
+on what they receive, which is what pays for the free tier this runs on, and
+the footer says so whenever the pass is switched on.
+
+The reader chain exists because the best free reader available is an unbranded
+preview that can be withdrawn without notice. A chain makes that a non-event:
+the fallback is only called after a failure, and the switch is logged rather
+than swallowed, because a chain quietly running on its last link looks
+identical to one running on its first.
+
+`AI_REVIEW_ENABLED=false` turns the whole pass off in one variable. With it
+off, every repository reports `unsupported` for the AI engine, which is honest:
+the check exists and did not happen here.
+
+### The daily budget
+
+`packages/quota` holds one entry per model with a source URL and the date a
+human read it. The council is only as available as its scarcest member, so the
+meter on the landing page shows that member's remaining share of its own day,
+never an average. A model whose limits the provider no longer publishes is not
+registered, and a guard test refuses any model the worker names that is neither
+budgeted nor excluded on the record.
 
 ## Private runtime and deployment boundary
 
@@ -127,7 +197,7 @@ Cloudflare Worker. It uses D1, public write/read admission limits, a separate
 worker-edge limit, cron discovery recovery, 24-hour abandoned-work expiry,
 30-day terminal-report deletion, security headers, a private-preview
 operator-only encrypted email queue, and a default-off public scanning switch.
-Completed source-blind reports require no identity or
+Completed reports require no identity or
 session. Legacy `/auth/` and `/api/owner/` routes return fixed 404 responses.
 `apps/scan-worker` uses a narrowed HTTPS store adapter and rotating HMAC
 identity. Its host process owns acquisition/control-plane egress; `apps/scan-domain`

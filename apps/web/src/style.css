@@ -316,6 +316,9 @@ footer p { max-width: 720px; margin: 0; }
 .history-clear { width: 100%; padding: 9px; border: 0; border-top: 1px solid var(--line); background: none; color: var(--muted); font: 600 10px var(--mono); cursor: pointer; }
 .history-clear:hover { color: var(--red); }
 
+/* Shown in place of a header-only table, which reads as a rendering fault. */
+.nothing-found { margin: 0; padding: 22px 18px; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); font: 650 13px var(--mono); }
+
 .report-actions { display: flex; gap: 8px; }
 .download-report, .print-report { padding: 9px 14px; border: 1px solid var(--ink); background: none; color: inherit; font: 650 11px var(--mono); cursor: pointer; }
 .download-report { background: var(--ink); color: var(--paper); }

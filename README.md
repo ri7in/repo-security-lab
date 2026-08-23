@@ -36,12 +36,17 @@ Current guarantees:
 - Global admission is capped at 240 reports per UTC day, below the 288/day
   retention drain. Scan admission stops at 40% of the D1 Free allowance;
   privacy maintenance has a protected band up to 60%.
-- The AI lane currently exists only as typed contracts and deterministic
-  fixture tagging. No model client exists in the dependency graph, and no
-  repository byte can reach any model. The configured Groq and Gemini keys
-  have been tested only with fixed synthetic connectivity prompts.
-- Until enforced Linux isolation passes, scans are structurally refused for
-  accounts outside the private-slice allowlist (`PRIVATE_SLICE_SCOPE`).
+- The AI pass sends public source code to a model provider. A reader on
+  OpenRouter takes a whole repository with every secret-scanner line blanked
+  first; two judges on Groq and Google vote on what it points at. Providers may
+  keep or train on what they receive, which is what pays for the free tier, and
+  the site says so whenever the pass is on. `AI_REVIEW_ENABLED=false` turns it
+  off, and the secret scan never sends code anywhere.
+- A model cannot write into a report. Everything a reader sees about an AI
+  finding, including the rule name and the severity, is looked up from a
+  numeric token in a fixed manifest of ten weaknesses.
+- Forks are not scanned. Owning a fork does not make its upstream source
+  yours, and the ledger says so rather than hiding the row.
 
 ## Layout
 
