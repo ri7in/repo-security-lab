@@ -4,6 +4,7 @@ import {
   opaqueIdSchema,
   operatorFindingPageSchema,
   publicCapabilitiesSchema,
+  type AiLaneState,
   type DeepReadBudget,
   publicFindingPageSchema,
   repositoryPageSchema,
@@ -274,6 +275,26 @@ async function resolveDeepReadBudget(options: {
   return options.deepReadBudget();
 }
 
+/**
+ * The AI review lane for one repository, read from its own coverage.
+ *
+ * This used to report the request-level lane, which never leaves
+ * `ai_not_run`, so a repository a model had genuinely read still told every
+ * caller the review had not happened. Coverage is the durable per-repository
+ * record and is what the worker actually writes.
+ *
+ * The lane vocabulary is narrower than coverage: it has no word for "the
+ * provider could not be reached", so a failed review reports as not run here
+ * and the precise outcome stays in `coverage.ai`, which this same response
+ * carries.
+ */
+function repositoryAiLane(coverage: string): AiLaneState {
+  if (coverage === "complete") return "ai_complete";
+  if (coverage === "partial") return "ai_partial";
+  if (coverage === "waiting") return "ai_waiting";
+  return "ai_not_run";
+}
+
 export function createApi(options: ApiOptions): Hono {
   const now = options.now ?? Date.now;
   const createRequestId =
@@ -493,7 +514,7 @@ export function createApi(options: ApiOptions): Hono {
         ...(Object.keys(repository.specialistReasons).length === 0
           ? {}
           : { specialistReasons: repository.specialistReasons }),
-        aiLane: request.aiLane,
+        aiLane: repositoryAiLane(repository.coverage.ai),
       })),
       ...(page.nextRepositoryId === null
         ? {}

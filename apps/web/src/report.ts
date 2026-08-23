@@ -4,7 +4,7 @@ import type {
   RepositoryRow,
   ScanRequestSummary,
 } from "@app/contracts";
-import { aiLaneLabel, coverageLabel, repositoryLabel } from "./labels.js";
+import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
 import type { PdfReport } from "./pdf.js";
 
 export interface ReportState {
@@ -94,7 +94,7 @@ export function reportDocument(
             repository.coverage.gitleaks,
             repository.specialistReasons?.gitleaks,
           ).text,
-          aiLaneLabel(repository.aiLane).text,
+          aiCoverageLabel(repository.coverage.ai).text,
         ]),
       },
     ],

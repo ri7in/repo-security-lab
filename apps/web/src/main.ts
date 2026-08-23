@@ -20,7 +20,7 @@ import {
   type HistoryEntry,
 } from "./history.js";
 import {
-  aiLaneLabel,
+  aiCoverageLabel,
   coverageLabel,
   repositoryLabel,
   type Label,
@@ -282,7 +282,7 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
           repository.coverage.gitleaks,
           repository.specialistReasons?.gitleaks,
         ),
-        aiLaneLabel(repository.aiLane),
+        aiCoverageLabel(repository.coverage.ai),
       ];
       row.append(name, ...cells.map((label) => {
         const cell = document.createElement("td");

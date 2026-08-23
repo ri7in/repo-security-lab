@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aiLaneLabel, coverageLabel, repositoryLabel } from "../src/labels.js";
+import { aiCoverageLabel, coverageLabel, repositoryLabel } from "../src/labels.js";
 import { FAILURE_CLASSES } from "@app/contracts";
 
 /**
@@ -82,20 +82,49 @@ describe("coverage labels", () => {
   });
 });
 
-describe("AI lane labels", () => {
-  it("does not present a not-run review as a failure", () => {
-    expect(aiLaneLabel("ai_not_run").tone).toBe("skipped");
+describe("AI review labels", () => {
+  it("says a repository was reviewed when a model actually read it", () => {
+    // The column used to read a request-level field that never left
+    // "ai_not_run", so a repository a model had genuinely read still said the
+    // review had not run.
+    const label = aiCoverageLabel("complete");
+    expect(label.tone).toBe("ok");
+    expect(label.text).toBe("Reviewed");
+  });
+
+  it("does not present a repository that was not reviewed as a failure", () => {
+    // The daily budget running out is the expected case, not a fault.
+    expect(aiCoverageLabel("unsupported").tone).toBe("skipped");
+  });
+
+  it("separates nothing to read from not reached", () => {
+    // A repository of documentation is fine; a repository the reader could not
+    // be run against is not the same thing and must not read as fine.
+    expect(aiCoverageLabel("not_applicable").tone).toBe("ok");
+    expect(aiCoverageLabel("unsupported").tone).toBe("skipped");
+    expect(aiCoverageLabel("failed").tone).toBe("problem");
   });
 
   it("flags a half-finished review, because the result is incomplete", () => {
-    expect(aiLaneLabel("ai_partial").tone).toBe("problem");
+    expect(aiCoverageLabel("partial").tone).toBe("problem");
   });
 
-  it("marks a finished review as clean", () => {
-    expect(aiLaneLabel("ai_complete").tone).toBe("ok");
+  it("explains every outcome the coverage vocabulary can produce", () => {
+    for (const outcome of [
+      "complete",
+      "partial",
+      "not_applicable",
+      "unsupported",
+      "failed",
+      "waiting",
+    ]) {
+      const label = aiCoverageLabel(outcome);
+      expect(label.text, `${outcome} has no label`).not.toBe("Unknown");
+      expect(label.detail.length, `${outcome} has no explanation`).toBeGreaterThan(20);
+    }
   });
 
   it("falls back rather than throwing on an unknown state", () => {
-    expect(aiLaneLabel("something_new").text).toBe("Unknown");
+    expect(aiCoverageLabel("something_new").text).toBe("Unknown");
   });
 });

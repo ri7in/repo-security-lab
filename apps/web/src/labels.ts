@@ -220,33 +220,54 @@ export function coverageLabel(coverage: string, reason?: string): Label {
   return COVERAGE[coverage] ?? UNKNOWN;
 }
 
-const AI_LANE: Record<string, Label> = {
-  ai_not_run: {
-    text: "Not run",
-    tone: "skipped",
-    detail:
-      "No model read this repository. The secret scan still ran; AI review is a separate pass with a limited free daily budget.",
-  },
-  ai_waiting: {
-    text: "Queued",
-    tone: "active",
-    detail: "Waiting for AI review capacity.",
-  },
-  ai_partial: {
-    text: "Partly reviewed",
-    tone: "problem",
-    detail:
-      "AI review started and could not finish, usually because the daily model budget ran out. Anything it did confirm is shown.",
-  },
-  ai_complete: {
+/**
+ * The AI review column, read from that repository's own coverage.
+ *
+ * It used to be read from a request-level lane field that never changed from
+ * "ai_not_run", so a repository a model had genuinely read still said the
+ * review had not run. Coverage is per repository and carries the full
+ * vocabulary, including the difference between "there was no code to read" and
+ * "the reader was not reached".
+ */
+const AI_COVERAGE: Record<string, Label> = {
+  complete: {
     text: "Reviewed",
     tone: "ok",
     detail:
-      "A model read this repository's code and a panel of judges confirmed anything it flagged.",
+      "A model read this repository's code and a panel of judges from different model families confirmed anything it flagged.",
+  },
+  partial: {
+    text: "Partly reviewed",
+    tone: "problem",
+    detail:
+      "The review started and did not finish, usually because there was more to check than one day's free model budget covers. Anything it did confirm is shown.",
+  },
+  not_applicable: {
+    text: "No code to read",
+    tone: "ok",
+    detail:
+      "This repository holds no source a code reviewer could read, so there was nothing for this check to do.",
+  },
+  unsupported: {
+    text: "Not reviewed",
+    tone: "skipped",
+    detail:
+      "The daily free model budget is small and shared, so only the most recently updated repositories get a full code review. The secret scan ran on this one either way.",
+  },
+  failed: {
+    text: "Review failed",
+    tone: "problem",
+    detail:
+      "The model provider could not be reached for this repository. The secret scan is unaffected and its result stands.",
+  },
+  waiting: {
+    text: "Waiting",
+    tone: "active",
+    detail: "This repository has not reached the review step yet.",
   },
 };
 
 /** The visible outcome of the AI review pass for one repository. */
-export function aiLaneLabel(state: string): Label {
-  return AI_LANE[state] ?? UNKNOWN;
+export function aiCoverageLabel(coverage: string): Label {
+  return AI_COVERAGE[coverage] ?? UNKNOWN;
 }

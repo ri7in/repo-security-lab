@@ -55,13 +55,24 @@ function tarEntry(name: string, data: Buffer): Buffer {
 
 const VULNERABLE = 'const query = `SELECT * FROM users WHERE id = ${id}`\n';
 
-function archive(): Uint8Array {
+function archive(name = "root/src/db.ts", body = VULNERABLE): Uint8Array {
   return gzipSync(
-    Buffer.concat([
-      tarEntry("root/src/db.ts", Buffer.from(VULNERABLE)),
-      Buffer.alloc(1_024),
-    ]),
+    Buffer.concat([tarEntry(name, Buffer.from(body)), Buffer.alloc(1_024)]),
   );
+}
+
+/** Serves a different snapshot per repository, in claim order. */
+function archiveSequence(bodies: readonly Uint8Array[]): ArchiveFetcher {
+  let index = 0;
+  return {
+    async fetchArchive() {
+      const bytes = bodies[Math.min(index, bodies.length - 1)] as Uint8Array;
+      index += 1;
+      const body = new Response(Uint8Array.from(bytes).buffer).body;
+      if (body === null) throw new Error("test expected response body");
+      return { body, contentLength: bytes.byteLength, requestCount: 1 };
+    },
+  };
 }
 
 function archiveFetcher(bytes: Uint8Array): ArchiveFetcher {
@@ -282,5 +293,60 @@ describe("the AI engine inside a real scan", () => {
     // Both the real publication and the fallback are reported, so the log
     // shows the recovery was attempted and also failed.
     expect([...refusals.join("").matchAll(/publish_refused/g)]).toHaveLength(2);
+  }, 60_000);
+});
+
+describe("the reader budget", () => {
+  it("does not spend a slot on a repository with no code to read", async () => {
+    // The budget models provider requests. A repository of documentation makes
+    // none, and burning a slot on it used to cost the next repository its
+    // review for nothing.
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await store.createRequest({
+      requestId: "req_0000000001",
+      username: "ri7in",
+      nowMs: 1,
+    });
+    await store.completeDiscovery({
+      requestId: "req_0000000001",
+      githubAccountId: 123,
+      canonicalLogin: "ri7in",
+      repositories: [
+        { repositoryId: 7, name: "docs-only", isFork: false, commitSha: SHA },
+        { repositoryId: 8, name: "has-code", isFork: false, commitSha: SHA },
+      ],
+      nowMs: 2,
+    });
+    const worker = new RepositoryWorker({
+      store,
+      archiveFetcher: archiveSequence([
+        archive("root/README.md", "# just documentation\n"),
+        archive(),
+      ]),
+      gitleaks: scanner,
+      gitleaksBroker: new SourceBlindBroker("gitleaks", GITLEAKS_BROKER_MANIFEST),
+      workerId: "worker_00000001",
+      scratchBase: files.scratch,
+      allowedGithubAccountIds: new Set([123]),
+      scout: findingScout,
+      judges: [judge("alpha"), judge("beta")],
+      // One slot. The documentation repository must not take it.
+      aiRepositoryBudget: 1,
+    });
+    await worker.initialize();
+    await worker.runOne();
+    await worker.runOne();
+    const rows = await store.listRepositories({
+      requestId: "req_0000000001",
+      limit: 10,
+      afterRepositoryId: null,
+    });
+    store.close();
+    const coverage = new Map(
+      rows.repositories.map((row) => [row.name, row.coverage.ai]),
+    );
+    expect(coverage.get("docs-only")).toBe("not_applicable");
+    expect(coverage.get("has-code")).toBe("complete");
   }, 60_000);
 });

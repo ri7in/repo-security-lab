@@ -630,7 +630,6 @@ export class RepositoryWorker {
         if (this.#aiBudget <= 0) {
           coverage.ai = "unsupported";
         } else {
-          this.#aiBudget -= 1;
           try {
             const reviewed = await runAiEngine({
               sourcePath,
@@ -641,6 +640,11 @@ export class RepositoryWorker {
               judges: this.#judges,
               tokenBudget: AI_TOKEN_BUDGET,
             });
+            // The budget models provider requests, so it is spent only when a
+            // request was actually made. A repository of documentation makes
+            // none, and burning a slot on it used to cost a repository further
+            // down the list its review for nothing.
+            if (reviewed.requestsSpent > 0) this.#aiBudget -= 1;
             coverage.ai = reviewed.coverage;
             // A failed engine must always carry a reason. Publication refuses
             // an unattributed failure, and the refusal keeps the lease, which
@@ -665,6 +669,9 @@ export class RepositoryWorker {
             }
           } catch {
             // A model outage must never fail a scan whose scanners succeeded.
+            // The slot is spent either way here: something went wrong far
+            // enough in that a request may well have been made.
+            this.#aiBudget -= 1;
             coverage.ai = "failed";
             specialistReasons.ai = "SCANNER_INTERNAL";
           }
