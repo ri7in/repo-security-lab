@@ -19,7 +19,12 @@ import {
   type FindingLocation,
   type ReviewFinding,
 } from "@app/contracts";
-import { buildReviewContext, reviewablePath } from "./review-context.js";
+import {
+  buildReviewContext,
+  redactMatches,
+  reviewablePath,
+  type MatchSpan,
+} from "./review-context.js";
 import {
   runScannerCommand,
   type ScannerCommandRunner,
@@ -52,6 +57,12 @@ const findingSchema = z.object({
   // and a malformed location must degrade to "unreviewable", never fail a scan.
   File: z.string().max(4_096).optional(),
   StartLine: z.number().int().nonnegative().optional(),
+  // The matched span. Required to blank the real credential out of a review
+  // excerpt: `--redact` only redacts gitleaks' own output fields, never the
+  // file on disk, which is where excerpts are read from.
+  EndLine: z.number().int().nonnegative().optional(),
+  StartColumn: z.number().int().nonnegative().optional(),
+  EndColumn: z.number().int().nonnegative().optional(),
   Entropy: z.number().nonnegative().optional(),
 });
 
@@ -335,6 +346,9 @@ async function buildReview(
     RuleID: string;
     File?: string | undefined;
     StartLine?: number | undefined;
+    EndLine?: number | undefined;
+    StartColumn?: number | undefined;
+    EndColumn?: number | undefined;
     Entropy?: number | undefined;
   }[],
   sourceDirectory: string,
@@ -343,6 +357,24 @@ async function buildReview(
   const wrapper = await archiveWrapperDirectory(root);
   const review: ReviewFinding[] = [];
   const fileCache = new Map<string, readonly string[] | null>();
+
+  // Every match in a file is blanked before any excerpt is cut, because a
+  // window around one finding routinely spans another finding's credential.
+  const spansByFile = new Map<string, MatchSpan[]>();
+  for (const entry of parsed) {
+    if (entry.File === undefined || entry.StartLine === undefined) continue;
+    const key = relativeToRoot(entry.File, root);
+    if (key === null) continue;
+    const startLine = Math.max(1, entry.StartLine);
+    const spans = spansByFile.get(key) ?? [];
+    spans.push({
+      startLine,
+      endLine: Math.max(startLine, entry.EndLine ?? startLine),
+      startColumn: entry.StartColumn ?? 1,
+      endColumn: entry.EndColumn ?? Number.MAX_SAFE_INTEGER,
+    });
+    spansByFile.set(key, spans);
+  }
 
   for (const entry of parsed) {
     if (review.length >= REVIEW_MAX_FINDINGS) break;
@@ -358,10 +390,14 @@ async function buildReview(
         // already rejects traversal, so this is defence in depth rather than
         // the primary control.
         const root = path.resolve(sourceDirectory);
-        lines =
+        const raw =
           absolute === root || absolute.startsWith(`${root}${path.sep}`)
             ? (await readFile(absolute, "utf8")).split("\n")
             : null;
+        lines =
+          raw === null
+            ? null
+            : redactMatches(raw, spansByFile.get(relative) ?? []);
       } catch {
         lines = null;
       }

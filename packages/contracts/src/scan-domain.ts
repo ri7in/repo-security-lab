@@ -31,8 +31,13 @@ export const REVIEW_MAX_LINE_LENGTH = 200;
  *    report keeps exactly the numeric-token shape it has today.
  * 2. Every field is length-bounded and the array is count-bounded, so the
  *    channel's total capacity is fixed and small whatever the target contains.
- * 3. Secret values cannot ride along. Gitleaks runs under `--redact`, so the
- *    scanner never holds the value and context lines carry the redacted form.
+ * 3. Secret values are blanked out of the excerpt before it is built. This is
+ *    an active control, not a property inherited from the scanner: `--redact`
+ *    only redacts gitleaks' own output fields, while excerpts are read from
+ *    the file on disk, which still holds the real credential. Every matched
+ *    span in a file is blanked first, including matches other than the one
+ *    being described, because a window around one finding routinely spans
+ *    another. A real-binary test proves no fragment survives.
  *
  * The guarantee this weakens, stated plainly: it was "no archive-derived string
  * leaves the scan namespace". It is now "no archive-derived string reaches the

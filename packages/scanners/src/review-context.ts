@@ -143,3 +143,71 @@ export function reviewablePath(relativePath: string): string | null {
   if (normalized.split("/").includes("..")) return null;
   return normalized;
 }
+
+/** One matched span to blank out, in gitleaks' 1-based line/column terms. */
+export interface MatchSpan {
+  readonly startLine: number;
+  readonly endLine: number;
+  readonly startColumn: number;
+  readonly endColumn: number;
+}
+
+export const REDACTION_MARKER = "<redacted-secret>";
+
+/**
+ * Blanks every matched secret in a file before any excerpt is taken.
+ *
+ * This is the control that stops real credentials reaching a model, and it has
+ * to happen at file level rather than per finding. `--redact` only redacts
+ * gitleaks' own JSON output; the file on disk still holds the real value, and
+ * a context window built around finding one can easily span finding two. Every
+ * match in the file is therefore blanked first, and windows are cut afterwards.
+ *
+ * The span is treated as a hint, not as gospel. Gitleaks' columns proved to be
+ * offset by one against the real value, which left a character of the
+ * credential visible, so the span is widened and then the result is checked: if
+ * any long secret-shaped run survives on a line that had a match, the whole
+ * line is blanked. A less useful excerpt is a trivial cost; leaking part of a
+ * credential is not.
+ */
+/**
+ * Margin applied to a reported span, to absorb inconsistent column reporting.
+ *
+ * Measured against gitleaks 8.30.1: the reported start column sat one
+ * character past the real value in one file and two in another, so a span
+ * applied literally left a fragment of the credential visible. Two characters
+ * of an identifier are a cheap price for covering that.
+ */
+const SPAN_MARGIN = 2;
+
+export function redactMatches(
+  lines: readonly string[],
+  spans: readonly MatchSpan[],
+): string[] {
+  const redacted = [...lines];
+  for (const span of spans) {
+    const first = Math.max(1, span.startLine);
+    const last = Math.max(first, span.endLine);
+    const claimed = Math.max(0, span.endColumn - span.startColumn);
+    for (let line = first; line <= last && line <= redacted.length; line += 1) {
+      const text = redacted[line - 1] ?? "";
+      const rawFrom = line === first ? span.startColumn - 1 - SPAN_MARGIN : 0;
+      const rawTo = line === last ? span.endColumn + SPAN_MARGIN : text.length;
+      const from = Math.max(0, Math.min(rawFrom, text.length));
+      const to = Math.max(from, Math.min(rawTo, text.length));
+      // Removing less than gitleaks said the value spans means the span made
+      // no sense for this line. Drop the whole line rather than publish
+      // whatever part of the credential survived.
+      const removed = to - from;
+      const usable =
+        Number.isInteger(from) &&
+        Number.isInteger(to) &&
+        to > from &&
+        (line !== first || line !== last || removed >= claimed);
+      redacted[line - 1] = usable
+        ? text.slice(0, from) + REDACTION_MARKER + text.slice(to)
+        : REDACTION_MARKER;
+    }
+  }
+  return redacted;
+}

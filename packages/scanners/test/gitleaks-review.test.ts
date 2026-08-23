@@ -96,6 +96,9 @@ describe("gitleaks review context", () => {
           Match: "TELEGRAM_BOT_TOKEN=REDACTED",
           File: ".env.example",
           StartLine: 3,
+          EndLine: 3,
+          StartColumn: 21,
+          EndColumn: 28,
           Entropy: 3.2,
         },
       ]),
@@ -105,7 +108,10 @@ describe("gitleaks review context", () => {
     expect(reviewFindingSchema.safeParse(entry).success).toBe(true);
     expect(entry?.path).toBe(".env.example");
     expect(entry?.startLine).toBe(3);
-    expect(entry?.contextLines.join("\n")).toContain("TELEGRAM_BOT_TOKEN=");
+    // The name survives, the value does not. That split is the whole point:
+    // the reviewer needs to know which key it is, never what it is.
+    expect(entry?.contextLines.join("\n")).toContain("TELEGRAM_BOT_TOKEN");
+    expect(entry?.contextLines.join("\n")).toContain("<redacted-secret>");
   });
 
   it("reviews findings gitleaks reports with an absolute path", async () => {
@@ -158,6 +164,9 @@ describe("gitleaks review context", () => {
           Match: 'key: "REDACTED"',
           File: "src/config.ts",
           StartLine: 3,
+          EndLine: 3,
+          StartColumn: 10,
+          EndColumn: 18,
           Entropy: 4.1,
         },
       ]),
@@ -166,7 +175,7 @@ describe("gitleaks review context", () => {
     const joined = result.review?.[0]?.contextLines.join("\n") ?? "";
     expect(joined).not.toContain("ignore it");
     expect(joined).not.toContain("fake key");
-    expect(joined).toContain("key:");
+    expect(joined).toContain("key");
   });
 
   it("never lets a secret value into the channel", async () => {
@@ -182,13 +191,16 @@ describe("gitleaks review context", () => {
           Match: 'const k = "REDACTED"',
           File: "a.ts",
           StartLine: 1,
+          EndLine: 1,
+          StartColumn: 12,
+          EndColumn: 20,
           Entropy: 4.0,
         },
       ]),
     }).scan(setup.source);
-    // The scanner runs under --redact, so the only value present on disk and
-    // in the channel is the redaction marker itself.
-    expect(JSON.stringify(result.review)).toContain("REDACTED");
+    // --redact only redacts gitleaks' own output. The file on disk still holds
+    // the value, so the excerpt carries the marker this code puts there.
+    expect(JSON.stringify(result.review)).toContain("<redacted-secret>");
     expect(JSON.stringify(result.review)).not.toMatch(/AKIA|sk_live|ghp_/);
   });
 

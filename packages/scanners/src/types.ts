@@ -77,8 +77,8 @@ export interface GitleaksScanResult {
    * Where each finding sits, present only when the caller asked for it.
    *
    * Unlike `review`, this is published. It carries a path and a line and has
-   * no field able to hold a snippet or a value, and gitleaks runs redacted so
-   * the value does not exist on this side of the scanner to leak.
+   * no field able to hold a snippet or a value at all, which is why it needs
+   * no redaction pass of its own.
    */
   readonly locations: readonly FindingLocation[];
 }
