@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/require-await -- fixture generator models a chunked async network body */
-import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { lstat, mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
@@ -113,8 +113,8 @@ describe("streaming tar.gz guard and extractor", () => {
     await expect(readFile(path.join(target, "root/file"))).rejects.toThrow();
   });
 
-  it("rejects links and device-like special entries", async () => {
-    for (const type of ["1", "2", "3", "4", "6"]) {
+  it("rejects hard links and device-like special entries", async () => {
+    for (const type of ["1", "3", "4", "6"]) {
       await expect(
         extractTarGzip(
           compressed(tar([entry("root/special", Buffer.alloc(0), type)])),
@@ -122,6 +122,57 @@ describe("streaming tar.gz guard and extractor", () => {
         ),
       ).rejects.toMatchObject({ code: "ARCHIVE_UNSAFE" });
     }
+  });
+
+  it("skips a symbolic link and keeps scanning the rest", async () => {
+    // Refusing the whole archive over one symlink cost three of a hundred and
+    // seven repositories on a real account, and told their owner the archive
+    // "tried something a normal repository never does".
+    const root = await destination();
+    const counters = await extractTarGzip(
+      compressed(
+        tar([
+          entry("root/keep.txt", Buffer.from("kept")),
+          entry("root/link", Buffer.alloc(0), "2"),
+          entry("root/after.txt", Buffer.from("after")),
+        ]),
+      ),
+      root,
+    );
+    expect(counters.symlinkCount).toBe(1);
+    expect(counters.regularFileCount).toBe(2);
+    expect(await readFile(path.join(root, "root/keep.txt"), "utf8")).toBe("kept");
+    expect(await readFile(path.join(root, "root/after.txt"), "utf8")).toBe("after");
+  });
+
+  it("creates nothing at all for a symbolic link entry", async () => {
+    // The danger in a tar symlink is that creating it lets a later entry write
+    // through it to somewhere outside the root. Nothing is created, so there
+    // is nothing to write through.
+    const root = await destination();
+    await extractTarGzip(
+      compressed(tar([entry("root/link", Buffer.alloc(0), "2")])),
+      root,
+    );
+    await expect(lstat(path.join(root, "root/link"))).rejects.toMatchObject({
+      code: "ENOENT",
+    });
+  });
+
+  it("refuses a link name that tries to escape, rather than trusting the skip", async () => {
+    // The link target lives in the header's linkname field and is never read.
+    // A PAX linkpath header is still refused outright.
+    await expect(
+      extractTarGzip(
+        compressed(
+          tar([
+            entry("root/pax", Buffer.from("19 linkpath=/etc/x\n"), "x"),
+            entry("root/link", Buffer.alloc(0), "2"),
+          ]),
+        ),
+        await destination(),
+      ),
+    ).rejects.toMatchObject({ code: "ARCHIVE_UNSAFE" });
   });
 
   it("rejects case collisions in implicit parent directories", async () => {

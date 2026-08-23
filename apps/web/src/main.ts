@@ -44,6 +44,12 @@ import {
   statusLine,
   summaryCards,
 } from "./summary.js";
+import {
+  couldNotStart,
+  lostContact,
+  reportNotFound,
+  type PanelState,
+} from "./panel-states.js";
 import { retryPlan } from "./polling.js";
 import { installTooltips } from "./tooltip.js";
 import { usernameProblem } from "./username.js";
@@ -688,28 +694,11 @@ form.addEventListener("submit", (event) => {
       history.replaceState(null, "", `?request=${accepted.requestId}`);
       await poll(accepted.requestId);
     } catch (error) {
-      setScanState("failed");
-      const why = explainFailure(
-        error instanceof Error ? error.message : undefined,
+      showPanelState(
+        couldNotStart(
+          explainFailure(error instanceof Error ? error.message : undefined),
+        ),
       );
-      // The panel is only ever written from a summary, and a request that
-      // never produced one left step one pulsing forever and the heading
-      // reading "Scan in progress" directly over the words "Scan stopped".
-      statusTitle.textContent = "Scan stopped early";
-      botLive.dataset["state"] = "failed";
-      livePhase.textContent = "Stopped";
-      livePercent.textContent = "";
-      liveDetail.textContent = why;
-      signText.textContent = "Stopped";
-      seeResults.hidden = true;
-      for (const step of stepsList.querySelectorAll<HTMLElement>("li")) {
-        if (step.dataset["state"] === "active") step.dataset["state"] = "todo";
-      }
-      verdict.hidden = false;
-      verdict.dataset["tone"] = "concern";
-      verdictText.textContent = `This scan could not start. ${why}`;
-      announce(`Scan stopped. ${why}`);
-      liveStatus.textContent = `Scan stopped. ${why}`;
     } finally {
       setButtonBusy(false);
     }
@@ -791,47 +780,30 @@ void requestJson("/api/capabilities")
       "The secret scan does not depend on it and still runs on every repository that is not a fork.";
   });
 
-/**
- * A report that is not there.
- *
- * The heading and the agent panel used to keep saying "Scan in progress" and
- * "Idle, 0 percent, enter a username to start" underneath the message, because
- * both are only ever written from a summary that this path never receives.
- */
-function showUnavailable(): void {
+/** Paints one of the states that has no summary behind it. */
+function showPanelState(state: PanelState): void {
   setScanState("failed");
-  statusTitle.textContent = "Report not found";
-  liveStatus.textContent =
-    "That report link is not valid, or it has passed its 30 day expiry and been deleted.";
-  livePhase.textContent = "Not found";
+  statusTitle.textContent = state.heading;
+  liveStatus.textContent = state.status;
+  botLive.dataset["state"] = "failed";
+  livePhase.textContent = state.phase;
   livePercent.textContent = "";
   liveBar.style.width = "0%";
-  liveDetail.textContent = "Enter a username above to run a new scan.";
-  botLive.dataset["state"] = "failed";
-  signText.textContent = "Nothing to show";
+  liveDetail.textContent = state.detail;
+  signText.textContent = state.sign;
+  signFill.style.width = "0%";
   seeResults.hidden = true;
-  verdict.hidden = true;
-}
-
-/**
- * The service stopped answering, but the report is not gone.
- *
- * Everything already on the page stays where it is. The alternative, which is
- * what this used to do, was to wipe a fully populated twenty-three row ledger
- * and print "that report link is not valid" above it.
- */
-function showLostContact(): void {
-  setScanState("failed");
-  statusTitle.textContent = "Lost contact with the service";
-  liveStatus.textContent =
-    "The service stopped answering while this report was loading. Anything already shown below is real. Reload the page to pick it up again.";
-  botLive.dataset["state"] = "failed";
-  livePhase.textContent = "Lost contact";
-  livePercent.textContent = "";
-  liveDetail.textContent = "Reload the page to try again.";
-  signText.textContent = "Lost contact";
-  seeResults.hidden = true;
-  announce("Lost contact with the service. Reload the page to try again.");
+  for (const step of stepsList.querySelectorAll<HTMLElement>("li")) {
+    if (step.dataset["state"] === "active") step.dataset["state"] = "todo";
+  }
+  if (state.verdict === null) {
+    verdict.hidden = true;
+  } else {
+    verdict.hidden = false;
+    verdict.dataset["tone"] = "concern";
+    verdictText.textContent = state.verdict;
+  }
+  announce(state.announcement);
 }
 
 const existingRequest = new URLSearchParams(location.search).get("request");
@@ -841,7 +813,7 @@ if (existingRequest !== null) {
   statusSection.hidden = false;
   const parsedRequest = opaqueIdSchema.safeParse(existingRequest);
   if (!parsedRequest.success) {
-    showUnavailable();
+    showPanelState(reportNotFound());
   } else {
     setButtonBusy(true);
     setScanState("scanning");
@@ -849,11 +821,11 @@ if (existingRequest !== null) {
       .catch((error: unknown) => {
         // A report that is genuinely gone is a different thing from a service
         // that stopped answering, and only one of them should say "not found".
-        if (error instanceof Error && error.message === "REQUEST_GONE") {
-          showUnavailable();
-          return;
-        }
-        showLostContact();
+        showPanelState(
+          error instanceof Error && error.message === "REQUEST_GONE"
+            ? reportNotFound()
+            : lostContact(),
+        );
       })
       .finally(() => {
         setButtonBusy(false);

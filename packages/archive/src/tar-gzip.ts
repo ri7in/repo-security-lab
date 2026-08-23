@@ -75,6 +75,8 @@ export interface ArchiveExtractionReport {
   readonly entryCount: number;
   readonly regularFileCount: number;
   readonly directoryCount: number;
+  /** Entries skipped rather than created, so the count is not silent. */
+  readonly symlinkCount: number;
 }
 
 interface MutableCounters {
@@ -84,6 +86,7 @@ interface MutableCounters {
   entryCount: number;
   regularFileCount: number;
   directoryCount: number;
+  symlinkCount: number;
 }
 
 interface TarHeader {
@@ -396,6 +399,7 @@ export async function extractTarGzip(
     entryCount: 0,
     regularFileCount: 0,
     directoryCount: 0,
+    symlinkCount: 0,
   };
   const collisionKeys = new Set<string>();
   const pathSpellings = new Map<string, string>();
@@ -477,6 +481,26 @@ export async function extractTarGzip(
         continue;
       }
 
+      // A symbolic link is skipped, not refused.
+      //
+      // Refusing the whole archive over one cost three of a hundred and seven
+      // repositories on a real account: symlinks are ordinary in a repository
+      // and this rejected `bin/rip-shell`, `vendor/coffee-mode` and
+      // `test/models` along with everything around them, then told the owner
+      // their archive "tried something a normal repository never does".
+      //
+      // Skipping is safe in a way that extracting never is. The danger in a
+      // tar symlink is that creating it lets a LATER entry write through it to
+      // somewhere outside the root. Nothing is created here: the name is never
+      // used, the target is never read, and a symlink entry carries no data of
+      // its own, so nothing scannable is lost either. Its target, if it is
+      // inside the repository, is extracted under its own name anyway.
+      if (header.type === "2") {
+        counters.symlinkCount += 1;
+        if (pendingPax !== null) pendingPax = null;
+        await skipPadding(reader, header.size);
+        continue;
+      }
       if (header.type !== "0" && header.type !== "5") {
         throw new ArchiveError("ARCHIVE_UNSAFE");
       }

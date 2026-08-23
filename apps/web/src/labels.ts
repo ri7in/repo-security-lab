@@ -85,10 +85,10 @@ const REASONS: Record<string, Label> = {
       "This repository is over the size ceiling the free tier allows: 250 MB packed or 1 GB unpacked. It stays unscanned until that ceiling moves, so re-running today will not change it.",
   },
   ARCHIVE_UNSAFE: {
-    text: "Unsafe archive",
+    text: "Archive refused",
     tone: "problem",
     detail:
-      "The downloaded archive tried something a normal repository never does, such as writing outside its own folder. It was refused and deleted unopened.",
+      "The downloaded archive held an entry this scanner will not write to disk, such as a path pointing outside its own folder or a device node. It was refused and deleted unopened. Ordinary symbolic links are skipped rather than refused, so this is not one of those.",
   },
   ARCHIVE_INVALID: {
     text: "Broken archive",
