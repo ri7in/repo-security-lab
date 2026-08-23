@@ -85,6 +85,14 @@ export interface CreateRequestInput {
   readonly requestId: OpaqueId;
   readonly username: GithubLogin;
   readonly nowMs: number;
+  /**
+   * Two-letter country of the request, for the operator's usage log.
+   *
+   * Country only. The edge resolves it and hands over a code, so no address
+   * ever reaches the application and none can be stored by mistake. Absent for
+   * direct or unresolvable origins, which is a normal outcome, not an error.
+   */
+  readonly country?: string;
 }
 
 export interface CompleteDiscoveryInput {

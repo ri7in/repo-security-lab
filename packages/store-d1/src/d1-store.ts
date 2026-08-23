@@ -368,10 +368,20 @@ export class D1Store implements Store {
           this.#database,
           `INSERT INTO scan_requests(
              request_id, github_account_id, username, state, reason,
-             discovery_complete, ai_lane, created_at_ms, updated_at_ms
-           ) VALUES (?, NULL, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?)
+             discovery_complete, ai_lane, created_at_ms, updated_at_ms, country
+           ) VALUES (?, NULL, ?, 'accepted', NULL, 0, 'ai_not_run', ?, ?, ?)
            RETURNING request_id`,
-          [input.requestId, input.username, input.nowMs, input.nowMs],
+          [
+            input.requestId,
+            input.username,
+            input.nowMs,
+            input.nowMs,
+            // Anything that is not exactly two letters is stored as unknown
+            // rather than trusted, since this value arrives on a header.
+            typeof input.country === "string" && /^[A-Z]{2}$/.test(input.country)
+              ? input.country
+              : null,
+          ],
         ),
         statement(
           this.#database,

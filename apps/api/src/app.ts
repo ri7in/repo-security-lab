@@ -384,10 +384,15 @@ export function createApi(options: ApiOptions): Hono {
     }
     let accepted;
     try {
+      // Cloudflare resolves the country at the edge and sends it as a header,
+      // so the application never handles an address. Absent everywhere else,
+      // including local runs, which is why it is optional rather than required.
+      const country = context.req.header("cf-ipcountry");
       accepted = await options.store.createRequest({
         requestId,
         username: parsed.data.username,
         nowMs: now(),
+        ...(country === undefined ? {} : { country }),
       });
     } catch (error) {
       if (error instanceof StoreWriteReserveError) {
