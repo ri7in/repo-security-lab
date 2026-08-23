@@ -38,6 +38,15 @@ describe("the states with no summary behind them", () => {
     expect(reportNotFound().status).toContain("30 day expiry");
   });
 
+  it("clears the page only where there is nothing to show", () => {
+    // A report that does not exist was still rendering a grid of zeroes and an
+    // orphan hairline. A service that stopped answering must keep whatever is
+    // already on the page, because it is real.
+    expect(reportNotFound().blank).toBe(true);
+    expect(couldNotStart("Because.").blank).toBe(true);
+    expect(lostContact().blank).toBe(false);
+  });
+
   it("only offers a verdict where there is something to say", () => {
     // A report that does not exist has no verdict. A scan that could not start
     // does: the reason it could not.

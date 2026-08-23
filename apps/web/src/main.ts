@@ -815,6 +815,12 @@ function showPanelState(state: PanelState): void {
   for (const step of stepsList.querySelectorAll<HTMLElement>("li")) {
     if (step.dataset["state"] === "active") step.dataset["state"] = "todo";
   }
+  if (state.blank) {
+    summaryGrid.hidden = true;
+    progressBar.parentElement?.setAttribute("hidden", "");
+    ledgerSection.hidden = true;
+    findingsSection.hidden = true;
+  }
   if (state.verdict === null) {
     verdict.hidden = true;
   } else {

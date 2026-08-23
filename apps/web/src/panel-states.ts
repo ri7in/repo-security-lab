@@ -18,6 +18,15 @@ export interface PanelState {
   readonly announcement: string;
   /** Whether the verdict banner should carry the same explanation. */
   readonly verdict: string | null;
+  /**
+   * Whether there is any result to show at all.
+   *
+   * False keeps whatever is already rendered, which is the whole point of the
+   * lost-contact state. True clears the cards, the progress bar and the
+   * tables, because a report that does not exist was still rendering an
+   * orphan hairline and a grid of zeroes.
+   */
+  readonly blank: boolean;
 }
 
 /** A report id that is not a report, or one that has expired. */
@@ -31,6 +40,7 @@ export function reportNotFound(): PanelState {
     sign: "Nothing to show",
     announcement: "That report was not found.",
     verdict: null,
+    blank: true,
   };
 }
 
@@ -51,6 +61,8 @@ export function lostContact(): PanelState {
     sign: "Lost contact",
     announcement: "Lost contact with the service. Reload the page to try again.",
     verdict: null,
+    // Everything already on the page is real and stays.
+    blank: false,
   };
 }
 
@@ -64,5 +76,6 @@ export function couldNotStart(why: string): PanelState {
     sign: "Stopped",
     announcement: `Scan stopped. ${why}`,
     verdict: `This scan could not start. ${why}`,
+    blank: true,
   };
 }
