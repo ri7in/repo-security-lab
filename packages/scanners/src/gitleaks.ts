@@ -271,6 +271,11 @@ async function buildLocations(
 ): Promise<FindingLocation[]> {
   const root = path.resolve(sourceDirectory);
   const wrapper = await archiveWrapperDirectory(root);
+  // Two rules can match the same line, and one rule can match a line twice.
+  // Publishing "secrets.yaml:14, secrets.yaml:14" tells the reader nothing
+  // extra and spends the channel's budget saying it, so a repeated
+  // rule/path/line is counted once.
+  const seen = new Set<string>();
   const locations: FindingLocation[] = [];
   for (const entry of parsed) {
     if (locations.length >= MAX_LOCATIONS) break;
@@ -289,6 +294,9 @@ async function buildLocations(
         ? relative.slice(wrapper.length + 1)
         : relative;
     if (stripped === "") continue;
+    const key = `${entry.RuleID}\u0000${stripped}\u0000${String(entry.StartLine)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     locations.push({
       engine: "gitleaks",
       ruleId: entry.RuleID,

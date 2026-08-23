@@ -198,6 +198,17 @@ describe("published finding locations", () => {
     expect(result.locations[0]?.path).toBe("alpha/config.ts");
   });
 
+  it("reports a repeated rule, path and line only once", async () => {
+    const result = await scanWith([
+      raw({ File: "infrastructure/k8s/secrets.yaml", StartLine: 14 }),
+      raw({ File: "infrastructure/k8s/secrets.yaml", StartLine: 14 }),
+      raw({ File: "infrastructure/k8s/secrets.yaml", StartLine: 22 }),
+    ]);
+    expect(result.locations.map((entry) => entry.startLine)).toEqual([14, 22]);
+    // Deduplicating what is shown must not change what was counted.
+    expect(result.findings).toHaveLength(3);
+  });
+
   it("stays bounded however many findings the target produces", async () => {
     const many = Array.from({ length: MAX_LOCATIONS * 5 }, (_, index) =>
       raw({ StartLine: index + 1 }),
