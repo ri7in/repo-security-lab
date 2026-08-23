@@ -6,6 +6,7 @@ import type {
 } from "@app/contracts";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
 import type { PdfReport } from "./pdf.js";
+import { remediationLabel } from "./remediation.js";
 
 export interface ReportState {
   readonly summary: ScanRequestSummary;
@@ -58,31 +59,37 @@ export function reportDocument(
     sections: [
       {
         heading: "What was found",
+        layout: "list",
         note: "File paths and line numbers only. No source code and no secret values.",
-        emptyText: "Nothing was found.",
+        emptyText:
+          "Nothing was found. No exposed credential matched any of the rules gitleaks 8.30.1 runs. That is not a guarantee the code is secure.",
         columns: [
-          // Weighted so that no header truncates and "more than twenty", the
-          // longest occurrence bucket, still fits whole.
-          { title: "Repository", weight: 4.5 },
+          // Only the first value titles the block; the rest are labelled
+          // lines under it, so nothing here needs a width.
+          { title: "Repository", weight: 4 },
           { title: "What was found", weight: 4 },
-          { title: "Severity", weight: 2 },
-          { title: "Occurrences", weight: 3.5 },
-          { title: "Where", weight: 7, keep: "tail" },
+          { title: "Severity", weight: 1.8 },
+          { title: "How many", weight: 3.2 },
+          { title: "Where", weight: 6, keep: "tail" },
+          { title: "What to do", weight: 4 },
         ],
         rows: state.findings.map((finding) => [
           names.get(finding.repository_id) ??
             `repository ${String(finding.repository_id)}`,
           finding.rule_id.replaceAll("-", " "),
           finding.severity,
-          finding.occurrence_bucket.replaceAll("_", " "),
+          formatCount(finding.occurrence_bucket),
           formatLocations(finding.locations),
+          remediationLabel(finding.remediation_key).short,
         ]),
       },
       {
         heading: "What was covered",
         emptyText: "No repositories were examined.",
         columns: [
-          { title: "Repository", weight: 4 },
+          // The name is the only value that identifies a row, so it gets the
+          // width; the three outcomes are short fixed phrases.
+          { title: "Repository", weight: 7 },
           { title: "Status", weight: 3 },
           { title: "Secret scan", weight: 3 },
           { title: "AI code review", weight: 3 },
@@ -99,9 +106,28 @@ export function reportDocument(
       },
     ],
     footer:
-      'Public report, retained for 30 days. Characters outside printable ASCII are shown as "?". ' +
+      "Public report, retained for 30 days. This file uses a basic font, so accents and " +
+      'non-Latin characters in a file path appear as "?"; the web report shows them correctly. ' +
       origin,
   };
+}
+
+/**
+ * Occurrence buckets as digits.
+ *
+ * The column asks how many, and "twenty one plus" was the enum name with its
+ * underscores swapped out, which reads as machine output next to a severity
+ * and a line number.
+ */
+const COUNTS: Record<string, string> = {
+  one: "1",
+  two_to_five: "2 to 5",
+  six_to_twenty: "6 to 20",
+  twenty_one_plus: "21 or more",
+};
+
+export function formatCount(bucket: string): string {
+  return COUNTS[bucket] ?? bucket.replaceAll("_", " ");
 }
 
 /** The file name a downloaded report lands under. */

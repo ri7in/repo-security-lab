@@ -43,6 +43,16 @@ export interface PdfSection {
   readonly rows: readonly (readonly string[])[];
   /** Shown in place of the table when there are no rows. */
   readonly emptyText: string;
+  /**
+   * How each row is drawn.
+   *
+   * `table` fits short values into columns. `list` gives each row its own
+   * block, wrapping every value across as many lines as it needs, and is for
+   * rows that carry sentences. Six columns of prose in a 515pt page truncated
+   * the severity to "crit..." and the advice to "Use a paramete...", which in
+   * a security report is worse than another line of paper.
+   */
+  readonly layout?: "table" | "list";
 }
 
 export interface PdfReport {
@@ -103,6 +113,40 @@ function rule(page: Page, y: number, grey = 0.82): void {
   );
 }
 
+/**
+ * Breaks a value into lines that fit a character budget.
+ *
+ * Words are kept whole where they fit. A single token longer than the budget,
+ * which a deep file path usually is, is cut rather than allowed to run off the
+ * page.
+ */
+function wrap(value: string, characters: number): readonly string[] {
+  if (characters <= 0) return [];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of value.split(" ")) {
+    let piece = word;
+    while (piece.length > characters) {
+      if (current !== "") {
+        lines.push(current);
+        current = "";
+      }
+      lines.push(piece.slice(0, characters));
+      piece = piece.slice(characters);
+    }
+    if (current === "") {
+      current = piece;
+    } else if (current.length + 1 + piece.length <= characters) {
+      current += ` ${piece}`;
+    } else {
+      lines.push(current);
+      current = piece;
+    }
+  }
+  if (current !== "") lines.push(current);
+  return lines.length === 0 ? [""] : lines;
+}
+
 /** Character budget and x offset for every column of a table. */
 function layout(
   columns: readonly PdfColumn[],
@@ -158,6 +202,42 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
       advance(24);
       continue;
     }
+    if (section.layout === "list") {
+      const budget = Math.max(1, Math.floor(CONTENT_WIDTH / MONO_ADVANCE) - 1);
+      const labelWidth =
+        Math.max(...section.columns.slice(1).map((column) => column.title.length)) + 2;
+      for (const [index, row] of section.rows.entries()) {
+        write(
+          page,
+          MARGIN,
+          page.cursor,
+          "F4",
+          MONO_SIZE + 0.5,
+          fit(`${String(index + 1)}. ${row[0] ?? ""}`, budget, "head"),
+        );
+        advance(ROW_HEIGHT);
+        for (const [column, heading] of section.columns.slice(1).entries()) {
+          const value = row[column + 1] ?? "";
+          if (value === "") continue;
+          const label = `${heading.title}:`.padEnd(labelWidth, " ");
+          const lines = wrap(value, budget - labelWidth - 3);
+          for (const [line, text] of lines.entries()) {
+            write(
+              page,
+              MARGIN + 12,
+              page.cursor,
+              "F3",
+              MONO_SIZE,
+              line === 0 ? `${label}${text}` : `${" ".repeat(labelWidth)}${text}`,
+            );
+            advance(ROW_HEIGHT);
+          }
+        }
+        advance(5);
+      }
+      advance(9);
+      continue;
+    }
     const columns = layout(section.columns);
     const header = (): void => {
       for (const [index, column] of section.columns.entries()) {
@@ -199,12 +279,26 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
     advance(14);
   }
 
-  if (page.cursor < BOTTOM + 24) {
+  // Helvetica at 7.5pt averages close to half its point size per character.
+  // The footer ran off the right edge as one unwrapped line, taking the URL
+  // with it, which is the one part of it a reader might want.
+  const footerLines = wrap(report.footer, Math.floor(CONTENT_WIDTH / 3.6));
+  const footerHeight = footerLines.length * 9.5;
+  if (page.cursor < BOTTOM + footerHeight + 20) {
     page = newPage();
     pages.push(page);
   }
-  rule(page, BOTTOM + 14);
-  write(page, MARGIN, BOTTOM, "F1", 7.5, report.footer);
+  rule(page, BOTTOM + footerHeight + 6);
+  for (const [index, line] of footerLines.entries()) {
+    write(
+      page,
+      MARGIN,
+      BOTTOM + footerHeight - 9.5 - index * 9.5,
+      "F1",
+      7.5,
+      line,
+    );
+  }
 
   return serialize(pages);
 }

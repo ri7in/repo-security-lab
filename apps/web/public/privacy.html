@@ -13,16 +13,16 @@
       <h1>Privacy</h1>
       <p class="meta">Last updated: 23 August 2026</p>
       <p>This service scans public GitHub repositories and publishes a public coverage and findings report. It requires no account, sets no cookies, and runs no analytics.</p>
-      <h2>Data handled</h2>
+      <h2 id="data-handled">Data handled</h2>
       <ul>
         <li>The submitted GitHub username, public repository names and identifiers, and immutable commit hashes are stored with the report.</li>
         <li>Public repository archives are kept only in private worker scratch storage, are never executed, and are deleted before findings are published. Source is not stored in the report database.</li>
         <li>Reports contain the file path and line number of each match, so a finding can be acted on. They cannot contain source code, snippets, raw matches, secret values, or scanner prose.</li>
-        <li>During the private preview, optional email is restricted to one operator-controlled address. It is encrypted at rest and erased after delivery or final failure. A keyed abuse-control hash remains only until report deletion. Public scanning disables email until recipient consent can be verified.</li>
+        <li>Email notification is switched off. No address is collected, stored, or sent anywhere. If it is ever switched on, an address is encrypted at rest, is erased after delivery or after the send is given up on, and a keyed abuse-control hash remains only until the report is deleted.</li>
         <li>Cloudflare may process IP addresses for transport and rate limiting; the application does not persist them.</li>
       </ul>
-      <p>GitHub receives normal API and archive requests. Optional email uses Google Apps Script and Gmail to send the address one public report URL. No repository source code is sent to an email or AI provider. The AI source lane is disabled.</p>
-      <h2>Retention and visibility</h2>
+      <p id="ai-review">GitHub receives normal API and archive requests. The AI code review sends source files from your public repositories to OpenRouter and to Groq. Every line where the secret scanner matched a credential is replaced with a redaction marker before a file is sent, and files under directories such as <code>node_modules</code>, <code>dist</code> and <code>.git</code> are never read at all. Those providers may retain or train on what they receive, which is what pays for the free tier this service runs on. The secret scan sends no code anywhere. Optional email, when it is switched on, uses Google Apps Script and Gmail to send the address one public report URL.</p>
+      <h2 id="retention">Retention and visibility</h2>
       <p>Anyone with a report URL can view it, and a report names the file and line of each finding. Report URLs are unguessable and are not indexed by search engines. To have a report removed before it expires, contact the operator with the report ID. Active work with no update for 24 hours is failed, its leases are invalidated, and queued email ciphertext is erased. Terminal reports and related metadata are automatically deleted 30 days after their last update.</p>
       <p>For removal or privacy requests, contact the operator through <a href="https://github.com/ri7in">the public GitHub profile</a> and include only the report ID. Never post secrets or vulnerable source details publicly.</p>
     </main>

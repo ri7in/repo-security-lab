@@ -15,7 +15,9 @@ describe("repository labels", () => {
     // ran against an allowlist. On the public service a fork is the only thing
     // that triggers it, and "PRIVATE SLICE SCOPE" tells a visitor nothing.
     const label = repositoryLabel("cancelled", "PRIVATE_SLICE_SCOPE");
-    expect(label.text).toBe("Not checked");
+    // A fork skipped on purpose and a repository skipped for being too large
+    // are different news, and both used to wear the identical chip.
+    expect(label.text).toBe("Fork, skipped");
     expect(label.tone).toBe("skipped");
     expect(label.detail.toLowerCase()).toContain("fork");
   });
@@ -34,10 +36,29 @@ describe("repository labels", () => {
 
   it("says a size refusal is temporary, not a verdict", () => {
     const label = repositoryLabel("failed", "ARCHIVE_LIMIT");
-    expect(label.text).toBe("Not checked");
+    expect(label.text).toBe("Too big");
     expect(label.detail).toContain("250 MB");
-    // "Not checked" must not read as "checked and fine".
-    expect(label.detail.toLowerCase()).toContain("free compute");
+    // It must not read as "checked and fine", and it must not promise a
+    // re-check that nothing in this system ever performs.
+    expect(label.detail.toLowerCase()).toContain("free tier");
+    expect(label.detail.toLowerCase()).not.toContain("will be checked");
+  });
+
+  it("does not headline a partly scanned repository with the check that worked", () => {
+    // A repository whose secret scan came back clean and whose AI review
+    // failed was headlined "Scanner error", blaming the check that worked.
+    // The per-engine columns already say which one it was.
+    const label = repositoryLabel("partial", "SCANNER_INTERNAL");
+    expect(label.text).toBe("Partly scanned");
+    expect(label.detail).toContain("columns to the right");
+    // The specific reason is still reachable, just not as the headline.
+    expect(label.detail.toLowerCase()).toContain("scanner");
+  });
+
+  it("still lets the reason headline a failed or cancelled repository", () => {
+    // There, "failed" on its own tells a visitor nothing they can act on.
+    expect(repositoryLabel("failed", "ARCHIVE_LIMIT").text).toBe("Too big");
+    expect(repositoryLabel("cancelled", "PRIVATE_SLICE_SCOPE").text).toBe("Fork, skipped");
   });
 
   it("marks a finished repository as scanned", () => {
@@ -65,20 +86,29 @@ describe("repository labels", () => {
 });
 
 describe("coverage labels", () => {
-  it("reads nothing-to-check as a clean result", () => {
+  it("never paints an unread repository green", () => {
+    // On the live service this outcome is reached only by a repository that
+    // was skipped before a single file was downloaded, and it used to read
+    // "Nothing to check" in the same green as a repository that really was
+    // scanned and really was clean.
     const label = coverageLabel("not_applicable");
-    expect(label.tone).toBe("ok");
+    expect(label.tone).toBe("skipped");
     // "not applicable" read as a fault to every visitor who saw it.
     expect(label.text).not.toContain("applicable");
+    expect(label.text).toBe("Not scanned");
   });
 
-  it("separates not-yet-covered from nothing-to-check", () => {
-    expect(coverageLabel("unsupported").tone).toBe("skipped");
-    expect(coverageLabel("not_applicable").tone).toBe("ok");
+  it("does not state a verdict where it only knows the check ran", () => {
+    // "Clear" put a clean verdict in the row of a repository whose leaked key
+    // was listed two hundred pixels further down the same page.
+    const label = coverageLabel("complete");
+    expect(label.tone).toBe("ok");
+    expect(label.text).toBe("Fully scanned");
+    expect(label.text.toLowerCase()).not.toContain("clear");
   });
 
   it("lets a specific reason override the generic coverage state", () => {
-    expect(coverageLabel("failed", "ARCHIVE_LIMIT").text).toBe("Not checked");
+    expect(coverageLabel("failed", "ARCHIVE_LIMIT").text).toBe("Too big");
   });
 });
 
@@ -97,12 +127,30 @@ describe("AI review labels", () => {
     expect(aiCoverageLabel("unsupported").tone).toBe("skipped");
   });
 
-  it("separates nothing to read from not reached", () => {
-    // A repository of documentation is fine; a repository the reader could not
-    // be run against is not the same thing and must not read as fine.
-    expect(aiCoverageLabel("not_applicable").tone).toBe("ok");
+  it("never paints an unreviewed repository green", () => {
+    // Forks reach not_applicable, and they are substantial repositories that
+    // simply were not downloaded. "No code to read" was false about them, in
+    // the colour that means fine.
+    expect(aiCoverageLabel("not_applicable").tone).toBe("skipped");
     expect(aiCoverageLabel("unsupported").tone).toBe("skipped");
     expect(aiCoverageLabel("failed").tone).toBe("problem");
+  });
+
+  it("does not invent a cause it was never told", () => {
+    // It used to assert the model provider was unreachable, which the stored
+    // reason often contradicted. Inventing a rationale on a security page is
+    // worse than saying less.
+    const detail = aiCoverageLabel("failed").detail.toLowerCase();
+    expect(detail).not.toContain("could not be reached");
+    expect(detail).toContain("status column");
+  });
+
+  it("does not claim a selection rule the queue does not follow", () => {
+    // Repositories are claimed in repository id order, so "the most recently
+    // updated" was falsifiable from the ledger on the same page.
+    const detail = aiCoverageLabel("unsupported").detail.toLowerCase();
+    expect(detail).not.toContain("recently updated");
+    expect(detail).toContain("3 repositories per scan");
   });
 
   it("flags a half-finished review, because the result is incomplete", () => {

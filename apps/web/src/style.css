@@ -166,7 +166,9 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .live-status { min-height: 24px; font: 650 13px var(--mono); }
 .progress-track { height: 7px; margin: 18px 0 28px; background: var(--soft); overflow: hidden; }
 .progress-track i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .35s ease; }
-.summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); }
+/* auto-fit rather than a fixed count: the card set has grown once and the
+   grid should not have to be edited again when it grows twice. */
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border: 1px solid var(--line); }
 .summary-card { padding: 20px; border-right: 1px solid var(--line); }
 .summary-card:last-child { border: 0; }
 .summary-card strong { display: block; font: 700 28px var(--mono); }
@@ -175,7 +177,7 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .legend { margin: 0; color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; }
 .findings-note { margin: -10px 0 18px; color: var(--muted); font-size: .82rem; }
 .dot { display: inline-block; width: 7px; height: 7px; margin: 0 5px 0 12px; border-radius: 50%; background: var(--muted); }
-.dot.complete { background: var(--signal); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
+.dot.complete { background: var(--signal); }.dot.skipped { background: var(--muted); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
 .table-shell { width: 100%; overflow-x: auto; border: 1px solid var(--line); background: var(--paper-raised); }
 table { width: 100%; border-collapse: collapse; min-width: 940px; }
 th { padding: 13px 14px; text-align: left; color: var(--muted); border-bottom: 1px solid var(--line); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
@@ -188,7 +190,7 @@ tbody tr[data-active="true"] { background: var(--signal-soft); }
    correct outcomes and must not wear the same colour as a real failure, or a
    visitor reads a healthy report as a broken one. `cursor: help` advertises
    that the full explanation is one hover away. */
-.state-chip[data-detail] { cursor: help; position: relative; }
+[data-detail] { cursor: help; position: relative; }
 .state-chip::before { content: "○"; }
 .state-chip.tone-ok::before { content: "✓"; }
 .state-chip.tone-problem::before { content: "!"; }
@@ -211,7 +213,7 @@ footer p { max-width: 720px; margin: 0; }
 
 @media (max-width: 1050px) {
   .hero { grid-template-columns: 1fr; gap: 32px; padding-top: 26px; }
-  .summary-grid { grid-template-columns: 1fr 1fr; }.summary-card:nth-child(2) { border-right: 0; }.summary-card { border-bottom: 1px solid var(--line); }
+  .summary-card { border-bottom: 1px solid var(--line); }
   .principles { grid-template-columns: 1fr; }.principles article { border-right: 0; border-bottom: 1px solid var(--line); margin: 0; }
 }
 @media (max-width: 580px) {
@@ -320,6 +322,9 @@ footer p { max-width: 720px; margin: 0; }
 .nothing-found { margin: 0; padding: 22px 18px; border: 1px solid var(--signal); background: var(--signal-soft); color: var(--signal); font: 650 13px var(--mono); }
 
 .report-actions { display: flex; gap: 8px; }
+/* The advice cell explains itself on hover, like a state chip does. */
+.advice { display: inline-block; border-bottom: 1px dotted currentColor; }
+
 .download-report, .print-report { padding: 9px 14px; border: 1px solid var(--ink); background: none; color: inherit; font: 650 11px var(--mono); cursor: pointer; }
 .download-report { background: var(--ink); color: var(--paper); }
 .download-report:hover { filter: brightness(1.35); }
@@ -347,14 +352,14 @@ footer p { max-width: 720px; margin: 0; }
   tr { break-inside: avoid; }
   .state-chip { border: 0; background: none !important; padding: 0; font-size: 8.5pt; }
   /* Tooltips cannot be hovered on paper, so the explanation is printed. */
-  .state-chip[data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; }
+  [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
 }
 
 /* Instant explanation. The native title tooltip waits about a second, which is
    long enough that a visitor decides hovering does nothing. No delay here, and
    it appears on keyboard focus as well as hover. */
-.state-chip[data-detail]::after {
+[data-detail]::after {
   content: attr(data-detail);
   position: absolute;
   bottom: calc(100% + 7px);
@@ -375,7 +380,7 @@ footer p { max-width: 720px; margin: 0; }
   transition: opacity .06s linear;
   pointer-events: none;
 }
-.state-chip[data-detail]:hover::after,
-.state-chip[data-detail]:focus-visible::after { opacity: 1; visibility: visible; }
+[data-detail]:hover::after,
+[data-detail]:focus-visible::after { opacity: 1; visibility: visible; }
 /* The last columns sit at the right edge, so their tooltip opens leftwards. */
-td:nth-last-child(-n+2) .state-chip[data-detail]::after { left: auto; right: 0; }
+td:nth-last-child(-n+2) [data-detail]::after { left: auto; right: 0; }

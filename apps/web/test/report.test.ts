@@ -97,7 +97,7 @@ describe("the downloadable report", () => {
       "https://example.test",
     );
     // A repository that vanished from the file would read as one that passed.
-    expect(document_.sections[1]?.rows[0]?.[1]).toBe("Not checked");
+    expect(document_.sections[1]?.rows[0]?.[1]).toBe("Fork, skipped");
   });
 
   it("carries the verdict it was given rather than inventing one", () => {

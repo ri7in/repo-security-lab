@@ -53,7 +53,7 @@
             <div id="email-option" class="email-option" hidden>
               <label for="email">Email me when the report is ready <span>(optional)</span></label>
               <input id="email" name="email" type="email" autocomplete="email" maxlength="254" placeholder="you@example.com" />
-              <p>At most one best-effort report-ready email. The address is encrypted, never shown, and deleted after delivery or final failure.</p>
+              <p>One email, once, when the report is done. If it fails to send twice it is dropped rather than retried forever. The address is encrypted, never shown on the report, and deleted the moment the email is sent or given up on.</p>
             </div>
             <section id="quota-meter" class="quota-meter" data-level="unknown" aria-labelledby="quota-title">
               <div class="quota-head">
@@ -115,7 +115,7 @@
         <div class="section-heading">
           <div>
             <p class="eyebrow">THIS SCAN</p>
-            <h2 id="status-title">Coverage in progress</h2>
+            <h2 id="status-title">Scan in progress</h2>
           </div>
         </div>
         <p id="verdict" class="verdict" hidden><span class="verdict-mark" aria-hidden="true"></span><span id="verdict-text"></span></p>
@@ -130,10 +130,10 @@
             <p class="eyebrow">REPOSITORY LEDGER</p>
             <h2 id="ledger-title">What was covered</h2>
           </div>
-          <p class="legend"><span class="dot complete"></span>scanned <span class="dot waiting"></span>skipped <span class="dot failed"></span>problem</p>
+          <p class="legend"><span class="dot complete"></span>scanned <span class="dot skipped"></span>skipped <span class="dot waiting"></span>running <span class="dot failed"></span>problem</p>
         </div>
         <p id="ledger-note" class="findings-note"></p>
-        <div class="table-shell" tabindex="0" aria-label="Scrollable repository coverage table">
+        <div class="table-shell" tabindex="0" aria-label="Scrollable table of repositories">
           <table>
             <thead>
               <tr><th>Repository</th><th>Status</th><th>Secret scan</th><th>AI code review</th></tr>
@@ -160,12 +160,12 @@
             <button type="button" id="print-report" class="print-report">Print</button>
           </div>
         </div>
-        <p class="findings-note">Findings are public. Each shows the file and line where the scanner matched, so you can go and fix it. Secret values, code snippets, and raw matches never enter this report.</p>
+        <p class="findings-note">Findings are public. Each one names the file and the line, so you can go straight to it. Secret values, code snippets, and raw matches never enter this report. "How many" is a range rather than an exact count, and several matches can land on the same line, so one location can still cover more than one.</p>
         <p id="nothing-found" class="nothing-found" hidden>Nothing was found. No exposed credential matched any of the rules this scan runs.</p>
-        <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable deterministic findings table">
+        <div id="finding-table" class="table-shell" tabindex="0" aria-label="Scrollable table of findings">
           <table>
             <thead>
-              <tr><th>Repository</th><th>What was found</th><th>Severity</th><th>Occurrences</th><th>Location</th><th>What to do</th></tr>
+              <tr><th>Repository</th><th>What was found</th><th>Severity</th><th>How many</th><th>Location</th><th>What to do</th></tr>
             </thead>
             <tbody id="finding-rows"></tbody>
           </table>
@@ -174,14 +174,14 @@
 
       <section class="principles" aria-label="Product principles">
         <article><span>01</span><h3>Complete inventory</h3><p>Forks and empty repositories stay visible. Nothing quietly disappears.</p></article>
-        <article><span>02</span><h3>Immutable evidence</h3><p>Each scan is tied to an exact commit. AI can never hide deterministic findings.</p></article>
+        <article><span>02</span><h3>Evidence you can re-check</h3><p>Every scan records the exact commit it read. The AI review can add a finding but can never delete one the secret scanner produced.</p></article>
         <article><span>03</span><h3>Explicit limits</h3><p>Rate limits, unsupported checks, and partial results are labeled instead of guessed away.</p></article>
       </section>
     </main>
 
     <footer>
       <p><strong>Public report:</strong> visible to anyone with the link, retained for 30 days. File paths and line numbers are shown; source code and secret values are not. <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
-      <p class="ai-disclosure" id="ai-disclosure" hidden><strong>The code review sends your public code to a model.</strong> It reads source files from your public repositories and sends them to <span id="ai-provider-name">an external model provider</span>. Every line where the secret scanner found a credential is blanked out first. Those providers may keep or train on what they receive, which is what pays for the free tier this runs on. The secret scan never sends code anywhere, and this section only appears while the code review is switched on. <a href="/privacy.html#deep-read">Exactly what is sent</a></p>
+      <p class="ai-disclosure" id="ai-disclosure" hidden><strong>The code review sends your public code to a model.</strong> It reads source files from your public repositories and sends them to <span id="ai-provider-name">an external model provider</span>. Every line where the secret scanner found a credential is blanked out first. Those providers may keep or train on what they receive, which is what pays for the free tier this runs on. The secret scan never sends code anywhere, and this section only appears while the code review is switched on. <a href="/privacy.html#ai-review">Exactly what is sent</a></p>
       <p id="footer-name"></p>
     </footer>
   </body>

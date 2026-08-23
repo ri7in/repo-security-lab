@@ -46,7 +46,11 @@ describe("the verdict", () => {
       [],
     );
     expect(decided.tone).toBe("clear");
-    expect(decided.text).toContain("All 2 public repositories");
+    // Names the checker rather than promising "clean": the secret scan covers
+    // every repository, the code review covers at most three, and a headline
+    // that blurs the two overstates the whole result.
+    expect(decided.text).toContain("all 2 public repositories");
+    expect(decided.text.toLowerCase()).not.toContain("came back clean");
   });
 
   it("will not call a scan clear when a repository was skipped", () => {
@@ -58,7 +62,9 @@ describe("the verdict", () => {
       [],
     );
     expect(decided.tone).toBe("partial");
-    expect(decided.text).toContain("1 could not be checked");
+    // "Could not be checked" told people something had broken when the usual
+    // cause is a fork this tool deliberately does not scan.
+    expect(decided.text).toContain("1 was skipped or could not be read");
   });
 
   it("will not call a scan clear when a repository failed", () => {
@@ -92,6 +98,18 @@ describe("the verdict", () => {
     expect(decided.tone).toBe("concern");
   });
 
+  it("still admits what it did not look at when it did find something", () => {
+    // The findings branch used to return early with "every one is listed
+    // below", claiming completeness over repositories nobody examined.
+    const decided = summarizeVerdict(
+      "ri7in",
+      [repository({ state: "cancelled" }), repository({ repositoryId: 2 })],
+      [finding()],
+    );
+    expect(decided.text).toContain("not fully checked");
+    expect(decided.text).toContain("there may be more");
+  });
+
   it("does not call an empty account clean", () => {
     // Zero repositories checked, zero findings. "All 0 came back clean" would
     // be technically true and completely misleading.
@@ -102,7 +120,7 @@ describe("the verdict", () => {
 
   it("gets the singular right for one repository and one finding", () => {
     expect(summarizeVerdict("ri7in", [repository()], []).text).toContain(
-      "All 1 public repository",
+      "all 1 public repository",
     );
     expect(
       summarizeVerdict("ri7in", [repository()], [finding()]).text,

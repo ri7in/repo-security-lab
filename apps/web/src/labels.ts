@@ -37,7 +37,8 @@ const REPOSITORY_STATES: Record<string, Label> = {
   partial: {
     text: "Partly scanned",
     tone: "problem",
-    detail: "Some checks finished and at least one did not. The Secrets column says which.",
+    detail:
+      "Some checks finished and at least one did not. The columns to the right say which one, and every check that did finish still counts.",
   },
   cancelled: {
     text: "Skipped",
@@ -71,16 +72,16 @@ const REPOSITORY_STATES: Record<string, Label> = {
  */
 const REASONS: Record<string, Label> = {
   PRIVATE_SLICE_SCOPE: {
-    text: "Not checked",
+    text: "Fork, skipped",
     tone: "skipped",
     detail:
       "This is a fork, so it was not checked. The code belongs to the original project: anything found here would be someone else's to fix, and reporting it against you would be wrong.",
   },
   ARCHIVE_LIMIT: {
-    text: "Not checked",
+    text: "Too big",
     tone: "skipped",
     detail:
-      "This repository is too big to check on the free compute this runs on: over 250 MB packed or 1 GB unpacked. When there is enough free compute to afford it, it will be checked. Not today.",
+      "This repository is over the size ceiling the free tier allows: 250 MB packed or 1 GB unpacked. It stays unscanned until that ceiling moves, so re-running today will not change it.",
   },
   ARCHIVE_UNSAFE: {
     text: "Unsafe archive",
@@ -172,17 +173,29 @@ const REASONS: Record<string, Label> = {
 };
 
 const COVERAGE: Record<string, Label> = {
-  complete: { text: "Clear", tone: "ok", detail: "This check ran over the whole repository." },
-  partial: {
-    text: "Partial",
-    tone: "problem",
-    detail: "This check ran but could not cover everything.",
-  },
-  not_applicable: {
-    text: "Nothing to check",
+  // "Clear" stated a verdict where the field only records that the check ran,
+  // so a repository with a leaked key in the findings table below read "Clear"
+  // in its own row. Coverage says what happened, never what was concluded.
+  complete: {
+    text: "Fully scanned",
     tone: "ok",
     detail:
-      "This repository contains nothing this check applies to, so there was nothing to find. This is a clean result, not a failure.",
+      "Gitleaks 8.30.1 read every file in this repository. Anything it matched is in the findings table further down the page.",
+  },
+  partial: {
+    text: "Partly scanned",
+    tone: "problem",
+    detail:
+      "This check started and did not reach the whole repository, so treat a quiet result here as incomplete rather than as clean.",
+  },
+  // Reached on the live service only by a repository that was skipped before
+  // a single file was downloaded, which is not a clean result and must not
+  // wear the colour of one.
+  not_applicable: {
+    text: "Not scanned",
+    tone: "skipped",
+    detail:
+      "Nothing here was read. Either the repository was skipped before download, or it holds nothing this check applies to. Green would be a lie either way.",
   },
   unsupported: {
     text: "Not yet covered",
@@ -196,8 +209,14 @@ const COVERAGE: Record<string, Label> = {
 const UNKNOWN: Label = {
   text: "Unknown",
   tone: "problem",
-  detail: "An unrecognised state. This is a bug worth reporting.",
+  detail:
+    "An unrecognized state, which is a bug in this tool rather than a problem with your code. The report id is in the address bar if you want to send it in.",
 };
+
+/** The written explanation for a stored failure code, if there is one. */
+export function failureDetail(code: string): string | undefined {
+  return REASONS[code]?.detail;
+}
 
 /** The visible outcome for a repository row, reason folded into the label. */
 export function repositoryLabel(state: string, reason?: string): Label {
@@ -205,7 +224,19 @@ export function repositoryLabel(state: string, reason?: string): Label {
   if (reason === undefined) return base;
   const explained = REASONS[reason];
   if (explained === undefined) return base;
-  // The reason is more specific than the state, so it wins the chip text.
+  // A partly scanned repository keeps its own headline.
+  //
+  // The reason on a partial row names ONE engine that failed, and letting it
+  // win produced rows that contradicted themselves: a repository whose secret
+  // scan came back clean and whose AI review failed was headlined "Scanner
+  // error", which blames the check that worked. The per-engine columns are
+  // right there and already say which one it was, so the reason goes to the
+  // hover instead of the chip.
+  if (state === "partial") {
+    return { ...base, detail: `${base.detail} ${explained.detail}` };
+  }
+  // On a failed or cancelled row the reason IS the whole story, and "failed"
+  // on its own tells a visitor nothing they can act on.
   return {
     text: explained.text,
     tone: explained.tone,
@@ -243,22 +274,25 @@ const AI_COVERAGE: Record<string, Label> = {
       "The review started and did not finish, usually because there was more to check than one day's free model budget covers. Anything it did confirm is shown.",
   },
   not_applicable: {
-    text: "No code to read",
-    tone: "ok",
+    text: "Not reviewed",
+    tone: "skipped",
     detail:
-      "This repository holds no source a code reviewer could read, so there was nothing for this check to do.",
+      "No model looked at this repository. Either it was skipped before download, or it holds no source file a code reviewer reads.",
   },
   unsupported: {
     text: "Not reviewed",
     tone: "skipped",
     detail:
-      "The daily free model budget is small and shared, so only the most recently updated repositories get a full code review. The secret scan ran on this one either way.",
+      "Only 3 repositories per scan get a full code review, because the free daily model budget covers 16 across everyone who uses this. The secret scan ran on this one either way.",
   },
+  // Deliberately does not name a cause. It once claimed the provider was
+  // unreachable, which the stored reason often contradicted, and inventing a
+  // rationale on a security page is worse than saying less.
   failed: {
     text: "Review failed",
     tone: "problem",
     detail:
-      "The model provider could not be reached for this repository. The secret scan is unaffected and its result stands.",
+      "The code review did not finish for this repository. The Status column carries the reason. The secret scan is unaffected and its result stands.",
   },
   waiting: {
     text: "Waiting",

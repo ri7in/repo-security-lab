@@ -34,12 +34,19 @@ export function summarizeVerdict(
   const skipped = uncheckedCount(repositories);
   const checked = total - skipped;
 
+  const unexamined =
+    skipped === 0
+      ? ""
+      : ` ${String(skipped)} of ${String(total)} ${skipped === 1 ? "repository was" : "repositories were"} ` +
+        "not fully checked, so there may be more.";
+
   if (findings.length > 0) {
     return {
       tone: "concern",
       text:
         `${String(findings.length)} thing${findings.length === 1 ? "" : "s"} to fix in ` +
-        `${username}'s public code. Every one is listed below with the file and line.`,
+        `${username}'s public code, ${findings.length === 1 ? "listed" : "all listed"} below ` +
+        `with the file and the line.${unexamined}`,
     };
   }
   if (total === 0) {
@@ -52,13 +59,20 @@ export function summarizeVerdict(
   if (skipped > 0) {
     return {
       tone: "partial",
+      // "Could not be checked" told people something had broken when the
+      // usual cause is a fork this tool deliberately does not scan.
       text:
-        `Nothing exposed in the ${String(checked)} ${checked === 1 ? "repository" : "repositories"} that were checked. ` +
-        `${String(skipped)} could not be checked, and ${skipped === 1 ? "it is" : "they are"} marked below.`,
+        `Nothing exposed in the ${String(checked)} ${checked === 1 ? "repository" : "repositories"} that were scanned. ` +
+        `${String(skipped)} ${skipped === 1 ? "was" : "were"} skipped or could not be read, and the ledger below says which and why.`,
     };
   }
+  // Names the checker and what it does, rather than promising "clean". The
+  // secret scan covers every repository; the code review covers at most three,
+  // and a headline that blurs the two overstates the whole result.
   return {
     tone: "clear",
-    text: `Nothing exposed. All ${String(total)} public ${total === 1 ? "repository" : "repositories"} were checked and came back clean.`,
+    text:
+      `No exposed credentials. The secret scan read all ${String(total)} public ` +
+      `${total === 1 ? "repository" : "repositories"} and matched nothing.`,
   };
 }

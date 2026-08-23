@@ -22,17 +22,20 @@ import {
 import {
   aiCoverageLabel,
   coverageLabel,
+  failureDetail,
   repositoryLabel,
   type Label,
 } from "./labels.js";
 import { progressModel, type Step } from "./progress.js";
 import { buildPdf } from "./pdf.js";
 import {
+  formatCount,
   formatLocations,
   reportDocument,
   reportFileName,
   type ReportState,
 } from "./report.js";
+import { remediationLabel } from "./remediation.js";
 import { summarizeVerdict } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
@@ -201,6 +204,22 @@ function labelChip(label: Label): HTMLElement {
   return chip;
 }
 
+/**
+ * Turns a stored failure code into a sentence.
+ *
+ * The status line used to print the code with its underscores swapped for
+ * spaces, so a visitor who hit the daily database ceiling read "Request
+ * stopped: d1 write reserve." D1 is Cloudflare's database product. The
+ * explanations already existed one file away and were never consulted.
+ */
+function explainFailure(code: string | undefined): string {
+  const explained = code === undefined ? undefined : failureDetail(code);
+  return (
+    explained ??
+    "Something went wrong that this page cannot explain. Try again in a few minutes; the report id in the address bar is what to send in if it keeps happening."
+  );
+}
+
 function terminalCount(summary: ScanRequestSummary): number {
   return ["complete", "empty", "partial", "failed", "cancelled"].reduce(
     (total, state) => total + summary.repositoryTotals[state as keyof typeof summary.repositoryTotals],
@@ -209,6 +228,7 @@ function terminalCount(summary: ScanRequestSummary): number {
 }
 
 let findingsShown = 0;
+let reviewedShown = 0;
 
 function renderSummary(summary: ScanRequestSummary): void {
   const total = Object.values(summary.repositoryTotals).reduce(
@@ -222,11 +242,17 @@ function renderSummary(summary: ScanRequestSummary): void {
     summary.repositoryTotals.cancelled;
   // "Terminal" is a word from the state machine, and a skipped fork was being
   // counted under "needs attention" as though the visitor had to do something
-  // about it. Four numbers a visitor can act on, in the words they would use.
+  // about it.
+  //
+  // The two scans are counted separately on purpose. "Fully scanned" over a
+  // table where most rows read "Not reviewed" was a contradiction a reader
+  // could see without scrolling: the secret scan reaches every repository, the
+  // code review reaches three.
   const values = [
     [String(total), "public repositories"],
-    [String(summary.repositoryTotals.complete), "fully scanned"],
-    [String(notChecked), "not checked"],
+    [String(summary.repositoryTotals.complete), "secret-scanned"],
+    [String(reviewedShown), "code-reviewed"],
+    [String(notChecked), "not fully checked"],
     [String(findingsShown), findingsShown === 1 ? "finding" : "findings"],
   ];
   summaryGrid.replaceChildren(
@@ -245,7 +271,7 @@ function renderSummary(summary: ScanRequestSummary): void {
   progressBar.style.width = `${percent}%`;
   liveStatus.textContent =
     summary.state === "failed"
-      ? `Request stopped: ${summary.reason?.replaceAll("_", " ").toLowerCase() ?? "fixed safety gate"}.`
+      ? `Scan stopped. ${explainFailure(summary.reason)}`
       : summary.state === "complete"
         ? `All ${String(total)} ${total === 1 ? "repository" : "repositories"} finished.`
         : `${String(terminal)} of ${String(total)} repositories finished so far.`;
@@ -259,16 +285,23 @@ function renderSummary(summary: ScanRequestSummary): void {
   liveStatus.textContent += ` Updated ${new Date(summary.updatedAt).toLocaleString()}.`;
   // "Coverage in progress" over a finished ledger is the kind of stale heading
   // that makes a visitor doubt the numbers under it.
+  // "Coverage" is the word from the design doctrine. On a security page a
+  // stranger reads it as test coverage or as insurance.
   statusTitle.textContent =
     summary.state === "complete"
-      ? "Coverage complete"
+      ? "Scan finished"
       : summary.state === "failed"
-        ? "Coverage stopped"
-        : "Coverage in progress";
+        ? "Scan stopped early"
+        : "Scan in progress";
   setScanState(summary.state === "complete" ? "complete" : summary.state === "failed" ? "failed" : "scanning");
 }
 
 function renderRepositories(repositories: readonly RepositoryRow[]): void {
+  // Counted from the rows rather than from the request's coverage totals: the
+  // stored totals predate the AI engine and never move for it.
+  reviewedShown = repositories.filter(
+    (repository) => repository.coverage.ai === "complete",
+  ).length;
   rows.replaceChildren(
     ...repositories.map((repository) => {
       const row = document.createElement("tr");
@@ -276,6 +309,9 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       const name = document.createElement("td");
       name.className = "repo-name";
       name.textContent = repository.name;
+      // The one value that identifies the row, so it must stay recoverable
+      // even where the column runs out of width.
+      name.title = repository.name;
       // Three columns a visitor can act on. The pipeline stages that used to
       // sit here (snapshot, guard, normalize) are internal bookkeeping, and
       // the checkers that are not switched on yet only ever said "not
@@ -308,14 +344,14 @@ function renderFindings(
   findingRows.replaceChildren(
     ...findings.map((finding) => {
       const row = document.createElement("tr");
+      const advice = remediationLabel(finding.remediation_key);
       const values = [
         repositoryNames.get(finding.repository_id) ??
-          `repository ${finding.repository_id}`,
+          `repository ${String(finding.repository_id)}`,
         finding.rule_id.replaceAll("-", " "),
         finding.severity,
-        finding.occurrence_bucket.replaceAll("_", " "),
+        formatCount(finding.occurrence_bucket),
         formatLocations(finding.locations),
-        finding.remediation_key.replaceAll("-", " "),
       ];
       row.append(
         ...values.map((value, index) => {
@@ -325,6 +361,18 @@ function renderFindings(
           return cell;
         }),
       );
+      // The last column answers "what do I do now", and two words was not an
+      // answer. The cell keeps a short imperative and carries the whole thing
+      // on hover, the same way a state chip does.
+      const todo = document.createElement("td");
+      const action = document.createElement("span");
+      action.className = "advice";
+      action.textContent = advice.short;
+      action.dataset["detail"] = advice.detail;
+      action.setAttribute("aria-label", `${advice.short}. ${advice.detail}`);
+      action.tabIndex = 0;
+      todo.append(action);
+      row.append(todo);
       return row;
     }),
   );
@@ -467,7 +515,7 @@ form.addEventListener("submit", (event) => {
   findingRows.replaceChildren();
   setScanState("scanning");
   statusSection.hidden = false;
-  liveStatus.textContent = "Creating a durable coverage request…";
+  liveStatus.textContent = "Looking up the account on GitHub.";
   void (async () => {
     try {
       const accepted = scanRequestAcceptedSchema.parse(
@@ -487,7 +535,7 @@ form.addEventListener("submit", (event) => {
       await poll(accepted.requestId);
     } catch (error) {
       setScanState("failed");
-      liveStatus.textContent = `Request stopped: ${error instanceof Error ? error.message.replaceAll("_", " ") : "fixed safety gate"}.`;
+      liveStatus.textContent = `Scan stopped. ${explainFailure(error instanceof Error ? error.message : undefined)}`;
     } finally {
       button.disabled = false;
     }
@@ -535,9 +583,12 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   }
 
   const repos = budget.repoLimitPerRequest;
+  // Not "your most recently updated". Repositories are claimed in id order, so
+  // that claim was falsifiable from the ledger on the same page.
   quotaLine.textContent =
     `${String(budget.deepReadsRemaining)} of ${String(budget.deepReadsPerDay)} full code reviews left today. ` +
-    `Each scan reviews your ${String(repos)} most recently updated ${repos === 1 ? "repository" : "repositories"} line by line. Every other repository still gets the secret scan.`;
+    `Each scan reads ${String(repos)} of your ${repos === 1 ? "repository" : "repositories"} line by line. ` +
+    "Every repository still gets the secret scan.";
   quotaSub.textContent =
     "Free and open source, run by one person. The daily budget is small on purpose and resets overnight.";
 }
