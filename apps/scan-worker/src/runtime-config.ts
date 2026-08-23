@@ -56,6 +56,11 @@ export interface ScanWorkerConfiguration {
 function scoutConfig(
   environment: NodeJS.ProcessEnv,
 ): null | { readonly apiKey: string; readonly models: readonly string[] } {
+  // Off unless explicitly switched on. The reader is new, and a repository it
+  // cannot publish keeps its lease, which stalls the queue behind it. Until
+  // that failure is understood, a scan without an AI pass is a far better
+  // outcome than a scan that does not finish.
+  if (environment["AI_REVIEW_ENABLED"] !== "true") return null;
   const apiKey = environment["OPENROUTER_API_KEY"];
   if (apiKey === undefined || apiKey.trim() === "") return null;
   const preferred = environment["OPENROUTER_SCOUT_MODEL"];
