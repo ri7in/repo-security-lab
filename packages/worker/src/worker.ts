@@ -189,20 +189,23 @@ function leaseRef(repository: RepositoryRecord, workerId: OpaqueId): LeaseRef {
  * and only when it is one this code raised. Anything else, including anything
  * a scanner or a model could have influenced, is reported as a fixed class.
  */
-const KNOWN_PUBLISH_FAILURES = new Set([
-  "invalid publication metadata",
-  "invalid publication coverage",
-  "invalid publication findings",
-  "invalid coverage row",
-  "invalid finding row",
-]);
+/**
+ * Messages safe to print verbatim, because this code wrote all of them.
+ *
+ * Anything else is matched against a conservative shape first. A scanner path,
+ * a code excerpt or a model's prose would all fail that shape and be reported
+ * as UNCLASSIFIED with only a length, which is enough to tell a large echoed
+ * body from a short internal string without printing either.
+ */
+const SAFE_MESSAGE = /^[A-Za-z0-9 _.,'-]{1,160}$/;
 
 function reportPublishFailure(error: unknown): void {
   const message = error instanceof Error ? error.message : "";
   process.stderr.write(
     `${JSON.stringify({
       event: "publish_refused",
-      reason: KNOWN_PUBLISH_FAILURES.has(message) ? message : "UNCLASSIFIED",
+      reason: SAFE_MESSAGE.test(message) ? message : "UNCLASSIFIED",
+      length: message.length,
     })}\n`,
   );
 }
