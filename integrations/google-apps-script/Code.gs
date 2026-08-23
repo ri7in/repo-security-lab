@@ -102,11 +102,11 @@ function doPost(event) {
           body:
             "Your public, source-blind repository security report is ready:\n\n" +
             body.reportUrl +
-            "\n\nThe report never includes secret values, source snippets, or repository paths.",
+            "\n\nThe report shows where each finding is, by file and line. It never includes secret values or source code.",
           htmlBody:
             "<p>Your public, source-blind repository security report is ready.</p>" +
             '<p><a href="' + body.reportUrl + '">Open the report</a></p>' +
-            "<p>The report never includes secret values, source snippets, or repository paths.</p>",
+            "<p>The report shows where each finding is, by file and line. It never includes secret values or source code.</p>",
           name: "Repository security report",
         });
       } catch (sendError) {

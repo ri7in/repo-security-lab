@@ -23,11 +23,15 @@ const SOURCE_CANARY = "RVN_8a6d2f91c4b7e503";
 /**
  * Canary planted in the FILE NAME rather than the file contents.
  *
- * Without this the proof only ever watched file contents, so a report that
- * began publishing paths would have kept this test green and the suite would
- * have reported the egress guarantee intact while it had actually changed.
- * Whatever decision is taken about publishing locations, it should be taken
- * deliberately and turn this test red on the way through.
+ * Reports now publish the path and line of each finding, so unlike the two
+ * canaries above this one is EXPECTED to cross egress, and the test asserts
+ * that it does. It is the proof that locations survive the whole pipeline
+ * rather than being silently dropped.
+ *
+ * The split matters: paths are published on purpose, file contents and secret
+ * values are still forbidden everywhere. Keeping both assertions in one test
+ * is what stops "we publish locations" quietly widening into "we publish
+ * whatever the scanner saw".
  */
 const PATH_CANARY = "RVN_PATH_3d9e7b41f2a6c805";
 const SYNTHETIC_SECRET = [
@@ -248,19 +252,25 @@ test.skipIf(!enabled || binaryPath === undefined || binaryHash === undefined)(
       Buffer.from(capturedResponses.join("\n")),
       Buffer.from(capturedLogs.join("\n")),
     ]).toString("latin1");
+    // File contents and secret values may never cross egress, whatever the
+    // report publishes about where a finding sits.
     const forbidden = [
       SOURCE_CANARY,
       SYNTHETIC_SECRET,
-      PATH_CANARY,
       ...eightCharacterWindows(SOURCE_CANARY),
       ...eightCharacterWindows(SYNTHETIC_SECRET),
-      ...eightCharacterWindows(PATH_CANARY),
     ];
     for (const fragment of new Set(forbidden)) {
       expect(egress, `source fragment crossed egress: ${fragment}`).not.toContain(
         fragment,
       );
     }
+    // The path is published deliberately. If this stops holding, locations are
+    // being dropped somewhere in the pipeline and the report is unactionable.
+    expect(
+      capturedResponses.at(-1),
+      "published finding lost its location",
+    ).toContain(PATH_CANARY);
   },
   60_000,
 );

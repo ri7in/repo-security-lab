@@ -77,7 +77,7 @@ describe("pinned Gitleaks adapter", () => {
     ).toBe(GITLEAKS_IGNORE_SHA256);
   });
 
-  it("uses only explicit trusted policy and returns no path or secret strings", async () => {
+  it("uses only explicit trusted policy and returns no secret or scanner-prose strings", async () => {
     const setup = await fixture();
     const calls: readonly string[][] = [];
     const mutableCalls = calls as string[][];
@@ -104,6 +104,9 @@ describe("pinned Gitleaks adapter", () => {
       findings: [{ ruleId: "github-pat" }],
       rawFindingCount: 1,
       findingLimitExceeded: false,
+      // No StartLine on this fixture, so there is nothing locatable. A finding
+      // without a line is still reported, just without a location.
+      locations: [],
     });
     const scanArgs = calls[1] ?? [];
     expect(scanArgs).toContain("--config");

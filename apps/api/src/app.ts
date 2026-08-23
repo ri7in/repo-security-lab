@@ -530,6 +530,9 @@ export function createApi(options: ApiOptions): Hono {
           confidence: finding.confidence,
           occurrence_bucket: finding.occurrence_bucket,
           remediation_key: finding.remediation_key,
+          ...(finding.locations === undefined
+            ? {}
+            : { locations: finding.locations }),
         })),
         ...(page.nextFindingId === null
           ? {}

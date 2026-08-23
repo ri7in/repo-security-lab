@@ -14,6 +14,7 @@ describe("hostile-domain Gitleaks normalizer", () => {
       ],
       rawFindingCount: 7,
       findingLimitExceeded: false,
+      locations: [],
     });
     const packet = brokerResultPacketSchema.parse(
       JSON.parse(decoder.decode(result.packetBytes)),
@@ -34,6 +35,7 @@ describe("hostile-domain Gitleaks normalizer", () => {
       findings,
       rawFindingCount: 10_001,
       findingLimitExceeded: true,
+      locations: [],
     });
     expect(result).toMatchObject({
       coverage: "partial",
@@ -48,16 +50,19 @@ describe("hostile-domain Gitleaks normalizer", () => {
         findings: [{ ruleId: hostile }],
         rawFindingCount: 1,
         findingLimitExceeded: false,
+        locations: [],
       },
       {
         findings: [],
         rawFindingCount: 10_001,
         findingLimitExceeded: true,
+        locations: [],
       },
       {
         findings: [],
         rawFindingCount: 1,
         findingLimitExceeded: false,
+        locations: [],
       },
     ]) {
       expect(() => normalizeGitleaks(input)).toThrowError(

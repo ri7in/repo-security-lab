@@ -45,6 +45,7 @@ describe("source-blind runtime broker", () => {
       ],
       rawFindingCount: 3,
       findingLimitExceeded: false,
+      locations: [],
     });
     const findings = new SourceBlindBroker("gitleaks", manifest).accept(
       normalized.packetBytes,

@@ -7,6 +7,7 @@ import {
   scanDomainProbeResultSchema,
   scanDomainResultSchema,
   type FailureClass,
+  type FindingLocation,
 } from "@app/contracts";
 import { normalizeGitleaks, normalizeZizmor } from "@app/normalize";
 import { GitleaksScanner, ScannerError, ZizmorScanner } from "@app/scanners";
@@ -158,16 +159,17 @@ async function scan(): Promise<void> {
   const applicability = detected ?? { osv: true, zizmor: true, opengrep: true };
   const engineResults: unknown[] = [];
   const engineFailures: Partial<Record<"gitleaks" | "zizmor", FailureClass>> = {};
+  let locations: readonly FindingLocation[] = [];
   try {
     const expectedBinarySha256 = process.env["GITLEAKS_SHA256"] ?? "";
-    const normalized = normalizeGitleaks(
-      await new GitleaksScanner({
-        binaryPath: GITLEAKS_BINARY,
-        expectedBinarySha256,
-        trustedConfigPath: GITLEAKS_CONFIG,
-        trustedIgnorePath: GITLEAKS_IGNORE,
-      }).scan(SOURCE_DIRECTORY),
-    );
+    const scanned = await new GitleaksScanner({
+      binaryPath: GITLEAKS_BINARY,
+      expectedBinarySha256,
+      trustedConfigPath: GITLEAKS_CONFIG,
+      trustedIgnorePath: GITLEAKS_IGNORE,
+    }).scan(SOURCE_DIRECTORY);
+    locations = scanned.locations;
+    const normalized = normalizeGitleaks(scanned);
     engineResults.push({
       engine: "gitleaks",
       coverage: normalized.coverage,
@@ -202,6 +204,7 @@ async function scan(): Promise<void> {
       applicability,
       engineResults,
       engineFailures,
+      locations,
     }),
   );
 }

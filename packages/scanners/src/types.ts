@@ -1,4 +1,4 @@
-import type { ReviewFinding } from "@app/contracts";
+import type { FindingLocation, ReviewFinding } from "@app/contracts";
 export const SCANNER_ERROR_CODES = [
   "SCANNER_BINARY_MISMATCH",
   "SCANNER_TIMEOUT",
@@ -73,6 +73,14 @@ export interface GitleaksScanResult {
    * uses coarse count buckets that cannot express a partial reduction.
    */
   readonly reviewComplete?: boolean;
+  /**
+   * Where each finding sits, present only when the caller asked for it.
+   *
+   * Unlike `review`, this is published. It carries a path and a line and has
+   * no field able to hold a snippet or a value, and gitleaks runs redacted so
+   * the value does not exist on this side of the scanner to leak.
+   */
+  readonly locations: readonly FindingLocation[];
 }
 
 export const ZIZMOR_SEVERITIES = [

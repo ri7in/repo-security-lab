@@ -7,8 +7,10 @@ Requirements:
 
 - Node 24 or newer and pnpm 10.33.0.
 - Treat every target archive and scanner field as hostile data.
-- Never add a path, snippet, match, package string, upstream error body, or
-  secret-bearing value to the deterministic hosted packet/API/log boundary.
+- Only a validated repository-relative path and line number may cross the
+  hosted boundary, and only through the location channel, never the broker
+  packet. Never add a snippet, match, package string, upstream error body, or
+  secret-bearing value.
 - Never execute target dependencies, scripts, tests, builds, hooks, or config.
 - Keep public third-party scans and model source submission disabled.
 - Preserve fixed non-echoing failures and explicit partial/unsupported

@@ -62,6 +62,7 @@ import {
   MIGRATION_005,
   MIGRATION_006,
   MIGRATION_007,
+  MIGRATION_008,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 
@@ -211,6 +212,7 @@ interface FindingRow {
   occurrence_bucket: string;
   remediation_key: string;
   owner_detail_ref: string;
+  locations_json: string | null;
 }
 
 function isSafeNonNegativeInteger(value: number): boolean {
@@ -232,6 +234,11 @@ function parseFindingRow(row: FindingRow): BrokerDerivedFinding {
     occurrence_bucket: row.occurrence_bucket,
     remediation_key: row.remediation_key,
     owner_detail_ref: row.owner_detail_ref,
+    // Omitted rather than set undefined: the schema is strict, and rows
+    // written before locations existed carry NULL here.
+    ...(row.locations_json === null || row.locations_json === undefined
+      ? {}
+      : { locations: JSON.parse(row.locations_json) as unknown }),
   });
   if (!parsed.success) throw new Error("invalid finding row");
   return parsed.data;
@@ -254,7 +261,9 @@ function sameFinding(
     left.confidence === right.confidence &&
     left.occurrence_bucket === right.occurrence_bucket &&
     left.remediation_key === right.remediation_key &&
-    left.owner_detail_ref === right.owner_detail_ref
+    left.owner_detail_ref === right.owner_detail_ref &&
+    JSON.stringify(left.locations ?? null) ===
+      JSON.stringify(right.locations ?? null)
   );
 }
 
@@ -429,6 +438,13 @@ export class SqliteStore implements Store {
           // stamp migration 7 with the NEXT version the moment one is added,
           // and that version's own block would then find a row and skip.
           recordMigration.run(7, migrationTimeMs);
+        }
+        const versionEight = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 8")
+          .get() as { version: number } | undefined;
+        if (versionEight === undefined) {
+          this.#database.exec(MIGRATION_008);
+          recordMigration.run(8, migrationTimeMs);
         }
       });
       migrate();
@@ -1055,8 +1071,8 @@ export class SqliteStore implements Store {
           `INSERT INTO findings(
             finding_id, request_id, repository_id, commit_sha, engine,
             rule_id, category, severity, confidence, occurrence_bucket,
-            remediation_key, owner_detail_ref
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            remediation_key, owner_detail_ref, locations_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         );
         for (const finding of input.findings) {
           insertFinding.run(
@@ -1072,6 +1088,9 @@ export class SqliteStore implements Store {
             finding.occurrence_bucket,
             finding.remediation_key,
             finding.owner_detail_ref,
+            finding.locations === undefined
+              ? null
+              : JSON.stringify(finding.locations),
           );
         }
 

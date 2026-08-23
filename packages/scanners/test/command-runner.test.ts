@@ -310,6 +310,7 @@ if (process.argv[2] === "version") {
       findings: [],
       rawFindingCount: 0,
       findingLimitExceeded: false,
+      locations: [],
     });
     await assertDescendantRemoved(setup.pidFile, setup.marker);
   });

@@ -380,6 +380,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     readonly applicability: { readonly osv: boolean; readonly zizmor: boolean; readonly opengrep: boolean };
     readonly engineResults: readonly ScanDomainEngineResult[];
     readonly engineFailures: Readonly<Partial<Record<ScanEngine, import("@app/contracts").FailureClass>>>;
+    readonly locations: readonly import("@app/contracts").FindingLocation[];
   }> {
     const source = await trustedPath(sourcePath, "directory");
     const outputDirectory = await mkdtemp(
@@ -405,6 +406,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
         applicability: result.applicability,
         engineResults,
         engineFailures: result.engineFailures,
+        locations: result.locations ?? [],
       };
     } catch (error) {
       if (error instanceof ScannerError) throw error;

@@ -107,6 +107,7 @@ interface FindingRow {
   occurrence_bucket: string;
   remediation_key: string;
   owner_detail_ref: string;
+  locations_json: string | null;
 }
 
 interface FindingChunkRow {
@@ -268,6 +269,11 @@ function parseFinding(row: FindingRow): BrokerDerivedFinding {
     occurrence_bucket: row.occurrence_bucket,
     remediation_key: row.remediation_key,
     owner_detail_ref: row.owner_detail_ref,
+    // Absent on every finding stored before locations were published, so the
+    // key is omitted rather than set to undefined: the schema is strict.
+    ...(row.locations_json === null
+      ? {}
+      : { locations: JSON.parse(row.locations_json) as unknown }),
   });
   if (!parsed.success) throw new Error("invalid finding row");
   return parsed.data;
@@ -661,7 +667,8 @@ export class D1Store implements Store {
            json_extract(entry.value, '$.confidence') AS confidence,
            json_extract(entry.value, '$.occurrence_bucket') AS occurrence_bucket,
            json_extract(entry.value, '$.remediation_key') AS remediation_key,
-           json_extract(entry.value, '$.owner_detail_ref') AS owner_detail_ref
+           json_extract(entry.value, '$.owner_detail_ref') AS owner_detail_ref,
+           json_extract(entry.value, '$.locations') AS locations_json
          FROM finding_chunks, json_each(finding_chunks.findings_json) AS entry
          WHERE finding_chunks.request_id = ?
        ) WHERE finding_id > ? ORDER BY finding_id ASC LIMIT ?`,

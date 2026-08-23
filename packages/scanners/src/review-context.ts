@@ -133,5 +133,13 @@ export function reviewablePath(relativePath: string): string | null {
   }
   // Control characters would let a path smuggle structure into the prompt.
   if (/[\p{Cc}\p{Cf}]/u.test(normalized)) return null;
+  // Traversal and absolute paths are refused HERE rather than relying on the
+  // caller. Review resolves the path against the extracted tree and so caught
+  // this on its own, but locations are published without ever touching the
+  // filesystem, so an unchecked `../../etc/passwd` would reach a report. A
+  // path that does not name a file inside the archive names nothing this
+  // scanner is entitled to talk about.
+  if (normalized.startsWith("/")) return null;
+  if (normalized.split("/").includes("..")) return null;
   return normalized;
 }

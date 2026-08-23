@@ -21,6 +21,6 @@ out of scope until the corresponding release gates are explicitly opened.
 
 When public scanning opens, ordinary use of the published username form is in
 scope under `docs/acceptable-use.md`. Do not place source, secrets, private
-report details, or personal email addresses in a report. Public source-blind
-reports expire after 30 days; removal/privacy requests may include the opaque
+report details, or personal email addresses in a report. Public reports name the file and line of each
+finding and expire after 30 days; removal/privacy requests may include the opaque
 report ID only. See `docs/privacy.md` for the complete data boundary.

@@ -279,7 +279,12 @@ BEGIN
 END;
 `;
 
-export const SCHEMA_VERSION = 7;
+export const MIGRATION_008 = `
+ALTER TABLE findings ADD COLUMN locations_json TEXT
+  CHECK (locations_json IS NULL OR json_valid(locations_json));
+`;
+
+export const SCHEMA_VERSION = 8;
 import {
   REPOSITORY_STATES,
   SPECIALISTS,

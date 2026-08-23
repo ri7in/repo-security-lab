@@ -19,6 +19,9 @@ import {
   type OpaqueId,
   type RepositoryActiveState,
   type ScanEngine,
+  MAX_LOCATIONS_PER_FINDING,
+  type BrokerDerivedFinding,
+  type FindingLocation,
 } from "@app/contracts";
 import {
   canTransition,
@@ -71,6 +74,8 @@ export interface RepositoryScanDomain {
     readonly applicability: SpecialistApplicability;
     readonly engineResults: readonly ScanDomainEngineResult[];
     readonly engineFailures: Readonly<Partial<Record<ScanEngine, FailureClass>>>;
+    /** Where each finding sits. Optional so older domains keep compiling. */
+    readonly locations?: readonly FindingLocation[];
   }>;
 }
 
@@ -407,8 +412,10 @@ export class RepositoryWorker {
         ScanEngine,
         { readonly normalized: NormalizedResult; readonly broker: SourceBlindBroker }
       >();
+let scanLocations: readonly FindingLocation[] = [];
       if (this.#scanDomain !== null) {
         const result = await this.#scanDomain.scan(sourcePath);
+        scanLocations = result.locations ?? [];
         detected = result.applicability;
         coverage.osv = detected.osv === false ? "not_applicable" : "unsupported";
         coverage.zizmor =
@@ -451,6 +458,7 @@ export class RepositoryWorker {
           detected?.opengrep === false ? "not_applicable" : "unsupported";
         try {
           const scanResult = await this.#gitleaks!.scan(sourcePath);
+          scanLocations = scanResult.locations;
           const normalized = normalizeGitleaks(scanResult);
           coverage.gitleaks = normalized.coverage;
           normalizedByEngine.set("gitleaks", {
@@ -521,7 +529,7 @@ export class RepositoryWorker {
           if (accepted.some((finding) => finding.engine !== engine)) {
             throw new BrokerError();
           }
-          findings.push(...accepted);
+          findings.push(...attachLocations(accepted, scanLocations));
         } catch {
           coverage[engine] = "failed";
           specialistReasons[engine] = "NORMALIZATION_REJECTED";
@@ -684,4 +692,30 @@ export class RepositoryWorker {
       );
     }
   }
+}
+
+/**
+ * Attaches published locations to brokered findings.
+ *
+ * Deliberately applied AFTER `broker.accept()` returns. Locations arrive on
+ * their own bounded channel, never inside the packet, so the packet keeps its
+ * numbers-only property and the manifest remains the only source of display
+ * strings. A finding with no matching location is published without one: a
+ * report may omit where something is, it may never invent it.
+ */
+function attachLocations(
+  findings: readonly BrokerDerivedFinding[],
+  locations: readonly FindingLocation[],
+): readonly BrokerDerivedFinding[] {
+  if (locations.length === 0) return findings;
+  return findings.map((finding) => {
+    const matched = locations
+      .filter(
+        (entry) =>
+          entry.engine === finding.engine && entry.ruleId === finding.rule_id,
+      )
+      .slice(0, MAX_LOCATIONS_PER_FINDING)
+      .map((entry) => ({ path: entry.path, startLine: entry.startLine }));
+    return matched.length === 0 ? finding : { ...finding, locations: matched };
+  });
 }

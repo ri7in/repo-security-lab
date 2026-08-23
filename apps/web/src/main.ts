@@ -180,6 +180,7 @@ function renderFindings(
         finding.rule_id,
         finding.severity,
         finding.occurrence_bucket.replaceAll("_", " "),
+        formatLocations(finding.locations),
         finding.remediation_key.replaceAll("-", " "),
       ];
       row.append(
@@ -194,7 +195,7 @@ function renderFindings(
     }),
   );
   findingsSection.hidden = false;
-  $("#finding-count").textContent = `${findings.length} source-blind finding${findings.length === 1 ? "" : "s"}`;
+  $("#finding-count").textContent = `${findings.length} finding${findings.length === 1 ? "" : "s"}`;
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
@@ -411,4 +412,26 @@ if (existingRequest !== null) {
         button.disabled = false;
       });
   }
+}
+
+/**
+ * Renders where a finding sits.
+ *
+ * Always set with textContent by the caller, never innerHTML: a path comes
+ * from the scanned repository, so it is attacker-controlled text and must
+ * never be parsed as markup. Findings with no location render as a dash
+ * rather than an empty cell, so "we did not locate this" stays distinct from
+ * "this has no location".
+ */
+function formatLocations(
+  locations: readonly { path: string; startLine: number }[] | undefined,
+): string {
+  if (locations === undefined || locations.length === 0) return "not located";
+  const shown = locations
+    .slice(0, 3)
+    .map((entry) => `${entry.path}:${String(entry.startLine)}`)
+    .join(", ");
+  return locations.length > 3
+    ? `${shown} and ${String(locations.length - 3)} more`
+    : shown;
 }

@@ -13,7 +13,12 @@ import {
   ScannerError,
   type GitleaksScanResult,
 } from "./types.js";
-import { REVIEW_MAX_FINDINGS, type ReviewFinding } from "@app/contracts";
+import {
+  MAX_LOCATIONS,
+  REVIEW_MAX_FINDINGS,
+  type FindingLocation,
+  type ReviewFinding,
+} from "@app/contracts";
 import { buildReviewContext, reviewablePath } from "./review-context.js";
 import {
   runScannerCommand,
@@ -207,6 +212,10 @@ export class GitleaksScanner {
     const review = this.#collectReview
       ? await buildReview(parsedFindings, source)
       : undefined;
+    // Always collected. Locations are what makes a report actionable, they
+    // need no file reads, and an opt-in flag here is a footgun: a caller that
+    // forgets it silently ships a report nobody can act on.
+    const locations = buildLocations(parsedFindings, source);
     return {
       findings: findings.slice(0, MAX_FINDINGS),
       rawFindingCount: findings.length,
@@ -214,8 +223,50 @@ export class GitleaksScanner {
       ...(review === undefined
         ? {}
         : { review, reviewComplete: review.length === parsedFindings.length }),
+      locations,
     };
   }
+}
+
+/**
+ * Collects the published location of each finding.
+ *
+ * Unlike review context this reads no files: gitleaks already reported the
+ * path and line, and the value itself was redacted before it ever reached us.
+ * A path the channel refuses yields no location, and the finding is still
+ * reported without one. A report may omit where something is; it may never
+ * invent it.
+ */
+function buildLocations(
+  parsed: readonly {
+    RuleID: string;
+    File?: string | undefined;
+    StartLine?: number | undefined;
+  }[],
+  sourceDirectory: string,
+): FindingLocation[] {
+  const root = path.resolve(sourceDirectory);
+  const locations: FindingLocation[] = [];
+  for (const entry of parsed) {
+    if (locations.length >= MAX_LOCATIONS) break;
+    if (entry.File === undefined || entry.StartLine === undefined) continue;
+    // Gitleaks echoes back whatever root it was given, so an absolute scan
+    // root yields absolute paths. Publishing those would leak the scratch
+    // directory layout, so a path is made repository-relative before it is
+    // validated, and anything still outside the tree is dropped.
+    const candidate = path.isAbsolute(entry.File)
+      ? path.relative(root, path.resolve(entry.File))
+      : entry.File;
+    const relative = reviewablePath(candidate);
+    if (relative === null) continue;
+    locations.push({
+      engine: "gitleaks",
+      ruleId: entry.RuleID,
+      path: relative,
+      startLine: entry.StartLine,
+    });
+  }
+  return locations;
 }
 
 /**

@@ -193,6 +193,7 @@ export const publicFindingSchema = brokerDerivedFindingSchema.pick({
   confidence: true,
   occurrence_bucket: true,
   remediation_key: true,
+  locations: true,
 });
 export type PublicFinding = z.infer<typeof publicFindingSchema>;
 

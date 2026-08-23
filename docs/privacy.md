@@ -1,9 +1,9 @@
 # Privacy
 
-Last updated: 2026-08-17
+Last updated: 2026-08-23
 
-This service scans public GitHub repositories and publishes a source-blind
-coverage report. It does not require an account, set cookies, or run analytics.
+This service scans public GitHub repositories and publishes a public
+coverage and findings report. It does not require an account, set cookies, or run analytics.
 
 ## Data handled
 
@@ -12,9 +12,9 @@ coverage report. It does not require an account, set cookies, or run analytics.
 - Public repository archives are downloaded to private worker scratch storage,
   treated as hostile data, never executed, and deleted before findings are
   published. Repository source is not stored in the control-plane database.
-- Reports contain fixed coverage states and manifest-derived finding metadata.
-  They cannot contain source paths, snippets, raw matches, secret values, or
-  scanner prose.
+- Reports contain fixed coverage states, manifest-derived finding metadata,
+  and the file path and line number of each match. They cannot contain source
+  code, snippets, raw matches, secret values, or scanner prose.
 - During the private preview, optional report email is restricted to one
   operator-controlled address and encrypted with AES-GCM at rest. Its
   ciphertext is erased after successful delivery or the final failed attempt.

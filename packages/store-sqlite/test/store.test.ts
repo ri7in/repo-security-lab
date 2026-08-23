@@ -596,7 +596,7 @@ describe("SQLite store ledger", () => {
       migrated
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7].map((version) => ({ version })));
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8].map((version) => ({ version })));
     migrated.close();
   });
 

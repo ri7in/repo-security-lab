@@ -113,8 +113,9 @@ The Cloudflare deployment is intentionally fail-closed by default:
 preview is bound to GitHub account ID `121791882`, and static/API responses pass
 through the same security-header boundary. The dedicated discovery credential,
 signed worker identity, and first 22-repository live proof are installed. The
-source-blind finding report is public and requires no login. It cannot express
-paths, snippets, matches, secret values, or internal detail references. The
+finding report is public and requires no login. It names the file and line of
+each match so a finding can be acted on. It cannot express snippets, matches,
+secret values, or internal detail references. The
 remaining release gate is provisioning the prepared continuously available,
 terms-compatible OCI worker and passing its exact Linux proof, so third-party
 scan creation stays refused until that compute boundary passes. See

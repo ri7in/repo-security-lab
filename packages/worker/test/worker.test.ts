@@ -180,6 +180,7 @@ function scanner(assertSource?: (sourceDirectory: string) => Promise<void>): Sec
         findings: [{ ruleId: "github-pat" }],
         rawFindingCount: 1,
         findingLimitExceeded: false,
+        locations: [],
       };
     },
   };
@@ -629,6 +630,7 @@ describe("leased repository worker", () => {
           })),
           rawFindingCount: 10_001,
           findingLimitExceeded: true,
+          locations: [],
         };
       },
     };
