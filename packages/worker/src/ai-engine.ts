@@ -66,9 +66,40 @@ export interface AiEngineResult {
   readonly requestsSpent: number;
 }
 
+/**
+ * The single directory a source archive unpacks into, if there is one.
+ *
+ * GitHub's tarballs wrap everything in `owner-repo-sha/`, which is a fact about
+ * the download and not about the repository. The secret scanner has always
+ * stripped it; the reader did not, so the first AI finding to reach a live
+ * report pointed at `ri7in-W-Tech-6feceed/php/Job Insert.php`, a path that
+ * exists nowhere the reader could go and look.
+ */
+async function archiveWrapperDirectory(root: string): Promise<string | null> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const [only] = entries;
+    return entries.length === 1 && only !== undefined && only.isDirectory()
+      ? only.name
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Drops that wrapper from a path relative to the extraction root. */
+function withoutWrapper(relative: string, wrapper: string | null): string {
+  if (wrapper === null) return relative;
+  if (relative === wrapper) return "";
+  return relative.startsWith(`${wrapper}/`)
+    ? relative.slice(wrapper.length + 1)
+    : relative;
+}
+
 /** Collects readable source files under a root, bounded in both depth and count. */
 async function collectFiles(
   root: string,
+  wrapper: string | null,
 ): Promise<readonly { path: string; content: string }[]> {
   const collected: { path: string; content: string }[] = [];
 
@@ -94,7 +125,16 @@ async function collectFiles(
       if (!entry.isFile()) continue;
       try {
         const content = await readFile(absolute, "utf8");
-        collected.push({ path: path.relative(root, absolute), content });
+        // Repository-relative, with the tarball's wrapper directory dropped.
+        //
+        // This is where the two sides of the redaction lookup went apart: the
+        // secret scanner reports `src/config.ts` and this reported
+        // `owner-repo-sha/src/config.ts`, so the exact-match lookup found
+        // nothing and no line was ever blanked. Every existing test used a
+        // flat fixture, so the promise held in the fixtures and nowhere else.
+        const relative = withoutWrapper(path.relative(root, absolute), wrapper);
+        if (relative === "") continue;
+        collected.push({ path: relative, content });
       } catch {
         // Unreadable or not valid UTF-8. Skipped, never fatal.
       }
@@ -123,7 +163,8 @@ export async function runAiEngine(
     requestsSpent: 0,
   };
 
-  const files = await collectFiles(input.sourcePath);
+  const wrapper = await archiveWrapperDirectory(input.sourcePath);
+  const files = await collectFiles(input.sourcePath, wrapper);
   if (files.length === 0) {
     // Nothing a model could read. A clean result, not a failure.
     return { ...empty, coverage: "not_applicable" };

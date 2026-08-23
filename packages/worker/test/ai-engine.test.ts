@@ -27,9 +27,26 @@ afterEach(async () => {
 
 const SECRET = ["ghp", "_", "K3y9M2n8B4v6C1x7Z5a3S0d8F6g4H2j0L9k7"].join("");
 
-async function sourceTree(files: Record<string, string>): Promise<string> {
+/**
+ * A source tree shaped the way a GitHub tarball actually unpacks.
+ *
+ * Every fixture used to be flat, which is why a redaction lookup that could
+ * never match in production passed here for weeks: the two sides only disagree
+ * once there is a wrapper directory, and there always is one.
+ */
+async function sourceTree(
+  files: Record<string, string>,
+  wrapper = "owner-fixture-6feceed",
+): Promise<string> {
   const root = await mkdtemp(path.join(tmpdir(), "repo-security-ai-"));
   temporaryDirectories.push(root);
+  const wrapped = Object.fromEntries(
+    Object.entries(files).map(([name, content]) => [
+      wrapper === "" ? name : `${wrapper}/${name}`,
+      content,
+    ]),
+  );
+  files = wrapped;
   for (const [relative, content] of Object.entries(files)) {
     const target = path.join(root, relative);
     await mkdir(path.dirname(target), { recursive: true });
@@ -127,6 +144,57 @@ describe("the AI engine", () => {
     // The pass hunting injection bugs has no use for a credential, and must
     // not be handed one in passing.
     expect(scout.seen.join("\n")).not.toContain(SECRET);
+  }, 30_000);
+
+  it("blanks a secret in a real GitHub tarball layout, not just a flat one", async () => {
+    // GitHub wraps everything in `owner-repo-sha/`. The secret scanner strips
+    // that before reporting a path; the reader did not, so the two sides of
+    // the redaction lookup used different strings and it silently matched
+    // nothing. Every existing test used a flat fixture and never saw it.
+    const sourcePath = await sourceTree({
+      "src/config.ts": `const token = "${SECRET}";\n${VULNERABLE}`,
+    });
+    const review: ReviewFinding[] = [
+      {
+        engine: "gitleaks",
+        ruleId: "github-pat",
+        // Repository-relative, which is what the scanner publishes.
+        path: "src/config.ts",
+        startLine: 1,
+        entropy: 4.5,
+        contextLines: [],
+      },
+    ];
+    const scout = scoutReturning(() => []);
+    await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review,
+      scout,
+      judges: JUDGES,
+      tokenBudget: 50_000,
+    });
+    expect(scout.seen.join("\n")).not.toContain(SECRET);
+  }, 30_000);
+
+  it("reports a location the reader can actually open", async () => {
+    // The first AI finding to reach a live report pointed at
+    // `ri7in-W-Tech-6feceed/php/Job Insert.php`, a path that exists nowhere
+    // in the repository.
+    const sourcePath = await sourceTree({
+      "src/db.ts": VULNERABLE,
+    });
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() => [flag()]),
+      judges: JUDGES,
+      tokenBudget: 50_000,
+    });
+    expect(result.locations[0]?.path).toBe("src/db.ts");
   }, 30_000);
 
   it("drops a class outside the closed vocabulary", async () => {
@@ -269,7 +337,8 @@ describe("the AI engine", () => {
       "src/app.ts": VULNERABLE,
       "locked/inner.ts": "export const b = 2;\n",
     });
-    await chmod(path.join(sourcePath, "locked"), 0o000);
+    const locked = path.join(sourcePath, "owner-fixture-6feceed", "locked");
+    await chmod(locked, 0o000);
     const scout = scoutReturning(() => []);
     try {
       const result = await runAiEngine({
@@ -284,7 +353,7 @@ describe("the AI engine", () => {
       expect(result.coverage).toBe("complete");
       expect(scout.seen.join("\n")).toContain("app.ts");
     } finally {
-      await chmod(path.join(sourcePath, "locked"), 0o700);
+      await chmod(locked, 0o700);
     }
   }, 30_000);
 
