@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/require-await -- command doubles model asynchronous child processes */
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -106,6 +106,36 @@ describe("gitleaks review context", () => {
     expect(entry?.path).toBe(".env.example");
     expect(entry?.startLine).toBe(3);
     expect(entry?.contextLines.join("\n")).toContain("TELEGRAM_BOT_TOKEN=");
+  });
+
+  it("reviews findings gitleaks reports with an absolute path", async () => {
+    // Gitleaks echoes back whatever scan root it was handed, and in production
+    // that root is absolute. When only the location builder relativised paths,
+    // every review entry was silently dropped here: the path failed validation,
+    // the review came back empty, the result was therefore "incomplete", and
+    // the council could never suppress anything. Nothing failed loudly.
+    const setup = await fixture({ ".env.example": ENV_EXAMPLE });
+    const resolvedSource = await realpath(setup.source);
+    const result = await new GitleaksScanner({
+      binaryPath: setup.binary,
+      expectedBinarySha256: setup.binaryHash,
+      collectReview: true,
+      runCommand: runnerReturning([
+        {
+          RuleID: "telegram-bot-api-token",
+          Secret: "REDACTED",
+          Match: "TELEGRAM_BOT_TOKEN=REDACTED",
+          File: path.join(resolvedSource, ".env.example"),
+          StartLine: 3,
+          Entropy: 3.2,
+        },
+      ]),
+    }).scan(setup.source);
+
+    expect(result.review).toHaveLength(1);
+    expect(result.review?.[0]?.path).toBe(".env.example");
+    // Without this the council is inert: suppression requires a complete review.
+    expect(result.reviewComplete).toBe(true);
   });
 
   it("strips the comment a hostile repository would use to mislead a reviewer", async () => {

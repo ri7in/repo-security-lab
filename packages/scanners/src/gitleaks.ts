@@ -238,6 +238,30 @@ export class GitleaksScanner {
  * invent it.
  */
 /**
+ * Normalises a scanner-reported file to a path relative to the scan root.
+ *
+ * Gitleaks echoes back whatever root it was handed, so an absolute scan root
+ * yields absolute paths. This lived only in the location builder once, and the
+ * review builder silently dropped every finding as a result: the path was
+ * absolute, path validation rejected it, and an empty review made every result
+ * "incomplete" so the council could never suppress anything. One helper now,
+ * used by both.
+ */
+function relativeToRoot(file: string, root: string): string | null {
+  const candidate = path.isAbsolute(file)
+    ? path.relative(root, path.resolve(file))
+    : file;
+  return reviewablePath(candidate);
+}
+
+/** Drops the single wrapper directory a source archive unpacks into. */
+function withoutWrapper(relative: string, wrapper: string | null): string {
+  return wrapper !== null && relative.startsWith(`${wrapper}/`)
+    ? relative.slice(wrapper.length + 1)
+    : relative;
+}
+
+/**
  * Finds the single wrapper directory a source archive unpacks into.
  *
  * A GitHub tarball contains exactly one top-level folder named
@@ -280,19 +304,9 @@ async function buildLocations(
   for (const entry of parsed) {
     if (locations.length >= MAX_LOCATIONS) break;
     if (entry.File === undefined || entry.StartLine === undefined) continue;
-    // Gitleaks echoes back whatever root it was given, so an absolute scan
-    // root yields absolute paths. Publishing those would leak the scratch
-    // directory layout, so a path is made repository-relative before it is
-    // validated, and anything still outside the tree is dropped.
-    const candidate = path.isAbsolute(entry.File)
-      ? path.relative(root, path.resolve(entry.File))
-      : entry.File;
-    const relative = reviewablePath(candidate);
+    const relative = relativeToRoot(entry.File, root);
     if (relative === null) continue;
-    const stripped =
-      wrapper !== null && relative.startsWith(`${wrapper}/`)
-        ? relative.slice(wrapper.length + 1)
-        : relative;
+    const stripped = withoutWrapper(relative, wrapper);
     if (stripped === "") continue;
     const key = `${entry.RuleID}\u0000${stripped}\u0000${String(entry.StartLine)}`;
     if (seen.has(key)) continue;
@@ -325,13 +339,15 @@ async function buildReview(
   }[],
   sourceDirectory: string,
 ): Promise<ReviewFinding[]> {
+  const root = path.resolve(sourceDirectory);
+  const wrapper = await archiveWrapperDirectory(root);
   const review: ReviewFinding[] = [];
   const fileCache = new Map<string, readonly string[] | null>();
 
   for (const entry of parsed) {
     if (review.length >= REVIEW_MAX_FINDINGS) break;
     if (entry.File === undefined || entry.StartLine === undefined) continue;
-    const relative = reviewablePath(entry.File);
+    const relative = relativeToRoot(entry.File, root);
     if (relative === null) continue;
 
     let lines = fileCache.get(relative);
@@ -356,7 +372,7 @@ async function buildReview(
     review.push({
       engine: "gitleaks",
       ruleId: entry.RuleID,
-      path: relative,
+      path: withoutWrapper(relative, wrapper),
       startLine: Math.max(1, entry.StartLine),
       entropy: Math.min(10, entry.Entropy ?? 0),
       contextLines: buildReviewContext(lines, Math.max(1, entry.StartLine)),
