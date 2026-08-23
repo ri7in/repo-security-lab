@@ -90,3 +90,24 @@ export function statusHeading(summary: ScanRequestSummary): string {
   if (summary.state === "failed") return "Scan stopped early";
   return "Scan in progress";
 }
+
+/**
+ * The providers, as a person would write them.
+ *
+ * The ids are internal and lowercase, and joining three of them with "and"
+ * produced "openrouter and groq and gemini" in the footer sentence that tells
+ * people where their code goes.
+ */
+const PROVIDER_NAMES: Record<string, string> = {
+  openrouter: "OpenRouter",
+  groq: "Groq",
+  gemini: "Google",
+};
+
+export function providerNames(providers: readonly string[]): string {
+  const named = providers.map((id) => PROVIDER_NAMES[id] ?? id);
+  if (named.length === 0) return "an external model provider";
+  if (named.length === 1) return named[0] ?? "";
+  return `${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
+}
+

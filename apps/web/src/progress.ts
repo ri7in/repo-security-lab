@@ -88,7 +88,10 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
   let active: Step | null = null;
   for (const step of STEP_ORDER) {
     const { done, total } = progress[step];
-    const complete = all > 0 && done >= total;
+    // `finished` covers the account with no public repositories at all: every
+    // count is zero, so `done >= total` could never be reached and a finished
+    // scan showed four steps that had apparently never started.
+    const complete = finished || (all > 0 && done >= total);
     // Exactly one step is active: the first unfinished one. Marking several at
     // once is what made the old panel look like nothing was happening.
     const isActive = !complete && active === null && !finished && !stopped;

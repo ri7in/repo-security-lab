@@ -216,20 +216,22 @@ body[data-scan-state="failed"] .core, body[data-scan-state="failed"] .eyes { col
    and a robot saying "All checks done" about a scan the visitor did not run.
    In report mode the hero shrinks to a line of context and the verdict is the
    first thing on the page. */
-body[data-view="report"] .hero { padding: 16px 0 4px; }
-body[data-view="report"] h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); }
-body[data-view="report"] .lede,
-body[data-view="report"] .quota-meter,
-body[data-view="report"] .bot-panel,
-body[data-view="report"] .eyebrow,
-body[data-view="report"] .email-option { display: none; }
-body[data-view="report"] .hero { grid-template-columns: 1fr; gap: 0; }
-body[data-view="report"] .status-section { border-top: 0; padding-top: 20px; }
-body[data-view="report"] .scan-form { margin-top: 18px; }
+/* Only once the scan is over. A report link that lands on a request still
+   running needs its panel: hiding it left a thin bar and one line of text as
+   the only sign anything was happening for the next three minutes. */
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .hero { padding: 16px 0 4px; grid-template-columns: 1fr; gap: 0; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) h1 { font-size: clamp(1.5rem, 3vw, 2.1rem); }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .lede,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .quota-meter,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .bot-panel,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .eyebrow,
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .email-option { display: none; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .status-section { border-top: 0; padding-top: 20px; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .scan-form { margin-top: 18px; }
 body[data-view="report"] .scan-form label { margin-bottom: 6px; }
 /* Two long stretches of nothing between the verdict and the ledger. */
-body[data-view="report"] .status-section { padding-bottom: 34px; }
-body[data-view="report"] .ledger-section { padding-top: 32px; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .status-section { padding-bottom: 34px; }
+body[data-view="report"]:is([data-scan-state="complete"], [data-scan-state="failed"]) .ledger-section { padding-top: 32px; }
 
 .status-section, .ledger-section { border-top: 1px solid var(--ink); padding: 48px 0 70px; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 28px; }
@@ -385,6 +387,7 @@ footer p { max-width: 720px; margin: 0; }
 .steps li b { grid-row: 1 / span 2; display: grid; place-items: center; width: 22px; height: 22px; border: 1px solid currentColor; border-radius: 50%; font: 700 10px var(--mono); }
 .steps li span { font: 600 11px var(--mono); }
 .steps li i { display: block; height: 3px; width: 0; background: currentColor; transition: width .4s ease; }
+.steps li[data-state="todo"] i { width: 0 !important; }
 .steps li[data-state="done"] { color: var(--signal); }
 .steps li[data-state="done"] b { font-size: 0; }
 .steps li[data-state="done"] b::after { content: "\2713"; font-size: 12px; }
@@ -401,6 +404,7 @@ footer p { max-width: 720px; margin: 0; }
 /* The verdict. One sentence at the top of the result, because the number a
    visitor actually came for is "is anything of mine exposed", and making them
    read a table to find that out is the wrong order. */
+.verdict[hidden] { display: none; }
 .verdict { display: flex; align-items: center; gap: 11px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid currentColor; font: 650 14px/1.45 var(--sans); }
 .verdict-mark { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; border: 2px solid currentColor; border-radius: 50%; font: 700 14px var(--mono); }
 .verdict[data-tone="clear"] { color: var(--signal); background: var(--signal-soft); }

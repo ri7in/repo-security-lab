@@ -27,6 +27,8 @@ export interface HistoryEntry {
   readonly findings: number;
   readonly repositories: number;
   readonly complete: boolean;
+  /** True when the request ended without finishing. */
+  readonly stopped?: boolean;
 }
 
 function isEntry(value: unknown): value is HistoryEntry {
@@ -63,10 +65,17 @@ export function readHistory(): readonly HistoryEntry[] {
  * losing a run that is still going.
  */
 export function rememberScan(entry: HistoryEntry): readonly HistoryEntry[] {
-  const existing = readHistory().filter(
-    (item) => item.requestId !== entry.requestId,
-  );
-  const next = [entry, ...existing].slice(0, MAX_ENTRIES);
+  const all = readHistory();
+  const previous = all.find((item) => item.requestId === entry.requestId);
+  const existing = all.filter((item) => item.requestId !== entry.requestId);
+  // The original timestamp wins. Re-polling a finished report rewrote `at` to
+  // now, so opening a scan from three days ago moved it to the top of the list
+  // and displayed it as "just now", while the label says when it ran.
+  const kept: HistoryEntry = {
+    ...entry,
+    at: previous?.at ?? entry.at,
+  };
+  const next = [kept, ...existing].slice(0, MAX_ENTRIES);
   try {
     localStorage.setItem(KEY, JSON.stringify(next));
   } catch {

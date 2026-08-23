@@ -196,7 +196,15 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
   for (const section of report.sections) {
     // A heading alone at the foot of a page reads as a section with no
     // content, so it moves to the next page with its first row.
-    if (page.cursor < BOTTOM + ROW_HEIGHT * 4) advance(page.cursor - BOTTOM);
+    //
+    // This used to advance to exactly BOTTOM, and `advance` only breaks when
+    // the cursor lands strictly below it, so the guard never fired: at
+    // seventy-nine findings the heading printed at the very foot of page eight
+    // with sixty-six points of white space above it and its table began on
+    // page nine.
+    if (page.cursor < BOTTOM + ROW_HEIGHT * 4) {
+      advance(page.cursor - BOTTOM + 1);
+    }
     write(page, MARGIN, page.cursor, "F2", 11, section.heading);
     advance(13);
     if (section.note !== undefined) {

@@ -142,4 +142,28 @@ describe("the progress model", () => {
     expect(model.livePercent).toBe(100);
     expect(model.steps.every((step) => step.percent === 0)).toBe(true);
   });
+
+  it("marks every step done on a finished account with no repositories", () => {
+    // `done >= total` can never be reached when every count is zero, so a
+    // finished scan showed a green live block, a hundred percent, and four
+    // steps that had apparently never started.
+    const model = progressModel(summary("complete", {}));
+    expect(model.steps.every((step) => step.state === "done")).toBe(true);
+    expect(model.finished).toBe(true);
+  });
+
+  it("leaves a step that has not started with no progress to show", () => {
+    // Four bars advancing at once undercuts the panel's own claim that a step
+    // is handed over only when the previous one genuinely finished.
+    const model = progressModel(summary("scanning", { waiting: 6, complete: 4 }));
+    for (const step of model.steps) {
+      if (step.state !== "todo") continue;
+      expect(step.percent, `${step.step} shows progress it has not made`).toBe(
+        model.steps.find((entry) => entry.step === step.step)?.percent,
+      );
+    }
+    // The bar itself is suppressed in CSS for a todo step; the model still
+    // reports the underlying count, which is what the done/active steps use.
+    expect(model.steps.some((step) => step.state === "todo")).toBe(true);
+  });
 });

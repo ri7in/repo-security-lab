@@ -38,11 +38,13 @@ import { remediationLabel } from "./remediation.js";
 import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
 import {
   explainFailure,
+  providerNames,
   percentDone,
   statusHeading,
   statusLine,
   summaryCards,
 } from "./summary.js";
+import { retryPlan } from "./polling.js";
 import { installTooltips } from "./tooltip.js";
 import { usernameProblem } from "./username.js";
 import { summarizeVerdict } from "./verdict.js";
@@ -514,25 +516,52 @@ async function loadFindings(requestId: string): Promise<PublicFinding[]> {
 async function poll(requestId: string): Promise<void> {
   let etag: string | undefined;
   let retryAfterSeconds = 3;
+  let consecutiveFailures = 0;
+  let everSucceeded = false;
   while (true) {
-    const response = await fetch(`/api/scan-requests/${requestId}`, {
-      headers: etag === undefined ? {} : { "if-none-match": etag },
-    });
-    if (response.status === 304) {
-      await new Promise((resolve) =>
-        setTimeout(resolve, retryAfterSeconds * 1_000),
+    let summary;
+    try {
+      const response = await fetch(`/api/scan-requests/${requestId}`, {
+        headers: etag === undefined ? {} : { "if-none-match": etag },
+      });
+      if (response.status === 304) {
+        consecutiveFailures = 0;
+        await new Promise((resolve) =>
+          setTimeout(resolve, retryAfterSeconds * 1_000),
+        );
+        continue;
+      }
+      // A report that is genuinely gone is a different thing from a service
+      // that hiccuped, and only one of them should say "not found".
+      if (response.status === 404 || response.status === 410) {
+        throw new Error("REQUEST_GONE");
+      }
+      if (!response.ok) throw new Error("REQUEST_FAILED");
+      summary = scanRequestSummarySchema.parse(await response.json());
+      etag = response.headers.get("etag") ?? undefined;
+      consecutiveFailures = 0;
+      everSucceeded = true;
+    } catch (error) {
+      if (error instanceof Error && error.message === "REQUEST_GONE") throw error;
+      consecutiveFailures += 1;
+      const plan = retryPlan(
+        consecutiveFailures,
+        everSucceeded,
+        retryAfterSeconds,
       );
+      if (plan.giveUp) throw error;
+      liveStatus.textContent = plan.message;
+      await new Promise((resolve) => setTimeout(resolve, plan.waitMs));
       continue;
     }
-    if (!response.ok) throw new Error("REQUEST_FAILED");
-    const summary = scanRequestSummarySchema.parse(await response.json());
     retryAfterSeconds = summary.retryAfterSeconds;
-    etag = response.headers.get("etag") ?? undefined;
-    renderSummary(summary);
     renderSteps(summary);
     const terminal = summary.state === "complete" || summary.state === "failed";
     const repositories = await loadRepositories(requestId, terminal);
+    // Before the cards, because one of them counts reviewed repositories and
+    // that count is derived here. Drawing first left it a poll behind.
     renderRepositories(repositories);
+    renderSummary(summary);
     ledgerSection.hidden = false;
     let findingCount = 0;
     let loadedFindings: PublicFinding[] = [];
@@ -568,6 +597,9 @@ async function poll(requestId: string): Promise<void> {
         findings: findingCount,
         repositories: repositories.length,
         complete: terminal,
+        // A stopped scan used to be written as "5 repos, nothing found", which
+        // is what a clean scan says, and contradicted the report it links to.
+        stopped: summary.state === "failed",
       }),
     );
     if (terminal) return;
@@ -610,6 +642,10 @@ form.addEventListener("submit", (event) => {
   findingsSection.hidden = true;
   findingRows.replaceChildren();
   setScanState("scanning");
+  // Otherwise the previous account's numbers sit in the cards for the whole of
+  // this scan, attributed to this account.
+  findingsShown = 0;
+  reviewedShown = 0;
   statusSection.hidden = false;
   liveStatus.textContent = "Looking up the account on GitHub.";
   verdict.hidden = true;
@@ -638,26 +674,6 @@ form.addEventListener("submit", (event) => {
     }
   })();
 });
-
-/**
- * The providers, as a person would write them.
- *
- * The ids are internal and lowercase, and joining three of them with "and"
- * produced "openrouter and groq and gemini" in the footer sentence that tells
- * people where their code goes.
- */
-const PROVIDER_NAMES: Record<string, string> = {
-  openrouter: "OpenRouter",
-  groq: "Groq",
-  gemini: "Google",
-};
-
-function providerNames(providers: readonly string[]): string {
-  const named = providers.map((id) => PROVIDER_NAMES[id] ?? id);
-  if (named.length === 0) return "an external model provider";
-  if (named.length === 1) return named[0] ?? "";
-  return `${named.slice(0, -1).join(", ")} and ${named.at(-1) ?? ""}`;
-}
 
 /**
  * Paints the deep-read meter.
@@ -804,14 +820,17 @@ function renderHistory(entries: readonly HistoryEntry[]): void {
       when.textContent = describeWhen(entry.at, now);
 
       const what = document.createElement("span");
-      what.className = entry.findings > 0 ? "what hit" : "what";
-      what.textContent = entry.complete
-        ? `${String(entry.repositories)} repos · ${
-            entry.findings === 0
-              ? "nothing found"
-              : `${String(entry.findings)} finding${entry.findings === 1 ? "" : "s"}`
-          }`
-        : "still running";
+      what.className =
+        entry.findings > 0 || entry.stopped === true ? "what hit" : "what";
+      what.textContent = entry.stopped === true
+        ? "stopped before it finished"
+        : entry.complete
+          ? `${String(entry.repositories)} repos · ${
+              entry.findings === 0
+                ? "nothing found"
+                : `${String(entry.findings)} finding${entry.findings === 1 ? "" : "s"}`
+            }`
+          : "still running";
 
       button.append(who, when, what);
       button.addEventListener("click", () => {

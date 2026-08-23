@@ -69,6 +69,37 @@ describe("scan history", () => {
     expect(stored[0]?.findings).toBe(2);
   });
 
+  it("keeps the original timestamp when a report is opened again", () => {
+    // Re-polling a finished report rewrote `at` to now, so a scan from three
+    // days ago jumped to the top of the list and displayed as "just now",
+    // while the label claims to say when the scan ran.
+    const ranAt = 1_000;
+    rememberScan(entry({ at: ranAt, complete: false }));
+    rememberScan(entry({ at: 9_999_999, complete: true, findings: 2 }));
+    const stored = readHistory()[0];
+    expect(stored?.at).toBe(ranAt);
+    // Everything else does update: the counts are what changed.
+    expect(stored?.findings).toBe(2);
+    expect(stored?.complete).toBe(true);
+  });
+
+  it("does not let a re-opened report jump ahead of newer ones", () => {
+    rememberScan(entry({ requestId: "req_old", at: 1_000 }));
+    rememberScan(entry({ requestId: "req_new", at: 5_000 }));
+    // Opening the old one again.
+    rememberScan(entry({ requestId: "req_old", at: 9_000 }));
+    const order = readHistory().map((item) => item.at);
+    expect(order).toContain(1_000);
+    expect(order).not.toContain(9_000);
+  });
+
+  it("carries a stopped scan through storage as stopped", () => {
+    // It used to be written as "5 repos, nothing found", which is what a clean
+    // scan says, and contradicted the report it links to.
+    rememberScan(entry({ stopped: true, complete: true }));
+    expect(readHistory()[0]?.stopped).toBe(true);
+  });
+
   it("keeps the newest scan first", () => {
     rememberScan(entry({ requestId: "req_0000000001", username: "first" }));
     rememberScan(entry({ requestId: "req_0000000002", username: "second" }));

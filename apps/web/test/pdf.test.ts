@@ -218,3 +218,62 @@ describe("the report writer", () => {
     expect(text).toContain("Nothing was found.");
   });
 });
+
+describe("keeping a section with its table", () => {
+  it("does not strand a heading at the foot of a page", () => {
+    // The guard advanced to exactly the bottom margin, and the page only
+    // breaks strictly below it, so it never fired. These are the row counts
+    // where the heading printed alone at the foot of one page while its table
+    // began on the next, found by sweeping 20 to 130.
+    for (const count of [49, 59, 69, 79, 120, 130]) {
+      const bytes = buildPdf(
+        report({
+          sections: [
+            {
+              heading: "What was found",
+              layout: "list",
+              note: "File paths and line numbers only.",
+              emptyText: "none",
+              columns: [
+                { title: "Repository", weight: 4 },
+                { title: "What was found", weight: 4 },
+                { title: "Severity", weight: 1.8 },
+                { title: "How many", weight: 3.2 },
+                { title: "Where", weight: 6, keep: "tail" },
+                { title: "What to do", weight: 4 },
+              ],
+              rows: Array.from({ length: count }, (_, index) => [
+                `repo-${String(index)}`,
+                "generic api key",
+                "high",
+                "1",
+                `src/f${String(index)}.ts:1`,
+                "Rotate it",
+              ]),
+            },
+            {
+              heading: "What was covered",
+              emptyText: "none",
+              columns: [
+                { title: "Repository", weight: 7 },
+                { title: "Status", weight: 3 },
+              ],
+              rows: [["only-row", "Scanned"]],
+            },
+          ],
+        }),
+      );
+      const text = decode(bytes);
+      const streams = [
+        ...text.matchAll(/stream\n([\s\S]*?)\nendstream/g),
+      ].map((match) => match[1] ?? "");
+      const withHeading = streams.find((body) =>
+        body.includes("(What was covered)"),
+      );
+      expect(withHeading, `${String(count)} rows lost the heading`).toBeDefined();
+      expect(withHeading, `${String(count)} rows stranded the heading`).toContain(
+        "(only-row)",
+      );
+    }
+  });
+});

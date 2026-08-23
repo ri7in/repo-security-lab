@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ScanRequestSummary } from "@app/contracts";
 import {
   explainFailure,
+  providerNames,
   percentDone,
   statusHeading,
   statusLine,
@@ -171,5 +172,31 @@ describe("explaining why a scan stopped", () => {
 
   it("tells someone who typed an organisation what is wrong", () => {
     expect(explainFailure("GITHUB_NOT_FOUND")).toContain("organisation");
+  });
+});
+
+describe("naming the model providers", () => {
+  it("writes them the way a person would", () => {
+    // The footer sentence that tells people where their code goes read
+    // "openrouter and groq and gemini".
+    expect(providerNames(["openrouter", "groq", "gemini"])).toBe(
+      "OpenRouter, Groq and Google",
+    );
+  });
+
+  it("handles one and two without a stray comma", () => {
+    expect(providerNames(["groq"])).toBe("Groq");
+    expect(providerNames(["openrouter", "groq"])).toBe("OpenRouter and Groq");
+  });
+
+  it("says something rather than nothing when the list is empty", () => {
+    expect(providerNames([])).toBe("an external model provider");
+  });
+
+  it("passes through a provider it has no name for", () => {
+    // Better an unfamiliar id in the disclosure than a provider left out of it.
+    expect(providerNames(["openrouter", "somebody-new"])).toBe(
+      "OpenRouter and somebody-new",
+    );
   });
 });
