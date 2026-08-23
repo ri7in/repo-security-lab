@@ -84,23 +84,47 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     review: { done: terminal, total: all || 1 },
   };
 
+  // Repositories in each step right now, as opposed to past it.
+  //
+  // Without this the sign said "Downloading snapshots" for an entire scan: the
+  // steps are sequential over the whole account, but the pipeline is per
+  // repository, so the first incomplete step is the download from the first
+  // second to the last. The step holding the most repositories is the one the
+  // agent is actually working on.
+  const inFlight: Record<Step, number> = {
+    discover: summary.state === "discovering" ? 1 : 0,
+    download: count("leased", "acquiring"),
+    scan: count("guarding", "scanning", "normalizing"),
+    review: count("cleaning", "uploading", "waiting_to_publish"),
+  };
+  const busiest = STEP_ORDER.reduce<Step | null>((best, step) => {
+    if (inFlight[step] === 0) return best;
+    if (best === null || inFlight[step] > inFlight[best]) return step;
+    return best;
+  }, null);
+
   const steps: { step: Step; state: StepState; percent: number }[] = [];
   let active: Step | null = null;
+  let firstIncomplete: Step | null = null;
   for (const step of STEP_ORDER) {
     const { done, total } = progress[step];
     // `finished` covers the account with no public repositories at all: every
     // count is zero, so `done >= total` could never be reached and a finished
     // scan showed four steps that had apparently never started.
     const complete = finished || (all > 0 && done >= total);
-    // Exactly one step is active: the first unfinished one. Marking several at
-    // once is what made the old panel look like nothing was happening.
-    const isActive = !complete && active === null && !finished && !stopped;
-    if (isActive) active = step;
+    if (!complete && firstIncomplete === null) firstIncomplete = step;
     steps.push({
       step,
-      state: complete ? "done" : isActive ? "active" : "todo",
+      state: complete ? "done" : "todo",
       percent: all === 0 ? 0 : Math.round((done / total) * 100),
     });
+  }
+  // Exactly one step is active. Marking several at once is what made an
+  // earlier panel look like nothing in particular was happening.
+  if (!finished && !stopped) active = busiest ?? firstIncomplete;
+  const activeEntry = steps.find((entry) => entry.step === active);
+  if (activeEntry !== undefined && activeEntry.state !== "done") {
+    steps[steps.indexOf(activeEntry)] = { ...activeEntry, state: "active" };
   }
 
   const held: { done: number; total: number } | null =

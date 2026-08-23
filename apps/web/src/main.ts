@@ -239,7 +239,10 @@ function renderSteps(summary: ScanRequestSummary): void {
     if (element === null) continue;
     element.dataset["state"] = entry.state;
     const meter = element.querySelector("i");
-    if (meter !== null) meter.style.width = `${String(entry.percent)}%`;
+    if (meter !== null) {
+      meter.style.width =
+        entry.state === "todo" ? "0%" : `${String(entry.percent)}%`;
+    }
   }
 
   handOver(model.active);

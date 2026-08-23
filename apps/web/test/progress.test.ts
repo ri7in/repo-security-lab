@@ -71,6 +71,30 @@ describe("the progress model", () => {
     expect(model.active).not.toBeNull();
   });
 
+  it("follows where the repositories actually are, not the first gap", () => {
+    // The sign read "Downloading snapshots" for an entire scan: the steps run
+    // over the whole account while the pipeline runs per repository, so the
+    // first incomplete step is the download from the first second to the last.
+    const model = progressModel(
+      summary("scanning", { complete: 3, scanning: 4, waiting: 3 }),
+    );
+    expect(model.active).toBe("scan");
+    expect(model.signText).toBe("Scanning for secrets");
+  });
+
+  it("moves to the review step when that is where the work sits", () => {
+    const model = progressModel(
+      summary("scanning", { complete: 2, uploading: 3, waiting: 1 }),
+    );
+    expect(model.active).toBe("review");
+  });
+
+  it("falls back to the first unfinished step when nothing is in flight", () => {
+    // Between dispatches every repository is waiting and none is in any step.
+    const model = progressModel(summary("scanning", { waiting: 8 }));
+    expect(model.active).toBe("download");
+  });
+
   it("advances the sign to the step that is actually running", () => {
     // Everything downloaded, nothing published: the scan step is the one in
     // hand, and the sign has to say so.
