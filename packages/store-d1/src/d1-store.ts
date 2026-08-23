@@ -189,7 +189,16 @@ function serializeReasons(value: SpecialistReasons): string {
 
 function parseCoverage(value: string): SpecialistProgress {
   try {
-    return repositoryCoverageSchema.parse(JSON.parse(value) as unknown);
+    const stored = JSON.parse(value) as Record<string, unknown>;
+    // A row written before a specialist existed has no key for it. Defaulting
+    // the gap to "waiting" is what lets a new engine be added without
+    // rewriting every historical row, and "waiting" is honest: that check has
+    // not run for this repository and is not claiming to have.
+    const complete: Record<string, unknown> = {};
+    for (const specialist of SPECIALISTS) {
+      complete[specialist] = stored[specialist] ?? "waiting";
+    }
+    return repositoryCoverageSchema.parse(complete);
   } catch {
     throw new Error("invalid coverage row");
   }
@@ -330,6 +339,25 @@ function totalsForDiscovery(
     }
   }
   return totals;
+}
+
+/** Fills in buckets for specialists that did not exist when a row was written. */
+function withMissingSpecialists(stored: unknown): unknown {
+  if (typeof stored !== "object" || stored === null) return stored;
+  const source = stored as Record<string, unknown>;
+  const zeroed = {
+    waiting: 0,
+    complete: 0,
+    not_applicable: 0,
+    unsupported: 0,
+    partial: 0,
+    failed: 0,
+  };
+  const complete: Record<string, unknown> = { ...source };
+  for (const specialist of SPECIALISTS) {
+    complete[specialist] = source[specialist] ?? { ...zeroed };
+  }
+  return complete;
 }
 
 function serializeTotals(totals: RequestTotals): readonly [string, string] {
@@ -590,8 +618,11 @@ export class D1Store implements Store {
         repositoryTotals: repositoryStateTotalsSchema.parse(
           JSON.parse(row.repository_totals) as unknown,
         ),
+        // Same gap as per-repository coverage: totals written before a
+        // specialist existed have no bucket for it, and a zeroed bucket is the
+        // truthful reading of "no repository has reached that check yet".
         coverageTotals: coverageTotalsSchema.parse(
-          JSON.parse(row.coverage_totals) as unknown,
+          withMissingSpecialists(JSON.parse(row.coverage_totals) as unknown),
         ),
       };
     } catch {
