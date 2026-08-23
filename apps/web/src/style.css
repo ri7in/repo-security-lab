@@ -317,6 +317,9 @@ footer p { max-width: 720px; margin: 0; }
   tbody th, tbody td { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; padding: 4px 14px; border: 0; }
   tbody th::before, tbody td::before { content: attr(data-label); color: var(--muted); font: 700 9px var(--mono); letter-spacing: .07em; text-transform: uppercase; }
   tbody th::before { content: "Repository"; }
+  /* The chip is a grid item here, so without this it stretches the full
+     column and reads as a full width button rather than a small state. */
+  tbody td > .state-chip, tbody td > .advice { justify-self: start; }
   .repo-name { width: auto; white-space: normal; }
   .repo-name > span { max-width: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
   tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--signal); }
