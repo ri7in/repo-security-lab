@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  REPOSITORY_ACTIVE_STATES,
   REPOSITORY_STATES,
   REPOSITORY_TERMINAL_STATES,
   type RepositoryState,
@@ -84,5 +85,32 @@ describe("repository state graph", () => {
       ].includes(state);
       expect(canRequeueExpiredLease(state), state).toBe(expected);
     }
+  });
+});
+
+describe("the state graph itself", () => {
+  it("is complete, and says so when it is asked", () => {
+    // The guard exists so that adding a repository state without giving it
+    // transitions fails at startup rather than at three in the morning.
+    expect(() => {
+      assertCompleteStateGraph();
+    }).not.toThrow();
+  });
+
+  it("gives every active state somewhere to go", () => {
+    // A state a repository can sit in with no exit is a stuck repository, and
+    // one stuck repository used to stall the whole request behind it.
+    for (const state of REPOSITORY_ACTIVE_STATES) {
+      expect(
+        REPOSITORY_TRANSITIONS[state].length,
+        `${state} is a dead end`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("only lets an expired lease be requeued from a state that held one", () => {
+    expect(canRequeueExpiredLease("cleaning")).toBe(true);
+    expect(canRequeueExpiredLease("waiting")).toBe(false);
+    expect(canRequeueExpiredLease("complete")).toBe(false);
   });
 });

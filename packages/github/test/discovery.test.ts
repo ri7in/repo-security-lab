@@ -135,6 +135,38 @@ describe("authenticated GraphQL discovery", () => {
     ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
+  it("calls a login that is not a user account not found, not a network fault", async () => {
+    // GitHub answers a login that is not a user, whether it does not exist or
+    // belongs to an organisation, with data.user null AND a NOT_FOUND entry in
+    // errors. The errors branch ran first and threw INVALID_RESPONSE, which
+    // the API maps to a network failure, so a typo was told "the download
+    // failed part way through, running the scan again usually works".
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse({
+        data: { user: null },
+        errors: [
+          {
+            type: "NOT_FOUND",
+            message: "Could not resolve to a User with the login of 'nodejs'.",
+          },
+        ],
+      });
+    await expect(
+      new GithubDiscoveryClient({ token: "test", fetchImpl }).discover("nodejs"),
+    ).rejects.toMatchObject({ code: "ACCOUNT_NOT_FOUND" });
+  });
+
+  it("still calls an unrecognised GraphQL error a broken response", async () => {
+    const fetchImpl: typeof fetch = async () =>
+      jsonResponse({
+        ...graphqlPage([], false, null),
+        errors: [{ type: "SOMETHING_ELSE", message: "ignored prose" }],
+      });
+    await expect(
+      new GithubDiscoveryClient({ token: "test", fetchImpl }).discover("ri7in"),
+    ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+  });
+
   it("rejects duplicate repository ids across pages", async () => {
     const node = {
       databaseId: 10,
