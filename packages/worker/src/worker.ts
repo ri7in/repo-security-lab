@@ -180,6 +180,33 @@ function leaseRef(repository: RepositoryRecord, workerId: OpaqueId): LeaseRef {
   };
 }
 
+/**
+ * Records why a publication was refused.
+ *
+ * A silent `catch` here cost hours: a repository that cannot publish keeps its
+ * lease, and a worker that will not claim while holding a lease then deadlocks
+ * the whole queue with no explanation anywhere. Only the message is emitted,
+ * and only when it is one this code raised. Anything else, including anything
+ * a scanner or a model could have influenced, is reported as a fixed class.
+ */
+const KNOWN_PUBLISH_FAILURES = new Set([
+  "invalid publication metadata",
+  "invalid publication coverage",
+  "invalid publication findings",
+  "invalid coverage row",
+  "invalid finding row",
+]);
+
+function reportPublishFailure(error: unknown): void {
+  const message = error instanceof Error ? error.message : "";
+  process.stderr.write(
+    `${JSON.stringify({
+      event: "publish_refused",
+      reason: KNOWN_PUBLISH_FAILURES.has(message) ? message : "UNCLASSIFIED",
+    })}\n`,
+  );
+}
+
 function initialCoverage(): Record<(typeof SPECIALISTS)[number], "not_applicable"> {
   return Object.fromEntries(
     SPECIALISTS.map((specialist) => [specialist, "not_applicable"]),
@@ -706,7 +733,8 @@ export class RepositoryWorker {
             nowMs: this.#now(),
           });
         }
-      } catch {
+      } catch (error) {
+        reportPublishFailure(error);
         return "publish_deferred";
       }
       if (publication !== "published" && publication !== "idempotent") {
@@ -794,7 +822,8 @@ export class RepositoryWorker {
           nowMs: this.#now(),
         });
         return publication === "published" ? "failed" : "stale_lease";
-      } catch {
+      } catch (error) {
+        reportPublishFailure(error);
         return "publish_deferred";
       }
     }
