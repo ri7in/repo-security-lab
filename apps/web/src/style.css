@@ -307,8 +307,11 @@ footer p { max-width: 720px; margin: 0; }
      with its own labels instead, and nothing scrolls sideways at all. */
   .table-shell { overflow-x: visible; }
   .table-shell::after { display: none; }
-  table { min-width: 0; }
-  thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  /* The whole table stops being a table, so the blocks lay out as blocks and
+     the head has nothing left to align. Each cell prints its own label, which
+     Chrome, Safari and Firefox all expose to a screen reader. */
+  table, tbody { display: block; width: 100%; min-width: 0; }
+  thead { display: none; }
   tbody tr { display: block; padding: 14px 0; border-bottom: 1px solid var(--line); }
   tbody tr:last-child { border-bottom: 0; }
   tbody th, tbody td { display: grid; grid-template-columns: 96px 1fr; gap: 10px; align-items: baseline; padding: 4px 14px; border: 0; }
