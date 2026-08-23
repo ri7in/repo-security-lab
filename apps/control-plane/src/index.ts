@@ -1,4 +1,5 @@
 import { createApi, resumePendingDiscoveries } from "@app/api";
+import { MAX_LEASE_ATTEMPTS } from "@app/core";
 import type { GithubLogin } from "@app/contracts";
 import { GithubDiscoveryClient } from "@app/github";
 import { D1Store, type D1Database } from "@app/store-d1";
@@ -11,7 +12,11 @@ import {
 } from "./notifications.js";
 import { readDeepReadBudget } from "./deep-read-budget.js";
 import { expireStaleActiveReport, purgeExpiredReports } from "./retention.js";
-import { dispatchScanWorker, readDispatchConfig } from "./worker-dispatch.js";
+import {
+  dispatchIfWorkWaiting,
+  dispatchScanWorker,
+  readDispatchConfig,
+} from "./worker-dispatch.js";
 
 interface ExecutionContextPort {
   waitUntil(promise: Promise<unknown>): void;
@@ -240,6 +245,17 @@ async function runScheduledMaintenance(
     tasks.push(() => deliverOneNotification(environment.DB, configuration));
   }
   tasks.push(() => recoverPendingDiscoveries(environment));
+  // One run drains a bounded number of repositories, so a large account needs
+  // several. Without this the second run only came if another visitor happened
+  // to start a scan.
+  tasks.push(() =>
+    dispatchIfWorkWaiting(
+      environment.DB,
+      Date.now(),
+      readDispatchConfig(environment),
+      MAX_LEASE_ATTEMPTS,
+    ),
+  );
   let failed = false;
   for (const task of tasks) {
     try {

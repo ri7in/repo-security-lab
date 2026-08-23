@@ -14,6 +14,13 @@ import type { D1Database } from "@app/store-d1";
  * the next dispatch, or a manual run, still drains it. A failed dispatch must
  * never fail the visitor's request, because the scan is already durably
  * recorded by the time we get here.
+ *
+ * One run drains a bounded number of repositories, so a large account needs
+ * several. Dispatching only when a request is created meant the second run
+ * never came unless another visitor happened to arrive: a hundred-and-seven
+ * repository account sat at fifty-one percent for the best part of an hour
+ * with the panel cheerfully reporting "51 of 107 finished". The scheduled tick
+ * now dispatches too, but only when there is work actually waiting.
  */
 
 export interface DispatchConfig {
@@ -105,6 +112,8 @@ export type DispatchOutcome =
   | "dispatched"
   | "not_configured"
   | "throttled"
+  /** Nothing was claimable, so no run was started and none was wasted. */
+  | "no_work"
   | "failed";
 
 /**
@@ -141,4 +150,42 @@ export async function dispatchScanWorker(
   } catch {
     return "failed";
   }
+}
+
+/**
+ * True when at least one repository could be claimed right now.
+ *
+ * Mirrors the claim query's own conditions, so a tick cannot spend a dispatch
+ * on a queue that is empty, fully leased, or out of attempts.
+ */
+export async function hasClaimableWork(
+  database: D1Database,
+  maxLeaseAttempts: number,
+): Promise<boolean> {
+  const row = await database
+    .prepare(
+      `SELECT 1 AS present FROM repositories
+       JOIN scan_requests ON scan_requests.request_id = repositories.request_id
+       WHERE repositories.state = 'waiting'
+         AND repositories.lease_owner IS NULL
+         AND repositories.attempt_count < ?
+         AND scan_requests.state = 'scanning'
+       LIMIT 1`,
+    )
+    .bind(maxLeaseAttempts)
+    .first<{ present: number }>();
+  return row !== null;
+}
+
+/** Dispatches a run only if there is something for it to do. */
+export async function dispatchIfWorkWaiting(
+  database: D1Database,
+  nowMs: number,
+  config: DispatchConfig | null,
+  maxLeaseAttempts: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<DispatchOutcome> {
+  if (config === null) return "not_configured";
+  if (!(await hasClaimableWork(database, maxLeaseAttempts))) return "no_work";
+  return dispatchScanWorker(database, nowMs, config, fetchImpl);
 }

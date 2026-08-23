@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   MAX_DISPATCHES_PER_DAY,
   MIN_DISPATCH_INTERVAL_MS,
+  dispatchIfWorkWaiting,
   dispatchScanWorker,
+  hasClaimableWork,
   readDispatchConfig,
 } from "../src/worker-dispatch.js";
 
@@ -149,6 +151,108 @@ describe("on-demand dispatch", () => {
     );
     expect(await dispatchScanWorker(env.DB, 3_000_000, CONFIG, dead)).toBe(
       "failed",
+    );
+  });
+});
+
+/**
+ * One run drains a bounded number of repositories, so a large account needs
+ * several. Dispatching only when a request is created meant the second run
+ * never came unless another visitor happened to arrive, and a hundred-and-
+ * seven repository account sat at fifty-one percent for the best part of an
+ * hour with the panel reporting "51 of 107 finished".
+ */
+
+async function seedQueue(options: {
+  readonly repositoryState: string;
+  readonly requestState: string;
+  readonly attempts: number;
+  readonly leaseOwner: string | null;
+}): Promise<void> {
+  await env.DB.prepare("DELETE FROM repositories").run();
+  await env.DB.prepare("DELETE FROM request_totals").run();
+  await env.DB.prepare("DELETE FROM scan_requests").run();
+  await env.DB.prepare(
+    `INSERT INTO scan_requests(request_id, github_account_id, username, state,
+       reason, discovery_complete, ai_lane, created_at_ms, updated_at_ms)
+     VALUES ('req_queue0001', 1, 'someone', ?, NULL, 1, 'ai_not_run', 1, 1)`,
+  )
+    .bind(options.requestState)
+    .run();
+  // repositories.request_id references request_totals, not scan_requests.
+  await env.DB.prepare(
+    "INSERT INTO request_totals(request_id) VALUES ('req_queue0001')",
+  ).run();
+  await env.DB.prepare(
+    `INSERT INTO repositories(request_id, repository_id, name, commit_sha, state,
+       reason, attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
+       discovered_at_ms, updated_at_ms, is_fork, specialist_reasons, coverage_json)
+     VALUES ('req_queue0001', 1, 'one', ?, ?, NULL, ?, ?, 0, ?, 1, 1, 0, '{}', '{}')`,
+  )
+    .bind(
+      "a".repeat(40),
+      options.repositoryState,
+      options.attempts,
+      options.leaseOwner,
+      options.leaseOwner === null ? null : 9_999_999_999,
+    )
+    .run();
+}
+
+describe("dispatching for work already queued", () => {
+  it("sees a repository that is waiting to be claimed", async () => {
+    await seedQueue({
+      repositoryState: "waiting",
+      requestState: "scanning",
+      attempts: 0,
+      leaseOwner: null,
+    });
+    expect(await hasClaimableWork(env.DB, 3)).toBe(true);
+  });
+
+  it("does not see work that nothing could claim", async () => {
+    // Each of these is a reason the claim query would skip the row, so a tick
+    // that dispatched on them would spend a run on an empty queue.
+    for (const seed of [
+      { repositoryState: "complete", requestState: "scanning", attempts: 0, leaseOwner: null },
+      { repositoryState: "waiting", requestState: "complete", attempts: 0, leaseOwner: null },
+      { repositoryState: "waiting", requestState: "scanning", attempts: 3, leaseOwner: null },
+      { repositoryState: "waiting", requestState: "scanning", attempts: 0, leaseOwner: "worker_1" },
+    ]) {
+      await seedQueue(seed);
+      expect(await hasClaimableWork(env.DB, 3), JSON.stringify(seed)).toBe(false);
+    }
+  });
+
+  it("starts a run for queued work and none for an empty queue", async () => {
+    await resetLedger();
+    await seedQueue({
+      repositoryState: "waiting",
+      requestState: "scanning",
+      attempts: 0,
+      leaseOwner: null,
+    });
+    expect(
+      await dispatchIfWorkWaiting(env.DB, 9_000_000, CONFIG, 3, accepted()),
+    ).toBe("dispatched");
+
+    await resetLedger();
+    await seedQueue({
+      repositoryState: "complete",
+      requestState: "complete",
+      attempts: 0,
+      leaseOwner: null,
+    });
+    const fetchMock = accepted();
+    expect(await dispatchIfWorkWaiting(env.DB, 9_100_000, CONFIG, 3, fetchMock)).toBe(
+      "no_work",
+    );
+    expect(vi.mocked(fetchMock).mock.calls).toHaveLength(0);
+  });
+
+  it("stays quiet when dispatch is not configured", async () => {
+    expect(await dispatchIfWorkWaiting(env.DB, 1_000, null, 3, accepted())).toBe(
+      "not_configured",
     );
   });
 });
