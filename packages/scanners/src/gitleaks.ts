@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
-import { lstat, readFile, realpath, stat } from "node:fs/promises";
+import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
@@ -215,7 +215,7 @@ export class GitleaksScanner {
     // Always collected. Locations are what makes a report actionable, they
     // need no file reads, and an opt-in flag here is a footgun: a caller that
     // forgets it silently ships a report nobody can act on.
-    const locations = buildLocations(parsedFindings, source);
+    const locations = await buildLocations(parsedFindings, source);
     return {
       findings: findings.slice(0, MAX_FINDINGS),
       rawFindingCount: findings.length,
@@ -237,15 +237,40 @@ export class GitleaksScanner {
  * reported without one. A report may omit where something is; it may never
  * invent it.
  */
-function buildLocations(
+/**
+ * Finds the single wrapper directory a source archive unpacks into.
+ *
+ * A GitHub tarball contains exactly one top-level folder named
+ * `owner-repo-shortsha`. Publishing paths beneath it verbatim gives
+ * `ri7in-salun-723983a/QUICKSTART.md`, which is not a path in the
+ * repository and cannot be opened or linked to. Stripping it yields the
+ * repository-relative path the reader actually needs.
+ *
+ * Returns null unless the tree has exactly one entry and it is a directory,
+ * so an archive shaped any other way is left completely alone.
+ */
+async function archiveWrapperDirectory(root: string): Promise<string | null> {
+  try {
+    const entries = await readdir(root, { withFileTypes: true });
+    const [only] = entries;
+    return entries.length === 1 && only !== undefined && only.isDirectory()
+      ? only.name
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+async function buildLocations(
   parsed: readonly {
     RuleID: string;
     File?: string | undefined;
     StartLine?: number | undefined;
   }[],
   sourceDirectory: string,
-): FindingLocation[] {
+): Promise<FindingLocation[]> {
   const root = path.resolve(sourceDirectory);
+  const wrapper = await archiveWrapperDirectory(root);
   const locations: FindingLocation[] = [];
   for (const entry of parsed) {
     if (locations.length >= MAX_LOCATIONS) break;
@@ -259,10 +284,15 @@ function buildLocations(
       : entry.File;
     const relative = reviewablePath(candidate);
     if (relative === null) continue;
+    const stripped =
+      wrapper !== null && relative.startsWith(`${wrapper}/`)
+        ? relative.slice(wrapper.length + 1)
+        : relative;
+    if (stripped === "") continue;
     locations.push({
       engine: "gitleaks",
       ruleId: entry.RuleID,
-      path: relative,
+      path: stripped,
       startLine: entry.StartLine,
     });
   }

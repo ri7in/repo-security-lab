@@ -169,6 +169,35 @@ describe("published finding locations", () => {
     expect(result.findings).toHaveLength(1);
   });
 
+  it("strips the archive wrapper so a path is repository-relative", async () => {
+    // A GitHub tarball unpacks into one folder named owner-repo-shortsha.
+    // Publishing "ri7in-salun-723983a/QUICKSTART.md" names no file that
+    // exists in the repository and cannot be opened or linked to.
+    const setup = await fixture();
+    const wrapper = "ri7in-salun-723983a";
+    await mkdir(path.join(setup.source, wrapper), { recursive: true });
+    const result = await new GitleaksScanner({
+      binaryPath: setup.binary,
+      expectedBinarySha256: setup.binaryHash,
+      runCommand: runnerReturning([
+        raw({ File: `${wrapper}/QUICKSTART.md`, StartLine: 58 }),
+      ]),
+    }).scan(setup.source);
+    expect(result.locations[0]?.path).toBe("QUICKSTART.md");
+  });
+
+  it("leaves paths alone when the tree has no single wrapper", async () => {
+    const setup = await fixture();
+    await mkdir(path.join(setup.source, "alpha"), { recursive: true });
+    await mkdir(path.join(setup.source, "beta"), { recursive: true });
+    const result = await new GitleaksScanner({
+      binaryPath: setup.binary,
+      expectedBinarySha256: setup.binaryHash,
+      runCommand: runnerReturning([raw({ File: "alpha/config.ts" })]),
+    }).scan(setup.source);
+    expect(result.locations[0]?.path).toBe("alpha/config.ts");
+  });
+
   it("stays bounded however many findings the target produces", async () => {
     const many = Array.from({ length: MAX_LOCATIONS * 5 }, (_, index) =>
       raw({ StartLine: index + 1 }),
