@@ -8,6 +8,7 @@
     "start": "tsx src/server.ts"
   },
   "dependencies": {
+    "@app/ai-providers": "workspace:*",
     "@app/archive": "workspace:*",
     "@app/broker": "workspace:*",
     "@app/contracts": "workspace:*",

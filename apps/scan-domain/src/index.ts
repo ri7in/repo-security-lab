@@ -8,6 +8,7 @@ import {
   scanDomainResultSchema,
   type FailureClass,
   type FindingLocation,
+  type ReviewFinding,
 } from "@app/contracts";
 import { normalizeGitleaks, normalizeZizmor } from "@app/normalize";
 import { GitleaksScanner, ScannerError, ZizmorScanner } from "@app/scanners";
@@ -160,15 +161,23 @@ async function scan(): Promise<void> {
   const engineResults: unknown[] = [];
   const engineFailures: Partial<Record<"gitleaks" | "zizmor", FailureClass>> = {};
   let locations: readonly FindingLocation[] = [];
+  let review: readonly ReviewFinding[] = [];
+  let reviewComplete = false;
   try {
     const expectedBinarySha256 = process.env["GITLEAKS_SHA256"] ?? "";
     const scanned = await new GitleaksScanner({
       binaryPath: GITLEAKS_BINARY,
       expectedBinarySha256,
+      // Review context is gathered here, inside the sandbox, because it needs
+      // to read the extracted files. It is judged outside, in the worker,
+      // which is the only side with a network.
+      collectReview: true,
       trustedConfigPath: GITLEAKS_CONFIG,
       trustedIgnorePath: GITLEAKS_IGNORE,
     }).scan(SOURCE_DIRECTORY);
     locations = scanned.locations;
+    review = scanned.review ?? [];
+    reviewComplete = scanned.reviewComplete ?? false;
     const normalized = normalizeGitleaks(scanned);
     engineResults.push({
       engine: "gitleaks",
@@ -205,6 +214,8 @@ async function scan(): Promise<void> {
       engineResults,
       engineFailures,
       locations,
+      review,
+      reviewComplete,
     }),
   );
 }

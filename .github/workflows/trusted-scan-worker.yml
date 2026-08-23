@@ -116,4 +116,10 @@ jobs:
           SCRATCH_PATH: ${{ runner.temp }}/repo-security-scratch
           MAX_JOBS_PER_TICK: "50"
           RUN_ONCE: "true"
+          # Council review. Two distinct model families must both reject a
+          # finding before it is dropped, so fewer than two keys present means
+          # review simply never runs and every finding is reported.
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: pnpm dev:worker

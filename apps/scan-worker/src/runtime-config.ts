@@ -18,12 +18,78 @@ export interface ScanWorkerConfiguration {
     readonly binaryPath: string;
     readonly sha256: string;
   };
+  /**
+   * Judges permitted to delete a scanner finding all of them reject.
+   *
+   * Empty or single-entry means review never runs, which is the safe default:
+   * one reviewer deleting evidence is the failure this is built to avoid.
+   * Model ids are overridable because free-tier model names churn, and a
+   * missing model is better than a silently wrong one.
+   */
+  readonly judges: readonly {
+    readonly apiKey: string;
+    readonly model: string;
+    readonly family: string;
+    readonly endpoint: string;
+  }[];
   readonly isolation: null | {
     readonly bubblewrapPath: string;
     readonly nodePath: string;
     readonly applicationBundlePath: string;
     readonly runtimeLibraryPaths: readonly string[];
   };
+}
+
+/** Builds the judge panel from whichever provider keys are present. */
+function judgePanel(
+  environment: NodeJS.ProcessEnv,
+): readonly {
+  readonly apiKey: string;
+  readonly model: string;
+  readonly family: string;
+  readonly endpoint: string;
+}[] {
+  // Verified against the live providers on 2026-08-23: each of these returned
+  // the correct verdict on two genuine secrets and two documentation
+  // placeholders. Free model ids churn fast, hence the env overrides.
+  const candidates = [
+    {
+      keyName: "GROQ_API_KEY",
+      family: "groq",
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      model: environment["GROQ_JUDGE_MODEL"] ?? "openai/gpt-oss-120b",
+    },
+    {
+      keyName: "OPENROUTER_API_KEY",
+      family: "openrouter",
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      model:
+        environment["OPENROUTER_JUDGE_MODEL"] ??
+        "nvidia/nemotron-3-ultra-550b-a55b:free",
+    },
+    {
+      keyName: "GEMINI_API_KEY",
+      family: "google",
+      endpoint:
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+      model: environment["GEMINI_JUDGE_MODEL"] ?? "gemini-flash-lite-latest",
+    },
+  ];
+  const panel = candidates.flatMap((candidate) => {
+    const apiKey = environment[candidate.keyName];
+    return apiKey === undefined || apiKey.trim() === ""
+      ? []
+      : [
+          {
+            apiKey,
+            model: candidate.model,
+            family: candidate.family,
+            endpoint: candidate.endpoint,
+          },
+        ];
+  });
+  // One judge cannot disagree with itself, so a panel of one is no panel.
+  return panel.length >= 2 ? panel : [];
 }
 
 function required(environment: NodeJS.ProcessEnv, key: string): string {
@@ -148,6 +214,7 @@ export function parseScanWorkerConfiguration(
         ? undefined
         : environment["GITHUB_TOKEN"],
     allowedGithubAccountIds: accountScope(environment),
+    judges: judgePanel(environment),
     pollIntervalMs: positiveInteger(
       environment["POLL_INTERVAL_MS"] ?? "2000",
       "POLL_INTERVAL_MS",

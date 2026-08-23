@@ -135,6 +135,9 @@ importers:
 
   apps/scan-worker:
     dependencies:
+      '@app/ai-providers':
+        specifier: workspace:*
+        version: link:../../packages/ai-providers
       '@app/archive':
         specifier: workspace:*
         version: link:../../packages/archive
@@ -184,6 +187,9 @@ importers:
       '@app/ai':
         specifier: workspace:*
         version: link:../ai
+      '@app/branding':
+        specifier: workspace:*
+        version: link:../branding
       '@app/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -292,6 +298,9 @@ importers:
 
   packages/worker:
     dependencies:
+      '@app/ai':
+        specifier: workspace:*
+        version: link:../ai
       '@app/archive':
         specifier: workspace:*
         version: link:../archive

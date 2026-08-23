@@ -1,4 +1,5 @@
 import type { JudgePort, ScoutPort, ScoutRequest } from "@app/ai";
+import { branding } from "@app/branding";
 import {
   aiJudgeVerdictSchema,
   aiScoutResponseSchema,
@@ -14,6 +15,9 @@ import {
  * a key. Neither adapter reads process environment: credentials are passed in
  * by the caller that already decided the lane is authorized to run.
  */
+
+/** Named so a provider sees a real client, never a bare runtime default. */
+const USER_AGENT = `${branding.productSlug}/1.0`;
 
 export class ProviderError extends Error {
   constructor(
@@ -271,6 +275,9 @@ export class ChatJudge implements JudgePort {
         headers: {
           authorization: `Bearer ${this.#options.apiKey}`,
           "content-type": "application/json",
+          // Groq sits behind Cloudflare and answers a default runtime agent
+          // with 403 error 1010, so every provider call names itself.
+          "user-agent": USER_AGENT,
         },
         body: JSON.stringify({
           model: this.#options.model,

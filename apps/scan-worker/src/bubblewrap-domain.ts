@@ -381,6 +381,8 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
     readonly engineResults: readonly ScanDomainEngineResult[];
     readonly engineFailures: Readonly<Partial<Record<ScanEngine, import("@app/contracts").FailureClass>>>;
     readonly locations: readonly import("@app/contracts").FindingLocation[];
+    readonly review: readonly import("@app/contracts").ReviewFinding[];
+    readonly reviewComplete: boolean;
   }> {
     const source = await trustedPath(sourcePath, "directory");
     const outputDirectory = await mkdtemp(
@@ -407,6 +409,8 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
         engineResults,
         engineFailures: result.engineFailures,
         locations: result.locations ?? [],
+        review: result.review ?? [],
+        reviewComplete: result.reviewComplete ?? false,
       };
     } catch (error) {
       if (error instanceof ScannerError) throw error;

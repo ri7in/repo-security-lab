@@ -6,6 +6,7 @@ import {
   ZIZMOR_BROKER_MANIFEST,
 } from "@app/scanners";
 import { HttpWorkerStore } from "@app/store-http";
+import { ChatJudge } from "@app/ai-providers";
 import { RepositoryWorker } from "@app/worker";
 import { parseScanWorkerConfiguration } from "./runtime-config.js";
 import { BubblewrapRepositoryScanDomain } from "./bubblewrap-domain.js";
@@ -55,6 +56,23 @@ const repositoryWorker = new RepositoryWorker({
       }
     : { scanDomain }),
   gitleaksBroker: new SourceBlindBroker("gitleaks", GITLEAKS_BROKER_MANIFEST),
+  // Judges are constructed here and injected, never reached for. The worker
+  // and the review logic stay network-blind; only this composition root knows
+  // a provider exists.
+  ...(configuration.judges.length === 0
+    ? {}
+    : {
+        judges: configuration.judges.map(
+          (judge) =>
+            new ChatJudge({
+              apiKey: judge.apiKey,
+              model: judge.model,
+              family: judge.family,
+              endpoint: judge.endpoint,
+              fetch: (input, init) => fetch(input, init),
+            }),
+        ),
+      }),
   ...(configuration.zizmor === null
     ? {}
     : {

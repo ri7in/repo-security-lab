@@ -1,4 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
+import { reviewScannerFindings, type JudgePort } from "@app/ai";
 import {
   lstat,
   mkdir,
@@ -22,6 +23,7 @@ import {
   MAX_LOCATIONS_PER_FINDING,
   type BrokerDerivedFinding,
   type FindingLocation,
+  type ReviewFinding,
 } from "@app/contracts";
 import {
   canTransition,
@@ -76,6 +78,10 @@ export interface RepositoryScanDomain {
     readonly engineFailures: Readonly<Partial<Record<ScanEngine, FailureClass>>>;
     /** Where each finding sits. Optional so older domains keep compiling. */
     readonly locations?: readonly FindingLocation[];
+    /** Bounded excerpts for council review. Never published. */
+    readonly review?: readonly ReviewFinding[];
+    /** True only when every finding produced a review entry. */
+    readonly reviewComplete?: boolean;
   }>;
 }
 
@@ -96,6 +102,15 @@ export interface RepositoryWorkerOptions {
   readonly gitleaksBroker: SourceBlindBroker;
   readonly additionalEngines?: readonly AdditionalEngineRunner[];
   readonly scanDomain?: RepositoryScanDomain;
+  /**
+   * Judges that may delete a scanner finding they all agree is a false alarm.
+   *
+   * Fewer than two, or two of the same family, and review does not run at all:
+   * a single reviewer deleting evidence is exactly the failure this guards
+   * against. Absent by default, so a worker with no judges behaves as it did
+   * before review existed.
+   */
+  readonly judges?: readonly JudgePort[];
   readonly workerId: OpaqueId;
   readonly scratchBase: string;
   /** Null enables the isolated public worker; a set retains private-slice scope. */
@@ -204,6 +219,7 @@ export class RepositoryWorker {
   readonly #gitleaksBroker: SourceBlindBroker;
   readonly #additionalEngines: readonly AdditionalEngineRunner[];
   readonly #scanDomain: RepositoryScanDomain | null;
+  readonly #judges: readonly JudgePort[];
   readonly #workerId: OpaqueId;
   readonly #scratchBase: string;
   readonly #allowedGithubAccountIds: ReadonlySet<number> | null;
@@ -218,6 +234,7 @@ export class RepositoryWorker {
     this.#gitleaksBroker = options.gitleaksBroker;
     this.#additionalEngines = Object.freeze([...(options.additionalEngines ?? [])]);
     this.#scanDomain = options.scanDomain ?? null;
+    this.#judges = options.judges ?? [];
     this.#workerId = options.workerId;
     this.#scratchBase = path.resolve(options.scratchBase);
     this.#allowedGithubAccountIds = options.allowedGithubAccountIds;
@@ -412,10 +429,14 @@ export class RepositoryWorker {
         ScanEngine,
         { readonly normalized: NormalizedResult; readonly broker: SourceBlindBroker }
       >();
-let scanLocations: readonly FindingLocation[] = [];
+      let scanLocations: readonly FindingLocation[] = [];
+      let scanReview: readonly ReviewFinding[] = [];
+      let scanReviewComplete = false;
       if (this.#scanDomain !== null) {
         const result = await this.#scanDomain.scan(sourcePath);
         scanLocations = result.locations ?? [];
+        scanReview = result.review ?? [];
+        scanReviewComplete = result.reviewComplete ?? false;
         detected = result.applicability;
         coverage.osv = detected.osv === false ? "not_applicable" : "unsupported";
         coverage.zizmor =
@@ -459,6 +480,8 @@ let scanLocations: readonly FindingLocation[] = [];
         try {
           const scanResult = await this.#gitleaks!.scan(sourcePath);
           scanLocations = scanResult.locations;
+          scanReview = scanResult.review ?? [];
+          scanReviewComplete = scanResult.reviewComplete ?? false;
           const normalized = normalizeGitleaks(scanResult);
           coverage.gitleaks = normalized.coverage;
           normalizedByEngine.set("gitleaks", {
@@ -517,6 +540,13 @@ let scanLocations: readonly FindingLocation[] = [];
       sourceCleaned = await this.#removeScratch(jobRoot);
       if (!sourceCleaned) return "cleanup_pending";
       await advance("uploading");
+      // Council review runs here: outside the sandbox, which is the only side
+      // with a network, and before anything is brokered, so a suppressed
+      // finding never becomes a stored finding at all.
+      const suppressedRuleIds = await this.#reviewFindings(
+        scanReview,
+        scanReviewComplete,
+      );
       const findings = [];
       for (const [engine, result] of normalizedByEngine) {
         try {
@@ -529,7 +559,10 @@ let scanLocations: readonly FindingLocation[] = [];
           if (accepted.some((finding) => finding.engine !== engine)) {
             throw new BrokerError();
           }
-          findings.push(...attachLocations(accepted, scanLocations));
+          const surviving = accepted.filter(
+            (finding) => !suppressedRuleIds.has(finding.rule_id),
+          );
+          findings.push(...attachLocations(surviving, scanLocations));
         } catch {
           coverage[engine] = "failed";
           specialistReasons[engine] = "NORMALIZATION_REJECTED";
@@ -675,6 +708,44 @@ let scanLocations: readonly FindingLocation[] = [];
       } catch {
         return "publish_deferred";
       }
+    }
+  }
+
+  /**
+   * Asks the council which scanner findings are false alarms.
+   *
+   * Returns the rule ids every judge rejected, and an empty set for every
+   * other outcome. Deleting a real finding is far worse than showing a false
+   * one, so every path that is not an explicit unanimous rejection keeps the
+   * finding: too few judges, two judges of one family, an unreviewable
+   * repository, an exhausted quota, a provider timing out, or any thrown
+   * error at all.
+   *
+   * A partly reviewed result suppresses nothing either. Reports group findings
+   * into coarse count buckets, so there is no honest way to express
+   * "two_to_five, minus one".
+   */
+  async #reviewFindings(
+    review: readonly ReviewFinding[],
+    reviewComplete: boolean,
+  ): Promise<ReadonlySet<string>> {
+    const families = new Set(this.#judges.map((judge) => judge.family));
+    if (
+      review.length === 0 ||
+      this.#judges.length < 2 ||
+      families.size !== this.#judges.length
+    ) {
+      return new Set();
+    }
+    try {
+      const outcome = await reviewScannerFindings(
+        review,
+        this.#judges,
+        reviewComplete,
+      );
+      return outcome.complete ? new Set(outcome.suppressedRuleIds) : new Set();
+    } catch {
+      return new Set();
     }
   }
 

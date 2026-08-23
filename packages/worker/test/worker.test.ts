@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { JudgePort } from "@app/ai";
 import { SourceBlindBroker } from "@app/broker";
 import { GithubClientError, type GithubErrorCode } from "@app/github";
 import { SqliteStore } from "@app/store-sqlite";
@@ -1085,5 +1086,135 @@ describe("leased repository worker", () => {
       }),
     ).toBeNull();
     store.close();
+  });
+});
+
+/**
+ * Council review: the one place a model may delete deterministic evidence.
+ *
+ * Every test here is really the same question asked from a different angle:
+ * does anything short of a unanimous rejection by two distinct families still
+ * keep the finding? Showing a false positive costs a reader a few seconds.
+ * Deleting a real leaked credential costs them the credential.
+ */
+function reviewingScanner(reviewComplete = true): SecretScanner {
+  return {
+    async scan() {
+      return {
+        findings: [{ ruleId: "github-pat" }],
+        rawFindingCount: 1,
+        findingLimitExceeded: false,
+        locations: [],
+        review: [
+          {
+            engine: "gitleaks" as const,
+            ruleId: "github-pat",
+            path: ".env.example",
+            startLine: 3,
+            entropy: 3.2,
+            contextLines: ["GITHUB_PAT=REDACTED"],
+          },
+        ],
+        reviewComplete,
+      };
+    },
+  };
+}
+
+function fakeJudge(family: string, verdict: string): JudgePort {
+  return {
+    family,
+    review: () => Promise.resolve({ verdict, reason: "fixture" }),
+  } as unknown as JudgePort;
+}
+
+async function findingCountWith(
+  judges: readonly JudgePort[],
+  reviewComplete = true,
+): Promise<number> {
+  const files = await workspace();
+  const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+  await createLedger(store);
+  const result = await worker(
+    store,
+    files.scratch,
+    archiveFetcher(archive("root/file.txt", "x")),
+    reviewingScanner(reviewComplete),
+    { judges },
+  ).runOne();
+  expect(result).toBe("complete");
+  const findings = await store.listFindings({
+    requestId: "req_0000000001",
+    afterFindingId: null,
+    limit: 10,
+  });
+  store.close();
+  return findings.findings.length;
+}
+
+describe("council review of scanner findings", () => {
+  it("deletes a finding two distinct families both reject", async () => {
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "not_real"),
+        fakeJudge("beta", "not_real"),
+      ]),
+    ).toBe(0);
+  });
+
+  it("keeps the finding when the judges disagree", async () => {
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "not_real"),
+        fakeJudge("beta", "real"),
+      ]),
+    ).toBe(1);
+  });
+
+  it("keeps the finding when a judge is unsure", async () => {
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "not_real"),
+        fakeJudge("beta", "unsure"),
+      ]),
+    ).toBe(1);
+  });
+
+  it("refuses to act on a panel of one", async () => {
+    expect(await findingCountWith([fakeJudge("alpha", "not_real")])).toBe(1);
+  });
+
+  it("refuses two judges of the same family, however they vote", async () => {
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "not_real"),
+        fakeJudge("alpha", "not_real"),
+      ]),
+    ).toBe(1);
+  });
+
+  it("keeps the finding when a judge is unreachable", async () => {
+    const dead: JudgePort = {
+      family: "beta",
+      review: () => Promise.reject(new Error("provider down")),
+    };
+    expect(
+      await findingCountWith([fakeJudge("alpha", "not_real"), dead]),
+    ).toBe(1);
+  });
+
+  it("suppresses nothing when the review was incomplete", async () => {
+    // Reports use coarse count buckets, so a partly reviewed group cannot be
+    // honestly reduced: there is no way to say "two_to_five, minus one".
+    expect(
+      await findingCountWith(
+        [fakeJudge("alpha", "not_real"), fakeJudge("beta", "not_real")],
+        false,
+      ),
+    ).toBe(1);
+  });
+
+  it("behaves exactly as before when no judges are configured", async () => {
+    expect(await findingCountWith([])).toBe(1);
   });
 });
