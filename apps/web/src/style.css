@@ -208,6 +208,16 @@ body[data-scan-state="failed"] .core, body[data-scan-state="failed"] .eyes { col
 .bot-live[data-state="done"] { border-color: var(--signal); background: var(--signal-soft); }
 .bot-live[data-state="done"] .live-head strong, .bot-live[data-state="done"] .live-head span { color: var(--signal); }
 .bot-live[data-state="done"] p { color: var(--ink); }
+/* Finished, and not everything ran. Green was this panel's loudest claim: four
+   repositories that all failed produced a --signal border, a --signal-soft
+   background, a full green bar and "All checks done" directly above the red
+   verdict "No repository here was read, so this scan has no result." Amber on
+   --amber-soft is the pairing the partial verdict already uses, measured at
+   4.90:1 light and 7.03:1 dark. */
+.bot-live[data-state="incomplete"] { border-color: var(--amber); background: var(--amber-soft); }
+.bot-live[data-state="incomplete"] .live-head strong, .bot-live[data-state="incomplete"] .live-head span { color: var(--amber); }
+.bot-live[data-state="incomplete"] .live-track i { background: var(--amber); }
+.bot-live[data-state="incomplete"] p { color: var(--ink); }
 .bot-live[data-state="failed"] { border-color: var(--red); background: var(--red-soft); }
 .bot-live[data-state="failed"] .live-head strong, .bot-live[data-state="failed"] .live-head span { color: var(--red); }
 .see-results { width: 100%; margin-top: 9px; padding: 8px; border: 1px solid var(--signal); background: var(--signal); color: var(--signal-contrast); font: 700 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; }
@@ -246,6 +256,11 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 .live-status { min-height: 24px; font: 650 13px var(--mono); }
 .progress-track { height: 7px; margin: 18px 0 28px; background: var(--soft); overflow: hidden; }
 .progress-track i { display: block; width: 0; height: 100%; background: var(--signal); transition: width .35s ease; }
+/* Full is still full: a terminal repository has stopped moving, and a bar that
+   freezes at 70 percent on a finished page reads as a hung scan. The colour is
+   what stops claiming it went well. */
+.progress-track i[data-tone="incomplete"] { background: var(--amber); }
+.progress-track i[data-tone="failed"] { background: var(--red); }
 /* auto-fit rather than a fixed count: the card set has grown once and the
    grid should not have to be edited again when it grows twice. */
 /* 130px so five cards still fit one row at a 712px content width, which is

@@ -4,6 +4,7 @@ import {
   explainFailure,
   printCoverText,
   providerNames,
+  runOutcome,
   percentDone,
   statusHeading,
   statusLine,
@@ -364,5 +365,32 @@ describe("the line at the top of a printed page", () => {
     const line = printCoverText(summary("failed", {}, "GITHUB_NETWORK"), 0, 0, when);
     expect(line).toContain("stopped before it finished");
     expect(line).not.toContain("nothing found");
+  });
+});
+
+describe("whether a finished run may wear the finished colour", () => {
+  it("separates having stopped from having worked", () => {
+    const allFailed = summary("complete", { failed: 4 });
+    // Both are true at once, and reading the second off the first is what put
+    // a full green bar between "0 of 4 repositories finished." and a red
+    // verdict saying no repository here was read.
+    expect(percentDone(allFailed)).toBe(100);
+    expect(runOutcome(allFailed)).toBe("incomplete");
+  });
+
+  it("keeps the green when a fork was the only thing skipped", () => {
+    expect(runOutcome(summary("complete", { complete: 9, cancelled: 2 }))).toBe("done");
+    expect(runOutcome(summary("complete", { complete: 9, empty: 1 }))).toBe("done");
+  });
+
+  it("names a partly scanned repository as a gap", () => {
+    expect(runOutcome(summary("complete", { complete: 9, partial: 1 }))).toBe(
+      "incomplete",
+    );
+  });
+
+  it("keeps a stopped request red and a live one amber", () => {
+    expect(runOutcome(summary("failed", { complete: 3 }))).toBe("failed");
+    expect(runOutcome(summary("scanning", { waiting: 3 }))).toBe("running");
   });
 });

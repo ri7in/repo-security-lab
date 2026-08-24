@@ -1,4 +1,5 @@
 import type { ScanRequestSummary } from "@app/contracts";
+import { runOutcome, type RunOutcome } from "./summary.js";
 
 /**
  * What the agent panel should show, computed from the ledger alone.
@@ -21,7 +22,13 @@ export const STEP_SIGN: Record<Step, string> = {
 };
 
 export type StepState = "done" | "active" | "todo";
-export type LiveState = "idle" | "running" | "done" | "failed";
+/**
+ * One vocabulary with the page's progress bar, so the panel and the bar under
+ * the cards cannot disagree about whether a finished scan went well. "idle" is
+ * the panel's alone: it belongs to the markup before the first poll answers,
+ * which is a state this model is never asked about.
+ */
+export type LiveState = RunOutcome | "idle";
 
 export interface ProgressModel {
   readonly steps: readonly {
@@ -81,18 +88,47 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
   // earlier version counted "acquiring" as downloaded and "scanning" as
   // scanned, which marked a step finished while it was still running and made
   // the panel jump ahead of the work.
-  const downloaded =
-    all - count("discovered", "waiting", "leased", "acquiring");
-  const scanned =
-    all -
-    count(
-      "discovered",
-      "waiting",
-      "leased",
-      "acquiring",
-      "guarding",
-      "scanning",
-    );
+  //
+  // These name the states that prove the step ran, rather than subtracting the
+  // states before it. Subtracting credited every terminal state with the whole
+  // pipeline, and a terminal state is not a finished pipeline: "failed" and
+  // "cancelled" are both reachable from "discovered", before anything has been
+  // downloaded. Four repositories that all failed therefore counted as
+  // downloaded and as scanned, and the panel put a green tick on "Downloading
+  // snapshots" and on "Scanning for secrets" over an account where no snapshot
+  // was ever fetched.
+  //
+  // The cost of naming states instead is that a repository which really did
+  // download and scan and then lost its lease is written "failed" over
+  // whatever it had reached, so it is now counted as neither. That
+  // under-claims, which is the direction this page is supposed to err in.
+  // "partial" is published only once an engine produced a result, so that
+  // snapshot was fetched and it was read.
+  const downloaded = count(
+    "guarding",
+    "scanning",
+    "normalizing",
+    "cleaning",
+    "uploading",
+    "waiting_to_publish",
+    "complete",
+    "partial",
+  );
+  const scanned = count(
+    "normalizing",
+    "cleaning",
+    "uploading",
+    "waiting_to_publish",
+    "complete",
+    "partial",
+  );
+  // What the review step actually produced, as opposed to what merely stopped.
+  // `terminal` still drives the percentage, because a failed repository has
+  // genuinely stopped, but a tick on "Reviewing findings" claims there was
+  // something to review, and a repository that failed before download gave the
+  // reviewer nothing.
+  const reviewed = count("complete", "partial");
+  const outcome = runOutcome(summary);
 
   const finished = summary.state === "complete";
   const skippedOnPurpose = count("cancelled", "empty");
@@ -113,7 +149,7 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     },
     download: { done: downloaded, total: all || 1 },
     scan: { done: scanned, total: all || 1 },
-    review: { done: terminal, total: all || 1 },
+    review: { done: reviewed, total: all || 1 },
   };
 
   // Repositories in each step right now, as opposed to past it.
@@ -140,10 +176,15 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
   let firstIncomplete: Step | null = null;
   for (const step of STEP_ORDER) {
     const { done, total } = progress[step];
-    // `finished` covers the account with no public repositories at all: every
-    // count is zero, so `done >= total` could never be reached and a finished
-    // scan showed four steps that had apparently never started.
-    const complete = finished || (all > 0 && done >= total);
+    // The account with no public repositories is the only one a finished
+    // request may tick on its own: every count is zero, so `done >= total`
+    // could never be reached and a finished scan showed four steps that had
+    // apparently never started. This used to be a bare `finished ||` for every
+    // account, which meant the request state painted the ticks and no step had
+    // to have run: four repositories that all failed showed four green ticks,
+    // because a request reaches `complete` as soon as every repository is
+    // terminal and failed is terminal.
+    const complete = (finished && all === 0) || (all > 0 && done >= total);
     if (!complete && firstIncomplete === null) firstIncomplete = step;
     steps.push({
       step,
@@ -170,24 +211,43 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     signText:
       active !== null
         ? STEP_SIGN[active]
-        : finished
+        : outcome === "done"
           ? "All checks done"
-          : stopped
-            ? "Stopped"
-            : "Ready",
+          : outcome === "incomplete"
+            ? "Not every check ran"
+            : stopped
+              ? "Stopped"
+              : "Ready",
+    // Not `finished ? 100`. The sign's fill is a full width bar in --signal,
+    // and on a run whose four repositories all failed it sat at a hundred
+    // percent green directly under the words that same run had just stopped
+    // being allowed to say. Nothing above the sign carries the outcome, so
+    // emptying it is the honest move.
     signPercent:
-      held === null ? (finished ? 100 : 0) : Math.round((held.done / held.total) * 100),
+      held === null
+        ? outcome === "done"
+          ? 100
+          : 0
+        : Math.round((held.done / held.total) * 100),
     // Never "idle". A summary only exists once a request has been accepted, so
     // by the time this runs the scan is under way; "idle" belongs to the panel
     // as it ships, before the first poll answers.
-    liveState: stopped ? "failed" : finished ? "done" : "running",
+    //
+    // "done" is now a narrower word than "finished". The percentage below says
+    // the run stopped, which is true of a scan whose every repository failed;
+    // this says whether it got what it came for, because the green panel and
+    // "All checks done" over four failures is the one claim on this page a
+    // reader believes without reading the ledger.
+    liveState: outcome,
     livePhase: stopped
       ? "Stopped"
-      : finished
+      : outcome === "done"
         ? "Complete"
-        : active === null
-          ? "Working"
-          : STEP_SIGN[active],
+        : outcome === "incomplete"
+          ? "Finished with gaps"
+          : active === null
+            ? "Working"
+            : STEP_SIGN[active],
     livePercent: overall,
     liveDetail: stopped
       ? "The request stopped before every repository was checked. Details below."

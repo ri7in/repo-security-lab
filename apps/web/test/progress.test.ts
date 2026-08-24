@@ -292,3 +292,81 @@ describe("what a finished scan announces about its own coverage", () => {
     );
   });
 });
+
+describe("a finished scan that read nothing", () => {
+  // Measured on the live site: four repositories, every one of them failed,
+  // and the request complete.
+  const allFailed = summary("complete", { failed: 4 });
+  const state = (model: ReturnType<typeof progressModel>, step: string) =>
+    model.steps.find((entry) => entry.step === step)?.state;
+
+  it("does not tick a step no repository reached", () => {
+    // "failed" is reachable straight from "discovered", so subtracting only
+    // the states before each step counted all four as downloaded and as
+    // scanned, and a bare `finished ||` ticked all four steps anyway.
+    const model = progressModel(allFailed);
+    expect(state(model, "discover")).toBe("done");
+    expect(state(model, "download")).toBe("todo");
+    expect(state(model, "scan")).toBe("todo");
+    expect(state(model, "review")).toBe("todo");
+  });
+
+  it("keeps the bar full and takes the success colour off it", () => {
+    const model = progressModel(allFailed);
+    // Terminal is terminal. Nothing is still moving, so 100 is the honest
+    // number and the page is not left looking hung.
+    expect(model.livePercent).toBe(100);
+    // The colour and the words are what was wrong: --signal-soft, a --signal
+    // border and "All checks done" above "No repository here was read".
+    expect(model.liveState).toBe("incomplete");
+    expect(model.signText).not.toBe("All checks done");
+    expect(model.livePhase).not.toBe("Complete");
+    expect(model.liveDetail).toBe(
+      "0 of 4 repositories checked, 4 did not finish.",
+    );
+  });
+
+  it("empties the sign rather than filling it green over a run that read nothing", () => {
+    // The fill is a full width bar in --signal across the foot of the sign,
+    // and it sat at a hundred percent under the words "Not every check ran".
+    expect(progressModel(allFailed).signPercent).toBe(0);
+    expect(progressModel(summary("complete", { complete: 4 })).signPercent).toBe(100);
+  });
+
+  it("still earns the green when every repository really finished", () => {
+    const model = progressModel(summary("complete", { complete: 4 }));
+    expect(model.liveState).toBe("done");
+    expect(model.signText).toBe("All checks done");
+    expect(model.steps.every((step) => step.state === "done")).toBe(true);
+  });
+
+  it("does not credit a fork with a download it never had", () => {
+    // A cancelled repository is a fork that was never fetched and an empty one
+    // has no commit to fetch, so neither passed the download or the scan.
+    const model = progressModel(summary("complete", { cancelled: 3, empty: 1 }));
+    const percent = (step: string) =>
+      model.steps.find((entry) => entry.step === step)?.percent;
+    expect(percent("download")).toBe(0);
+    expect(percent("scan")).toBe(0);
+    expect(state(model, "download")).toBe("todo");
+    // Nothing went wrong, though. The run did what it set out to do, so the
+    // panel keeps its green and only the steps say no snapshot was fetched.
+    expect(model.liveState).toBe("done");
+  });
+
+  it("counts a partly scanned repository as downloaded and as scanned", () => {
+    // "partial" is only reachable from "cleaning" onward and is published only
+    // once an engine produced a result, so that snapshot was read.
+    const model = progressModel(summary("complete", { complete: 2, partial: 2 }));
+    const percent = (step: string) =>
+      model.steps.find((entry) => entry.step === step)?.percent;
+    expect(percent("download")).toBe(100);
+    expect(percent("scan")).toBe(100);
+    // Two of them did not finish, so the panel is not green.
+    expect(model.liveState).toBe("incomplete");
+    // The tick is still earned. Both published a result, so there was
+    // something to review for all four, and the claim that was false is the
+    // panel's colour rather than this step.
+    expect(state(model, "review")).toBe("done");
+  });
+});

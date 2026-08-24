@@ -72,6 +72,31 @@ export function percentDone(summary: ScanRequestSummary): number {
   return Math.round((terminalCount(summary) / total) * 100);
 }
 
+export type RunOutcome = "running" | "done" | "incomplete" | "failed";
+
+/**
+ * Whether a finished run may wear the finished colour.
+ *
+ * Deliberately not folded into percentDone, because the two answer different
+ * questions and answering both from the request state is what shipped a false
+ * all-clear. How far through counts what has stopped moving, and a failed
+ * repository has stopped, so four failed repositories really are at 100. The
+ * colour asks whether the run did what it set out to do, and that was read off
+ * `summary.state` alone: a request reaches `complete` once every repository is
+ * terminal, and failed is terminal, so an account whose four repositories all
+ * failed painted a full green bar, a green panel and "All checks done"
+ * directly above the red verdict "No repository here was read, so this scan
+ * has no result."
+ */
+export function runOutcome(summary: ScanRequestSummary): RunOutcome {
+  if (summary.state === "failed") return "failed";
+  if (summary.state !== "complete") return "running";
+  const totals = summary.repositoryTotals;
+  // The same pair the "did not finish" card counts. A fork or a repository
+  // with no commit is a correct outcome and does not take the colour off.
+  return totals.failed + totals.partial > 0 ? "incomplete" : "done";
+}
+
 /**
  * Turns a stored failure code into a sentence.
  *

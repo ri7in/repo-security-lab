@@ -42,6 +42,7 @@ import {
   explainFailure,
   printCoverText,
   providerNames,
+  runOutcome,
   percentDone,
   statusHeading,
   statusLine,
@@ -358,6 +359,12 @@ function renderSummary(summary: ScanRequestSummary): void {
     }),
   );
   progressBar.style.width = `${String(percentDone(summary))}%`;
+  // The width says how much has stopped moving and the tone says whether it
+  // went well, which are two different questions. Four repositories that all
+  // failed are all terminal, so this bar was full and painted --signal between
+  // the line "0 of 4 repositories finished." and a red verdict, and it was
+  // full and green again under the heading "Scan stopped early".
+  progressBar.dataset["tone"] = runOutcome(summary);
   liveStatus.textContent = statusLine(summary);
   if (notificationStatus === "queued") {
     liveStatus.textContent += " A report email is queued.";
