@@ -22,7 +22,10 @@ coverage and findings report. It does not require an account, set cookies, or ru
   the one-email-per-day abuse limit. Public scanning disables email until a
   recipient-consent flow exists.
 - Cloudflare may process the requester IP at the edge for transport and rate
-  limiting. The application does not store requester IP addresses.
+  limiting. The application does not store requester IP addresses. It does
+  store the two letter country code Cloudflare resolves at the edge, once per
+  scan request, in the `country` column of `scan_requests`, and the operator
+  usage log reads it. It is deleted with the report.
 
 GitHub receives normal API and archive requests. If optional email is enabled,
 Google Apps Script and Gmail receive the destination address and public report

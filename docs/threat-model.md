@@ -154,8 +154,12 @@ deployed control-plane code has public source-blind reports, durable capacity
 reservations, a protected 40%-to-60% privacy-maintenance write band, 240-report
 daily admission, bounded read/write/internal
 rate limits, switched-off encrypted email, 24-hour abandoned
-work expiry, and automatic 30-day terminal-report deletion, but no public scan worker is
-attached. The application does not persist requester IPs. Email ciphertext is
+work expiry, and automatic 30-day terminal-report deletion. A public scan
+worker is attached: scanning runs on GitHub Actions under enforced Bubblewrap
+isolation, claimed against a lease and dispatched both on request creation and
+by the five-minute cron. This paragraph said no public worker was attached
+until 2026-08-24, which understated the deployed surface for as long as public
+scanning had been live. The application does not persist requester IPs. Email ciphertext is
 erased after delivery or final failure; a keyed abuse-control hash disappears
 with the retained report. Forks are represented but refused before download because
 owned forks can contain third-party source. Logs carry fixed event/result codes

@@ -218,6 +218,20 @@ describe("the two dark palettes", () => {
   });
 });
 
+describe("the privacy page lists what is actually stored", () => {
+  it("discloses the country code, because a row carries one", () => {
+    // apps/api/src/app.ts reads cf-ipcountry and writes it to the request row,
+    // and deploy/usage-log.sh prints it. The page listed the username, the
+    // repository names and the commit hashes, and said only that IP addresses
+    // are not persisted, which reads as "nothing about where you are".
+    const privacy = readFileSync(path.join(WEB, "public/privacy.html"), "utf8");
+    expect(privacy.toLowerCase()).toContain("country code");
+    expect(readFileSync(path.join(ROOT, "apps/api/src/app.ts"), "utf8")).toContain(
+      'context.req.header("cf-ipcountry")',
+    );
+  });
+});
+
 describe("colour never claims more than the words do", () => {
   it("does not leave the all-clear green on a scan that read nothing", () => {
     // .nothing-found is green, and its own CSS comment says green means a
