@@ -80,6 +80,7 @@ interface RepositoryRow {
   repository_id: number;
   name: string;
   is_fork: number;
+  ai_eligible: number | null;
   commit_sha: string | null;
   state: string;
   reason: string | null;
@@ -214,6 +215,7 @@ function parseRepository(row: RepositoryRow): RepositoryRecord {
     !safeNonNegativeInteger(row.repository_id) ||
     !githubRepoNameSchema.safeParse(row.name).success ||
     ![0, 1].includes(row.is_fork) ||
+    (row.ai_eligible !== null && ![0, 1].includes(row.ai_eligible)) ||
     (row.commit_sha !== null && !commitShaSchema.safeParse(row.commit_sha).success) ||
     !repositoryStateSchema.safeParse(row.state).success ||
     (row.reason !== null && !failureClassSchema.safeParse(row.reason).success) ||
@@ -249,6 +251,7 @@ function parseRepository(row: RepositoryRow): RepositoryRecord {
     repositoryId: row.repository_id,
     name: row.name,
     isFork: row.is_fork === 1,
+    aiEligible: row.ai_eligible === null ? null : row.ai_eligible === 1,
     commitSha: row.commit_sha,
     state: row.state as RepositoryState,
     reason: row.reason as FailureClass | null,
@@ -473,6 +476,7 @@ export class D1Store implements Store {
       uniformCoverage(
         repository.commitSha === null ? "not_applicable" : "waiting",
       ),
+      repository.aiEligible === undefined ? null : repository.aiEligible ? 1 : 0,
     ]);
     const ledgerJson = JSON.stringify(ledger);
     if (textEncoder.encode(ledgerJson).byteLength > MAX_DISCOVERY_JSON_BYTES) {
@@ -514,13 +518,14 @@ export class D1Store implements Store {
         statement(
           this.#database,
           `INSERT INTO repositories(
-             request_id, repository_id, name, is_fork, commit_sha, state, reason,
-             attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
-             published_lease_generation, discovered_at_ms, updated_at_ms,
-             specialist_reasons, coverage_json
+             request_id, repository_id, name, is_fork, ai_eligible, commit_sha,
+             state, reason, attempt_count, lease_owner, lease_generation,
+             lease_expires_at_ms, published_lease_generation, discovered_at_ms,
+             updated_at_ms, specialist_reasons, coverage_json
            )
            SELECT ?, json_extract(value, '$[0]'), json_extract(value, '$[1]'),
-             json_extract(value, '$[2]'), json_extract(value, '$[3]'),
+             json_extract(value, '$[2]'), json_extract(value, '$[6]'),
+             json_extract(value, '$[3]'),
              json_extract(value, '$[4]'), NULL, 0, NULL, 0, NULL, NULL, ?, ?,
              '{}', json(json_extract(value, '$[5]'))
            FROM json_each(?)

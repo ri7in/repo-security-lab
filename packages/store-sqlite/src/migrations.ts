@@ -341,7 +341,19 @@ CREATE INDEX findings_request_order
 PRAGMA foreign_keys = ON;
 `;
 
-export const SCHEMA_VERSION = 9;
+/**
+ * Deep-read slot mark. Nullable and additive on purpose: a rebuilt table
+ * would be the migration class that once took the queue down, and NULL on a
+ * pre-existing row already means exactly what it should, "chosen the old
+ * way".
+ */
+export const MIGRATION_010 = `
+ALTER TABLE repositories
+  ADD COLUMN ai_eligible INTEGER
+  CHECK (ai_eligible IS NULL OR ai_eligible IN (0,1));
+`;
+
+export const SCHEMA_VERSION = 10;
 import {
   REPOSITORY_STATES,
   SPECIALISTS,

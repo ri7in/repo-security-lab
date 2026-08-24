@@ -36,6 +36,12 @@ export const repositoryRecordSchema = z.strictObject({
   repositoryId: nonNegativeIntSchema,
   name: githubRepoNameSchema,
   isFork: z.boolean(),
+  // Optional so a worker built after the deep-read mark still accepts a claim
+  // from a control plane deployed before it; absence and null both mean
+  // "chosen the old way". The strict object still rejects unknown keys, so
+  // the reverse skew (old worker, new control plane) is handled by deploying
+  // the worker revision first.
+  aiEligible: z.boolean().nullable().optional(),
   commitSha: commitShaSchema.nullable(),
   state: repositoryStateSchema,
   reason: failureClassSchema.nullable(),

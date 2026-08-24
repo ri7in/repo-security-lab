@@ -182,6 +182,16 @@ describe("claims the code contradicts", () => {
     expect(script).toContain("up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan");
   });
 
+  it("promises the DeepScan to the most recently updated repositories only", () => {
+    // Discovery awards the deep-read slots by push recency, so the copy may
+    // say "most recently updated" and must never fall back to the vague "a
+    // few per scan" that hid the old oldest-first pick.
+    expect(read("src/main.ts")).toContain("most recently updated also get the DeepScan");
+    expect(read("index.html")).toContain("The three you pushed to most recently");
+    expect(read("index.html")).not.toContain("A few per scan");
+    expect(read("public/how-it-works.html")).toContain("pushed to most recently");
+  });
+
   it("does not promise the secret scan runs on every repository", () => {
     // Forks are published cancelled with every check not applicable, and no
     // archive is ever downloaded for them.

@@ -61,6 +61,8 @@ export interface RepositoryRecord {
   readonly name: GithubRepoName;
   readonly isFork: boolean;
   readonly commitSha: CommitSha | null;
+  /** Deep-read slot mark from discovery; null on rows older than the mark. */
+  readonly aiEligible?: boolean | null;
   readonly state: RepositoryState;
   readonly reason: FailureClass | null;
   readonly coverage: SpecialistProgress;
@@ -79,6 +81,17 @@ export interface DiscoveredRepository {
   readonly name: GithubRepoName;
   readonly isFork: boolean;
   readonly commitSha: CommitSha | null;
+  /**
+   * When GitHub last saw a push to this repository, or null when GitHub did
+   * not say. Discovery-time input to the deep-read slot ranking; never stored.
+   */
+  readonly pushedAtMs?: number | null;
+  /**
+   * True when this repository won one of the request's deep-read slots at
+   * discovery time. Absent on rows written before recency ranking existed,
+   * which the worker treats as its old first-claimed-first-read behaviour.
+   */
+  readonly aiEligible?: boolean;
 }
 
 export interface CreateRequestInput {

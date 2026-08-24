@@ -13,8 +13,8 @@ import {
   type GithubLogin,
   type OpaqueId,
 } from "@app/contracts";
-import { StoreWriteReserveError, type Store } from "@app/core";
-import { councilBudget, toDeepReadBudget } from "@app/quota";
+import { StoreWriteReserveError, markDeepReadEligible, type Store } from "@app/core";
+import { DEEP_READ_REPO_LIMIT, councilBudget, toDeepReadBudget } from "@app/quota";
 import {
   GithubClientError,
   type DiscoveryResult,
@@ -213,7 +213,13 @@ async function processDiscovery(
       requestId,
       githubAccountId: result.account.githubAccountId,
       canonicalLogin: result.account.canonicalLogin,
-      repositories: result.account.repositories,
+      // The deep-read slots are awarded here, before the ledger is written,
+      // so the worker never has to know how they were chosen: the most
+      // recently pushed repositories win, forks and empty ones never do.
+      repositories: markDeepReadEligible(
+        result.account.repositories,
+        DEEP_READ_REPO_LIMIT,
+      ),
       nowMs: now(),
     });
     if (completion !== "completed" && completion !== "idempotent") {

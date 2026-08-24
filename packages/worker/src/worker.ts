@@ -641,7 +641,13 @@ export class RepositoryWorker {
       // the lines it must blank, and before cleanup, because this is the last
       // moment the source exists on disk.
       if (this.#scout !== null && this.#aiBroker !== null) {
-        if (this.#aiBudget <= 0) {
+        if (repository.aiEligible === false) {
+          // Discovery awarded this request's deep-read slots to its most
+          // recently pushed repositories, and this one lost. Only an explicit
+          // false skips: null or absent means the row predates the mark, and
+          // those fall through to the old first-claimed-first-read budget.
+          coverage.ai = "unsupported";
+        } else if (this.#aiBudget <= 0) {
           coverage.ai = "unsupported";
         } else {
           try {

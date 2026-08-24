@@ -58,6 +58,7 @@ describe("authenticated GraphQL discovery", () => {
             databaseId: 20,
             name: "forked-tool",
             isFork: true,
+            pushedAt: "2026-08-20T10:00:00Z",
             defaultBranchRef: {
               target: { __typename: "Commit", oid: "b".repeat(40) },
             },
@@ -66,6 +67,7 @@ describe("authenticated GraphQL discovery", () => {
             databaseId: 30,
             name: "empty-repo",
             isFork: false,
+            pushedAt: null,
             defaultBranchRef: null,
           },
         ],
@@ -110,6 +112,14 @@ describe("authenticated GraphQL discovery", () => {
     ]);
     expect(result.account.repositories[1]?.isFork).toBe(true);
     expect(result.account.repositories[2]?.commitSha).toBeNull();
+    // The push time feeds the deep-read slot ranking: an ISO date maps to
+    // epoch milliseconds, an explicit null and an omitted field both map to
+    // null rather than failing the whole discovery.
+    expect(result.account.repositories[1]?.pushedAtMs).toBe(
+      Date.parse("2026-08-20T10:00:00Z"),
+    );
+    expect(result.account.repositories[2]?.pushedAtMs).toBeNull();
+    expect(result.account.repositories[0]?.pushedAtMs).toBeNull();
     expect(calls).toHaveLength(2);
     expect(new Headers(calls[0]?.init?.headers).get("authorization")).toBe(
       "Bearer synthetic-test-token",
@@ -232,6 +242,7 @@ describe("REST fallback discovery", () => {
             fork: true,
             default_branch: "main",
             owner: { id: 123 },
+            pushed_at: "2026-08-19T09:30:00Z",
           },
           {
             id: 30,
@@ -239,6 +250,7 @@ describe("REST fallback discovery", () => {
             fork: false,
             default_branch: null,
             owner: { id: 123 },
+            pushed_at: "not-a-date",
           },
         ]);
       }
@@ -260,6 +272,11 @@ describe("REST fallback discovery", () => {
       commitSha: "c".repeat(40),
     });
     expect(result.account.repositories[1]?.commitSha).toBeNull();
+    expect(result.account.repositories[0]?.pushedAtMs).toBe(
+      Date.parse("2026-08-19T09:30:00Z"),
+    );
+    // A malformed date only ranks the repository last; it never fails a scan.
+    expect(result.account.repositories[1]?.pushedAtMs).toBeNull();
     expect(requests).toHaveLength(3);
   });
 

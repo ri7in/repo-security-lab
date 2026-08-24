@@ -377,6 +377,67 @@ describe("anonymous-safe control-plane API", () => {
     }
   });
 
+  it("awards the deep-read slots to the most recently pushed repositories", async () => {
+    const database = await store();
+    const tasks: Array<() => Promise<void>> = [];
+    const app = createApi({
+      store: database,
+      discovery: {
+        async discover() {
+          return {
+            mode: "authenticated_graphql",
+            requestCount: 1,
+            account: {
+              githubAccountId: 123,
+              canonicalLogin: "ri7in",
+              repositories: [
+                // Oldest id, newest push: under the old claim-order pick this
+                // repository lost and the abandoned ones below won.
+                { repositoryId: 1, name: "active", isFork: false, commitSha: "a".repeat(40), pushedAtMs: 9_000 },
+                { repositoryId: 2, name: "stale", isFork: false, commitSha: "b".repeat(40), pushedAtMs: 1_000 },
+                { repositoryId: 3, name: "recent", isFork: false, commitSha: "c".repeat(40), pushedAtMs: 7_000 },
+                { repositoryId: 4, name: "middling", isFork: false, commitSha: "d".repeat(40), pushedAtMs: 5_000 },
+                // A fork with the newest push of all must still never win.
+                { repositoryId: 5, name: "hot-fork", isFork: true, commitSha: "e".repeat(40), pushedAtMs: 10_000 },
+                { repositoryId: 6, name: "empty", isFork: false, commitSha: null, pushedAtMs: 8_000 },
+              ],
+            },
+          };
+        },
+      },
+      allowedRequestedLogins: new Set(["ri7in"]),
+      allowedGithubAccountIds: new Set([123]),
+      dispatch: (task) => tasks.push(task),
+      createRequestId: () => "req_recency00001",
+    });
+    expect(
+      (
+        await app.request("/api/scan-requests", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ username: "ri7in" }),
+        })
+      ).status,
+    ).toBe(202);
+    await tasks[0]?.();
+    const page = await database.listRepositories({
+      requestId: "req_recency00001",
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    expect(
+      page.repositories.map((row) => [row.repositoryId, row.aiEligible]),
+    ).toEqual([
+      [1, true],
+      [2, false],
+      [3, true],
+      [4, true],
+      [5, false],
+      [6, false],
+    ]);
+    database.close();
+  });
+
   it("bounds and type-checks the create-request body before JSON parsing", async () => {
     const database = await store();
     const app = createApi({

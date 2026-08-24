@@ -880,7 +880,7 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   quotaLine.textContent =
     `To keep this free, up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan, shared by everyone using it. ` +
     "Every repository that is not a fork and can be downloaded gets scanned for exposed secrets and workflow problems; " +
-    `${String(repos)} of them per scan also get the DeepScan, where a model reads the code line by line and a council of separate models double-checks anything it flags.`;
+    `your ${String(repos)} most recently updated also get the DeepScan, where a model reads the code line by line and a council of separate models double-checks anything it flags.`;
   quotaSub.textContent =
     "Free and open source. The daily limit is small on purpose and resets overnight.";
 }

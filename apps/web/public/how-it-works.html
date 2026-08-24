@@ -26,8 +26,8 @@
       <p>Two more checks exist in the code and are not switched on yet: dependency vulnerabilities and deeper static analysis.</p>
 
       <h2 id="deepscan">DeepScan: the AI code review</h2>
-      <p>A handful of repositories per scan carry the <strong>DeepScan</strong> badge. For those, a model reads the actual code, line by line, looking for the kinds of bugs a pattern scanner cannot see: SQL injection, broken authentication, unsafe deserialization, path traversal, and other classes it is trained on. On real repositories this has found genuine SQL injection and a login flow that stored a password in a cookie, neither of which a secret scanner could ever catch.</p>
-      <p>Reading whole repositories with a capable model is the expensive part, so it is rationed: a bounded number of DeepScans per day, shared across everyone using the service, and only a few repositories within each scan. The secret scan and workflow audit are cheap and run on everything.</p>
+      <p>The three repositories you pushed to most recently carry the <strong>DeepScan</strong> badge; forks and empty repositories never take a slot. For those, a model reads the actual code, line by line, looking for the kinds of bugs a pattern scanner cannot see: SQL injection, broken authentication, unsafe deserialization, path traversal, and other classes it is trained on. On real repositories this has found genuine SQL injection and a login flow that stored a password in a cookie, neither of which a secret scanner could ever catch.</p>
+      <p>Reading whole repositories with a capable model is the expensive part, so it is rationed: a bounded number of DeepScans per day, shared across everyone using the service, and only the most recently updated three within each scan. The secret scan and workflow audit are cheap and run on everything.</p>
 
       <h2 id="council">Why you can trust a finding</h2>
       <p>A single model saying "this looks like a bug" is not enough to put on a security report, so nothing a model raises is published on its own word. Every AI finding goes through two gates:</p>

@@ -625,7 +625,7 @@ describe("SQLite store ledger", () => {
       migrated
         .prepare("SELECT version FROM schema_migrations ORDER BY version")
         .all(),
-    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9].map((version) => ({ version })));
+    ).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((version) => ({ version })));
     migrated.close();
   });
 
@@ -684,6 +684,60 @@ describe("SQLite store ledger", () => {
         limit: 10,
       })).repositories,
     ).toEqual([]);
+    store.close();
+  });
+
+  it("persists the deep-read slot mark and hands it to the claiming worker", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const requestId = "req_0000000001" as OpaqueId;
+    await store.createRequest({ requestId, username: "ri7in", nowMs: 900 });
+    expect(await store.startDiscovery(requestId, 950)).toBe(true);
+    expect(
+      await store.completeDiscovery({
+        ...discoveryInput([1, 2], requestId),
+        repositories: [
+          {
+            repositoryId: 1,
+            name: "old-project",
+            isFork: false,
+            commitSha: "a".repeat(40),
+            aiEligible: false,
+          },
+          {
+            repositoryId: 2,
+            name: "active-project",
+            isFork: false,
+            commitSha: "b".repeat(40),
+            aiEligible: true,
+          },
+        ],
+      }),
+    ).toBe("completed");
+    const page = await store.listRepositories({
+      requestId,
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    expect(page.repositories.map((row) => row.aiEligible)).toEqual([false, true]);
+    const claimed = await store.claimNext({
+      workerId: "wrk_0000000001",
+      nowMs: 1_100,
+      leaseDurationMs: 60_000,
+    });
+    expect(claimed).toMatchObject({ repositoryId: 1, aiEligible: false });
+    store.close();
+  });
+
+  it("stores no deep-read mark for a ledger written without one", async () => {
+    const store = new SqliteStore({ filename: databasePath(), migrationTimeMs: 1 });
+    const created = await createLedger(store, [7]);
+    const page = await store.listRepositories({
+      requestId: created.requestId,
+      afterRepositoryId: null,
+      limit: 10,
+    });
+    // Null, not false: a pre-mark row must keep meaning "chosen the old way".
+    expect(page.repositories[0]?.aiEligible).toBeNull();
     store.close();
   });
 

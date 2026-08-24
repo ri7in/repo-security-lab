@@ -192,7 +192,10 @@ export class HttpWorkerStore implements WorkerStorePort {
         leaseDurationMs: input.leaseDurationMs,
       }),
     );
-    return body.repository;
+    if (body.repository === null) return null;
+    // A control plane deployed before the deep-read mark sends no aiEligible
+    // key at all; the record type spells that "null", never "undefined".
+    return { ...body.repository, aiEligible: body.repository.aiEligible ?? null };
   }
 
   async heartbeat(input: HeartbeatInput): Promise<boolean> {

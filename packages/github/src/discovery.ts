@@ -31,6 +31,7 @@ const graphRepositorySchema = z.object({
   databaseId: safeGithubIdSchema,
   name: githubRepoNameSchema,
   isFork: z.boolean(),
+  pushedAt: z.string().max(64).nullish(),
   defaultBranchRef: z
     .object({
       target: z.object({
@@ -94,7 +95,21 @@ const restRepositorySchema = z.object({
   fork: z.boolean(),
   default_branch: branchNameSchema.nullable(),
   owner: z.object({ id: safeGithubIdSchema }),
+  pushed_at: z.string().max(64).nullish(),
 });
+
+/**
+ * GitHub's push timestamp as epoch milliseconds, or null.
+ *
+ * Null rather than a throw on anything unparseable: the timestamp only ranks
+ * repositories for deep-read slots, and a scan must never fail over a
+ * malformed date when every security-relevant field validated.
+ */
+function pushedAtMsFrom(raw: string | null | undefined): number | null {
+  if (raw === null || raw === undefined) return null;
+  const parsed = Date.parse(raw);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
 
 const restCommitSchema = z.object({ sha: commitShaSchema });
 
@@ -196,6 +211,7 @@ const DISCOVERY_QUERY = `query AccountRepositories($login: String!, $cursor: Str
         databaseId
         name
         isFork
+        pushedAt
         defaultBranchRef { target { __typename ... on Commit { oid } } }
       }
     }
@@ -328,6 +344,7 @@ export class GithubDiscoveryClient {
           name: repository.name,
           commitSha: repository.defaultBranchRef?.target.oid ?? null,
           isFork: repository.isFork,
+          pushedAtMs: pushedAtMsFrom(repository.pushedAt),
         });
       }
 
@@ -437,6 +454,7 @@ export class GithubDiscoveryClient {
           name: repository.name,
           commitSha,
           isFork: repository.fork,
+          pushedAtMs: pushedAtMsFrom(repository.pushed_at),
         });
       }
       if (parsedPage.data.length < 100) {

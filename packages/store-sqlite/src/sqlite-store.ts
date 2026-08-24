@@ -64,6 +64,7 @@ import {
   MIGRATION_007,
   MIGRATION_008,
   MIGRATION_009,
+  MIGRATION_010,
 } from "./migrations.js";
 import { CLAIM_NEXT_SQL, MAX_LEASE_ATTEMPTS } from "./queries.js";
 
@@ -91,6 +92,7 @@ interface RepositoryRow {
   repository_id: number;
   name: string;
   is_fork: number;
+  ai_eligible: number | null;
   commit_sha: string | null;
   state: string;
   reason: string | null;
@@ -315,6 +317,7 @@ function parseRepositoryRow(row: RepositoryRow): RepositoryRecord {
     !isSafeNonNegativeInteger(row.repository_id) ||
     !githubRepoNameSchema.safeParse(row.name).success ||
     (row.is_fork !== 0 && row.is_fork !== 1) ||
+    (row.ai_eligible !== null && row.ai_eligible !== 0 && row.ai_eligible !== 1) ||
     (row.commit_sha !== null && !commitShaSchema.safeParse(row.commit_sha).success) ||
     !repositoryStateSchema.safeParse(row.state).success ||
     (row.reason !== null && !failureClassSchema.safeParse(row.reason).success) ||
@@ -352,6 +355,7 @@ function parseRepositoryRow(row: RepositoryRow): RepositoryRecord {
     repositoryId: row.repository_id,
     name: row.name,
     isFork: row.is_fork === 1,
+    aiEligible: row.ai_eligible === null ? null : row.ai_eligible === 1,
     commitSha: row.commit_sha,
     state: row.state as RepositoryState,
     reason: row.reason as FailureClass | null,
@@ -454,6 +458,13 @@ export class SqliteStore implements Store {
           this.#database.exec(MIGRATION_009);
           recordMigration.run(9, migrationTimeMs);
         }
+        const versionTen = this.#database
+          .prepare("SELECT version FROM schema_migrations WHERE version = 10")
+          .get() as { version: number } | undefined;
+        if (versionTen === undefined) {
+          this.#database.exec(MIGRATION_010);
+          recordMigration.run(10, migrationTimeMs);
+        }
       });
       migrate();
       if (options.exclusive === true) {
@@ -549,11 +560,11 @@ export class SqliteStore implements Store {
 
         const insertRepository = this.#database.prepare(
           `INSERT INTO repositories(
-            request_id, repository_id, name, is_fork, commit_sha, state, reason,
-            attempt_count, lease_owner, lease_generation, lease_expires_at_ms,
-            published_lease_generation, discovered_at_ms, updated_at_ms,
-            coverage_json
-          ) VALUES (?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?, ?)`,
+            request_id, repository_id, name, is_fork, ai_eligible, commit_sha,
+            state, reason, attempt_count, lease_owner, lease_generation,
+            lease_expires_at_ms, published_lease_generation, discovered_at_ms,
+            updated_at_ms, coverage_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, 0, NULL, 0, NULL, NULL, ?, ?, ?)`,
         );
         for (const repository of input.repositories) {
           const state = repository.commitSha === null ? "empty" : "waiting";
@@ -562,6 +573,11 @@ export class SqliteStore implements Store {
             repository.repositoryId,
             repository.name,
             repository.isFork ? 1 : 0,
+            repository.aiEligible === undefined
+              ? null
+              : repository.aiEligible
+                ? 1
+                : 0,
             repository.commitSha,
             state,
             input.nowMs,
@@ -1222,6 +1238,7 @@ export class SqliteStore implements Store {
       repository_id: number;
       name: string;
       is_fork: number;
+  ai_eligible: number | null;
       commit_sha: string | null;
     }>;
     const expected = [...input.repositories].toSorted(
