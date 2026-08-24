@@ -190,8 +190,12 @@ export function reportDocument(
       },
     ],
     footer:
-      "Public report, retained for 30 days. This file uses a basic font, so accents and " +
-      'non-Latin characters in a file path appear as "?"; the web report shows them correctly. ' +
+      "Public report: anyone holding the link can read it, and it is deleted 30 days " +
+      "after its last update. Where the AI code review ran, public source files went to " +
+      "OpenRouter and excerpts around secret-scan findings went to OpenRouter, Google and " +
+      "Groq, which may retain or train on them; the privacy page has the full statement. " +
+      'This file uses a basic font, so accents and non-Latin characters in a file path appear as "?"; ' +
+      "the web report shows them correctly. " +
       origin,
   };
 }

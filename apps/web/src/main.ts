@@ -423,14 +423,31 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       // sit here (snapshot, guard, normalize) are internal bookkeeping, and
       // the checkers that are not switched on yet only ever said "not
       // applicable", which read as a fault rather than as nothing to do.
+      // A repository that was never downloaded gets one explanation, on the
+      // Status chip, not four. Its engine columns used to echo "failed" three
+      // more times ("Audit failed" over an audit that was never attempted),
+      // which dressed a size ceiling as a triple malfunction.
+      const neverDownloaded = repository.coverage.snapshot === "failed";
+      const notDownloadedCell: Label = {
+        text: "Not scanned",
+        tone: "skipped",
+        detail:
+          "The repository itself could not be downloaded, so no check ran. The Status entry says why.",
+      };
       const cells: readonly Label[] = [
         repositoryLabel(repository.state, repository.reason),
-        coverageLabel(
-          repository.coverage.gitleaks,
-          repository.specialistReasons?.gitleaks,
-        ),
-        aiCoverageLabel(repository.coverage.ai),
-        zizmorCoverageLabel(repository.coverage.zizmor),
+        neverDownloaded
+          ? notDownloadedCell
+          : coverageLabel(
+              repository.coverage.gitleaks,
+              repository.specialistReasons?.gitleaks,
+            ),
+        neverDownloaded
+          ? { ...notDownloadedCell, text: "Not reviewed" }
+          : aiCoverageLabel(repository.coverage.ai),
+        neverDownloaded
+          ? { ...notDownloadedCell, text: "Not audited" }
+          : zizmorCoverageLabel(repository.coverage.zizmor),
       ];
       const headings = ["Status", "Secret scan", "AI code review", "Workflow audit"];
       row.append(

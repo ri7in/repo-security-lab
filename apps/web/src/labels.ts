@@ -342,7 +342,7 @@ const AI_COVERAGE: Record<string, Label> = {
     text: "Not reviewed",
     tone: "skipped",
     detail:
-      "Only 3 repositories in a scan get a full code review, and fewer when the shared daily budget is already spent. The secret scan still ran on this repository; its entry says how it went.",
+      "A scan reviews at most 3 repositories, and only while the shared daily budget lasts; this repository was not among the ones reviewed. The secret scan still ran on it, and its entry says how that went.",
   },
   // Deliberately does not name a cause. It once claimed the provider was
   // unreachable, which the stored reason often contradicted, and inventing a

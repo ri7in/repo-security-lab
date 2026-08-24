@@ -55,12 +55,14 @@ describe("what a finding is called", () => {
   it("leaves a secret scanner rule as the vendor name it is", () => {
     // "generic api key" and "aws access key" are exactly what a reader wants
     // to see, and there are two hundred and twenty-two of them.
-    expect(ruleName("generic-api-key")).toBe("generic api key");
-    expect(ruleName("aws-access-token")).toBe("aws access token");
+    // Sentence-cased: lowercase machine text beside "SQL injection" read as
+    // a bug rather than a name.
+    expect(ruleName("generic-api-key")).toBe("Generic api key");
+    expect(ruleName("aws-access-token")).toBe("Aws access token");
   });
 
   it("drops the catalogue number even on the fallback path", () => {
-    expect(ruleName("cwe-999-something-new")).toBe("something new");
+    expect(ruleName("cwe-999-something-new")).toBe("Something new");
   });
 });
 

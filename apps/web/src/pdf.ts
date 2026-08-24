@@ -430,6 +430,23 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
     );
   }
 
+  // Every page states whose report it is and where it sits in the document.
+  // Twelve pages of ledger cards are visually interchangeable, and a page
+  // separated from the first carried no account name, no date and no number,
+  // so a shuffled printout could not be reassembled.
+  for (const [index, sheet] of pages.entries()) {
+    const stamp = `${report.title} - page ${String(index + 1)} of ${String(pages.length)}`;
+    const size = 7;
+    write(
+      sheet,
+      PAGE_WIDTH - MARGIN - measure(stamp, "F1", size),
+      BOTTOM - 24,
+      "F1",
+      size,
+      stamp,
+    );
+  }
+
   return serialize(pages);
 }
 

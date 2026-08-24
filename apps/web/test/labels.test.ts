@@ -199,8 +199,12 @@ describe("AI review labels", () => {
     // on the worker that is never reset between requests, so a run serving two
     // visitors at once splits three reads between them.
     // "Worker run" is jargon of the same class as the words removed earlier.
-    expect(detail).toContain("3 repositories in a scan");
+    expect(detail).toContain("at most 3 repositories");
     expect(detail).not.toContain("worker run");
+    // And it must not lead with the per-scan cap as if it were the reason: a
+    // 2-repository scan with 0 reviews sat under a tooltip whose first clause
+    // blamed a 3-repository limit that could not apply.
+    expect(detail).not.toMatch(/^Only 3/);
   });
 
   it("flags a half-finished review, because the result is incomplete", () => {

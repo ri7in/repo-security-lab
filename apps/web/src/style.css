@@ -274,6 +274,20 @@ h2 { margin: 0; font-size: clamp(2rem, 4vw, 3.2rem); letter-spacing: -.022em; }
 
 .legend { margin: 0; color: var(--muted); font: 600 10px var(--mono); text-transform: uppercase; }
 .findings-note { margin: -10px 0 18px; color: var(--muted); font-size: .82rem; }
+/* Column balance measured on a live report at 1440: Repository and Location
+   each held ~380px of mostly whitespace while "2 to 5" wrapped onto three
+   lines and every remedy wrapped onto four. Ranges never wrap; prose gets
+   the room. */
+#finding-table th:nth-child(1) { width: 15%; }
+#finding-table th:nth-child(2) { width: 20%; }
+#finding-table th:nth-child(3) { width: 7%; }
+#finding-table th:nth-child(4) { width: 8%; }
+#finding-table th:nth-child(5) { width: 22%; }
+#finding-table th:nth-child(6) { width: 28%; }
+#finding-table td:nth-child(4) { white-space: nowrap; }
+@media (max-width: 815px) {
+  #finding-table td:nth-child(4) { white-space: normal; }
+}
 .findings-note:empty { display: none; }
 .dot { display: inline-block; width: 7px; height: 7px; margin: 0 5px 0 12px; border-radius: 50%; background: var(--muted); }
 .dot.complete { background: var(--signal); }.dot.skipped { background: var(--muted); }.dot.waiting { background: var(--amber); }.dot.failed { background: var(--red); }
@@ -337,6 +351,9 @@ footer p { max-width: 720px; margin: 0; }
 @media (max-width: 707px) {
   .summary-grid { grid-template-columns: repeat(2, 1fr); }
   .summary-card:nth-child(odd) { border-right: 1px solid var(--line); }
+  /* An odd last card used to leave its neighbouring grid slot as an empty
+     bordered box, which read as a stat that failed to load. */
+  .summary-card:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }
   .summary-card:nth-child(even) { border-right: 0; }
   .summary-card { border-bottom: 1px solid var(--line); }
   .summary-card:nth-last-child(-n+1) { border-bottom: 0; }
@@ -527,6 +544,32 @@ footer p { max-width: 720px; margin: 0; }
    read away from the tooltips. */
 @media print {
   @page { margin: 16mm; }
+  /* Paper is light whatever the screen was. Without this, printing from a
+     dark scheme resolved every token to its dark value under the print
+     block's white body: dark grey text on black cards on white paper. The
+     whole light palette is restated here, outranking both the media query
+     and the explicit dark choice. */
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+    color-scheme: light;
+    --paper: #fafaf7;
+    --paper-raised: #ffffff;
+    --ink: #16181d;
+    --muted: #626870;
+    --muted-dim: #6e737c;
+    --line: #d8d9d3;
+    --line-strong: #8b8d86;
+    --shadow: #16181d;
+    --soft: #efefe9;
+    --signal: #087a55;
+    --signal-contrast: #ffffff;
+    --signal-soft: #dff4e9;
+    --amber: #a45305;
+    --amber-soft: #fff0d8;
+    --red: #b42318;
+    --red-soft: #fde8e7;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    --sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
   /* Everything that exists to get you to press a button. The header, the
      headline and the three principle blocks all used to print, and the fixed
      skip link stamped a black box over a table row on every page. */
@@ -570,6 +613,11 @@ footer p { max-width: 720px; margin: 0; }
   [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; font-weight: 400; }
   .tip { display: none !important; }
   a[href^="http"]::after { content: " (" attr(href) ")"; font-size: 8pt; color: #444; }
+  /* The PDF is the artifact people archive and forward, and the footer that
+     carries the public-link and AI-provider disclosures does not print. A
+     printed report must not know less about where its code went than the
+     page it came from. */
+  .print-disclosure { display: block !important; margin-top: 6mm; padding-top: 3mm; border-top: 1px solid #999; font-size: 8.5pt; color: #444; }
 }
 
 

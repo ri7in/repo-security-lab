@@ -28,7 +28,7 @@ const REMEDIATIONS: Record<string, Remediation> = {
   "harden-workflow": {
     short: "Harden the workflow",
     detail:
-      "This GitHub Actions workflow can be influenced by something it should not trust, such as a pull request title or a branch name reaching a run step. Pin actions to a commit SHA, drop the permissions block to the least the job needs, and never interpolate untrusted input straight into a run command.",
+      "This GitHub Actions workflow is easier to attack than it needs to be. Depending on the finding: pin every action to a commit SHA instead of a tag, drop the permissions block to the least the job needs, avoid persisting credentials in checkouts, and never let untrusted input such as a pull request title reach a run command. The finding's name says which of these applies.",
   },
   "validate-path-input": {
     short: "Validate the path",

@@ -80,8 +80,8 @@ export function ruleName(ruleId: string): string {
   // A class that reaches here without an entry still must not show its
   // catalogue number, so the prefix goes even on the fallback path.
   const withoutCwe = /^cwe-\d+-(.+)$/.exec(ruleId);
-  if (withoutCwe?.[1] !== undefined) {
-    return withoutCwe[1].replaceAll("-", " ");
-  }
-  return ruleId.replaceAll("-", " ");
+  const plain = (withoutCwe?.[1] ?? ruleId).replaceAll("-", " ");
+  // Sentence case: "generic api key" printed beside "SQL injection" read as
+  // machine output on a page that otherwise writes sentences.
+  return plain.charAt(0).toUpperCase() + plain.slice(1);
 }
