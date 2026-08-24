@@ -561,6 +561,77 @@ describe("scout fallback chain", () => {
     expect(() => new FallbackScout([])).toThrow("at least one reader");
   });
 
+  it("retries a transient failure once before falling through", async () => {
+    // Free tiers fail with 429s and 5xx churn where the same model answers
+    // seconds later. On a live scan two of three reads died exactly this way.
+    class Transient extends Error {
+      readonly kind = "server";
+    }
+    const analyze = vi
+      .fn()
+      .mockRejectedValueOnce(new Transient("burp"))
+      .mockResolvedValueOnce(aiScoutResponseSchema.parse({ flags: [flag()] }));
+    const waits: number[] = [];
+    const fellBack: number[] = [];
+    const chain = new FallbackScout(
+      [{ analyze }],
+      (index) => fellBack.push(index),
+      { wait: (ms) => (waits.push(ms), Promise.resolve()) },
+    );
+    const answer = await chain.analyze({ systemPrompt: "s", userPrompt: "u" });
+    expect(answer.flags).toHaveLength(1);
+    expect(analyze).toHaveBeenCalledTimes(2);
+    // A recovered retry is not a fallback; the chain never moved.
+    expect(fellBack).toEqual([]);
+    expect(waits).toHaveLength(1);
+  });
+
+  it("waits longer for a rate limit than for an outage", async () => {
+    class Limited extends Error {
+      readonly kind = "rate_limited";
+    }
+    const analyze = vi
+      .fn()
+      .mockRejectedValueOnce(new Limited("429"))
+      .mockResolvedValueOnce(aiScoutResponseSchema.parse({ flags: [] }));
+    const waits: number[] = [];
+    const chain = new FallbackScout([{ analyze }], undefined, {
+      retryDelayMs: 5,
+      rateLimitDelayMs: 50,
+      wait: (ms) => (waits.push(ms), Promise.resolve()),
+    });
+    await chain.analyze({ systemPrompt: "s", userPrompt: "u" });
+    expect(waits).toEqual([50]);
+  });
+
+  it("never retries a reader that returned a bad document", async () => {
+    // Another request to a model that answered garbage usually returns more
+    // garbage, and a revoked key never fixes itself. Only transient kinds
+    // earn a second attempt.
+    class Malformed extends Error {
+      readonly kind = "malformed";
+    }
+    const analyze = vi.fn().mockRejectedValue(new Malformed("prose"));
+    const chain = new FallbackScout([{ analyze }, working], undefined, {
+      wait: () => Promise.resolve(),
+    });
+    const answer = await chain.analyze({ systemPrompt: "s", userPrompt: "u" });
+    expect(answer.flags).toHaveLength(1);
+    expect(analyze).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports the last error once the whole chain is spent", async () => {
+    const seen: unknown[] = [];
+    const chain = new FallbackScout([failing], undefined, {
+      onExhausted: (error) => seen.push(error),
+      wait: () => Promise.resolve(),
+    });
+    await expect(
+      chain.analyze({ systemPrompt: "s", userPrompt: "u" }),
+    ).rejects.toThrow();
+    expect(seen).toHaveLength(1);
+  });
+
   it("still reports ai_not_run when the whole chain is down", async () => {
     // The funnel must not treat a dead chain as a clean review.
     const result = await new DetectionFunnel({

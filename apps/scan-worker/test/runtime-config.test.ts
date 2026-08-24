@@ -92,8 +92,12 @@ describe("scan worker configuration", () => {
       "openrouter",
       "google",
       "groq",
+      "qwen",
     ]);
     expect(parsed.judges[0]?.model).toBe("stealth/ox-alpha");
+    // The only free Qwen API today, last in trust: it is a 27B preview on a
+    // shared Groq quota, so it adds depth without ever outranking a senior.
+    expect(parsed.judges[3]?.model).toBe("qwen/qwen3.6-27b");
   });
 
   it("still forms the stable pair when the preview model's key is absent", () => {
@@ -104,6 +108,7 @@ describe("scan worker configuration", () => {
     expect(parsed.judges.map((judge) => judge.family)).toEqual([
       "google",
       "groq",
+      "qwen",
     ]);
   });
 

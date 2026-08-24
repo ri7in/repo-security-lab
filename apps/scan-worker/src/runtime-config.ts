@@ -68,17 +68,25 @@ function scoutConfig(
   const apiKey = environment["OPENROUTER_API_KEY"];
   if (apiKey === undefined || apiKey.trim() === "") return null;
   const preferred = environment["OPENROUTER_SCOUT_MODEL"];
-  // Both hold a million tokens, which is what lets one request carry a whole
-  // repository rather than a sampled slice.
-  //
   // ox-alpha reads first: it is the sharper reader and cites the offending
   // line rather than the surrounding block. It is also an unbranded preview
-  // that can be withdrawn without notice, so a named, stable model sits behind
+  // that can be withdrawn without notice, so named, stable models sit behind
   // it. Losing the preview then costs a little precision instead of costing
   // the entire AI pass silently.
+  //
+  // The chain deepened on 2026-08-24 after a live scan lost two of its three
+  // reads to free-tier congestion: one link behind the preview was not
+  // enough. All four ids verified against OpenRouter's live model list that
+  // day. The two nemotron-adjacent links hold a million tokens; glm-5.2 and
+  // nemotron-super hold 256K, which still carries most repositories whole.
+  // The free nemotron endpoints do not honour response_format, which is
+  // tolerable because the response parser already digs the first balanced
+  // JSON object out of prose.
   const chain = [
     preferred ?? "stealth/ox-alpha",
     "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "z-ai/glm-5.2:free",
+    "nvidia/nemotron-3-super-120b-a12b:free",
   ];
   return {
     apiKey,
@@ -131,6 +139,21 @@ function judgePanel(
       family: "groq",
       endpoint: "https://api.groq.com/openai/v1/chat/completions",
       model: environment["GROQ_JUDGE_MODEL"] ?? "openai/gpt-oss-120b",
+    },
+    // Last in trust on purpose. The only Qwen with a free API today is this
+    // 27B preview on Groq (verified 2026-08-24; OpenRouter has no free Qwen
+    // or DeepSeek at all, SambaNova's free DeepSeek allows 20 requests a
+    // day). It shares Groq's quota with gpt-oss and its 8K tokens-per-minute
+    // cap will throttle on big excerpts, so it is a fourth opinion that adds
+    // depth when a senior judge is unreachable, never the deciding voice
+    // while two seniors answered. The family label is the model lineage:
+    // distinctness of failure modes comes from who trained it, not from
+    // which datacentre serves it.
+    {
+      keyName: "GROQ_API_KEY",
+      family: "qwen",
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      model: environment["QWEN_JUDGE_MODEL"] ?? "qwen/qwen3.6-27b",
     },
   ];
   const panel = candidates.flatMap((candidate) => {

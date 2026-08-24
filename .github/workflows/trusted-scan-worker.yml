@@ -60,6 +60,29 @@ jobs:
           echo "GITLEAKS_BINARY=$tool_dir/gitleaks" >> "$GITHUB_ENV"
           echo "GITLEAKS_SHA256=88f91962aa2f93ac6ab281d553b9e125f5197bbbce38f9f2437f7299c32e5509" >> "$GITHUB_ENV"
 
+      # zizmor audits GitHub Actions workflow files inside the same sandbox.
+      # The engine, its broker manifest and its sandbox wiring have existed
+      # since the zizmor lane was built; this download step was the one piece
+      # missing, so every live scan reported the check as not switched on.
+      - name: Download pinned zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/zizmor_1.29.0_linux_x64.tar.gz"
+          tool_dir="$RUNNER_TEMP/zizmor-1.29.0"
+          curl --fail --silent --show-error --location \
+            --proto '=https' --proto-redir '=https' --tlsv1.2 \
+            --retry 3 --retry-all-errors --connect-timeout 10 --max-time 120 \
+            --output "$archive" \
+            https://github.com/zizmorcore/zizmor/releases/download/v1.29.0/zizmor-x86_64-unknown-linux-gnu.tar.gz
+          echo "dd96df044a6e8538d5f423790f453bdd03d49e5b2bcc38214acc41a2f1297839  $archive" | sha256sum --check --strict
+          mkdir --mode=0700 "$tool_dir"
+          tar --extract --gzip --file "$archive" --directory "$tool_dir" zizmor
+          echo "a3331b0a69fc0d8bf8087b0d74d5424602c5a0f2fc2770afe2e908a1295692b5  $tool_dir/zizmor" | sha256sum --check --strict
+          chmod 0700 "$tool_dir/zizmor"
+          echo "ZIZMOR_BINARY=$tool_dir/zizmor" >> "$GITHUB_ENV"
+          echo "ZIZMOR_SHA256=a3331b0a69fc0d8bf8087b0d74d5424602c5a0f2fc2770afe2e908a1295692b5" >> "$GITHUB_ENV"
+
       # Everything below is new. Scanning strangers' repositories requires the
       # same enforced isolation the CI workflow already proves on this exact
       # runner image, so the setup is copied from it rather than reinvented.
@@ -113,6 +136,9 @@ jobs:
           # passes, so this cannot silently degrade to an unsandboxed scan.
           PUBLIC_WORKER: "true"
           SCAN_ISOLATION_MODE: bubblewrap
+          # All-or-none: with this true the config requires the pinned binary
+          # above, and with it false the binary variables are refused.
+          ZIZMOR_ENABLED: "true"
           SCRATCH_PATH: ${{ runner.temp }}/repo-security-scratch
           MAX_JOBS_PER_TICK: "50"
           RUN_ONCE: "true"

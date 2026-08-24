@@ -85,6 +85,25 @@ const repositoryWorker = new RepositoryWorker({
               })}\n`,
             );
           },
+          {
+            // Says what finally killed the read. The live failure this logs
+            // for looked like SCANNER_INTERNAL in the ledger and nothing
+            // anywhere said whether it was a rate limit, an outage, or a
+            // model returning prose. Provider error messages carry a status
+            // code and no repository data, so this is safe in a public log.
+            onExhausted: (error) => {
+              process.stderr.write(
+                `${JSON.stringify({
+                  event: "scout_exhausted",
+                  error: error instanceof Error ? error.message : "unknown",
+                  kind:
+                    typeof error === "object" && error !== null && "kind" in error
+                      ? String((error).kind)
+                      : "unknown",
+                })}\n`,
+              );
+            },
+          },
         ),
       }),
   // Judges are constructed here and injected, never reached for. The worker

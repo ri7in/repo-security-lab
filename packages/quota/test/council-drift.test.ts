@@ -39,6 +39,29 @@ const EXCLUDED: ReadonlyMap<string, string> = new Map([
     "Google no longer publishes a per-model free-tier table, so any number " +
       "would be invented. Understating scarcity here is the accepted cost.",
   ],
+  [
+    "z-ai/glm-5.2:free",
+    "Third link of the reader chain. OpenRouter's free tier meters requests " +
+      "account-wide across every :free model, and the budgeted nemotron " +
+      "entry already counts that one shared meter. A second entry on the " +
+      "same meter would double-count it; this link adds availability, " +
+      "never allowance.",
+  ],
+  [
+    "nvidia/nemotron-3-super-120b-a12b:free",
+    "Fourth link of the reader chain, on the same shared account-wide " +
+      "OpenRouter meter as the entry above. Same reasoning.",
+  ],
+  [
+    "qwen/qwen3.6-27b",
+    "Fourth judge, last in trust, consulted only when a senior judge is " +
+      "unreachable, so it never moves the scarcest-member arithmetic. Groq " +
+      "publishes a row for it (30 RPM, 1K RPD, 8K TPM, 200K TPD, verified " +
+      "2026-08-24) but is ambiguous about whether that meter is shared with " +
+      "the budgeted gpt-oss judge on one organisation; a shared meter " +
+      "budgeted twice would overstate the allowance, and this file does " +
+      "not guess.",
+  ],
 ]);
 
 function modelIdsNamedByTheWorker(): readonly string[] {
