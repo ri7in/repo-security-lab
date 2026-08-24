@@ -4,6 +4,7 @@ import {
   coverageLabel,
   failureDetail,
   repositoryLabel,
+  zizmorCoverageLabel,
 } from "../src/labels.js";
 import { FAILURE_CLASSES, SPECIALIST_PROGRESS_STATES } from "@app/contracts";
 
@@ -223,6 +224,40 @@ describe("AI review labels", () => {
 
   it("falls back rather than throwing on an unknown state", () => {
     expect(aiCoverageLabel("something_new").text).toBe("Unknown");
+  });
+});
+
+describe("workflow audit labels", () => {
+  it("words an absent workflow as a fact, not a fault", () => {
+    // Most repositories have no GitHub Actions workflows at all, so the
+    // common case must not wear the colour or the wording of a problem.
+    const label = zizmorCoverageLabel("not_applicable");
+    expect(label.text).toBe("No workflows");
+    expect(label.tone).toBe("skipped");
+    expect(label.detail).toContain("not a failure");
+  });
+
+  it("renders pre-switch-on history honestly", () => {
+    // Every report from before 2026-08-24 stores unsupported for this
+    // engine, and that history is permanent.
+    const label = zizmorCoverageLabel("unsupported");
+    expect(label.text).toBe("Not switched on");
+    expect(label.tone).toBe("skipped");
+  });
+
+  it("covers every outcome the contract can send", () => {
+    for (const outcome of [
+      "complete",
+      "partial",
+      "not_applicable",
+      "unsupported",
+      "failed",
+      "waiting",
+    ]) {
+      const label = zizmorCoverageLabel(outcome);
+      expect(label.text, `${outcome} has no label`).not.toBe("Unknown");
+      expect(label.detail.length, `${outcome} has no explanation`).toBeGreaterThan(20);
+    }
   });
 });
 

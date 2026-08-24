@@ -63,3 +63,27 @@ describe("what a finding is called", () => {
     expect(ruleName("cwe-999-something-new")).toBe("something new");
   });
 });
+
+describe("workflow audit rule names", () => {
+  it("names every ident in the pinned zizmor manifest", () => {
+    // "artipacked" reached a live report as a raw slug. The vocabulary is a
+    // closed 37-entry set, so every ident gets a written name and a scanner
+    // upgrade that adds one fails here instead of shipping jargon.
+    const manifest = readFileSync(
+      path.join(ROOT, "packages/scanners/src/zizmor-manifest.ts"),
+      "utf8",
+    );
+    const idents = [...manifest.matchAll(/\[\s*"([a-z0-9-]+)"\s*,/g)].map(
+      (match) => match[1] ?? "",
+    );
+    expect(idents.length).toBeGreaterThan(30);
+    for (const ident of idents) {
+      const name = ruleName(ident);
+      expect(name, `${ident} has no written name`).not.toBe(
+        ident.replaceAll("-", " "),
+      );
+      expect(name.length, `${ident} name too short`).toBeGreaterThan(10);
+    }
+  });
+});
+

@@ -22,6 +22,7 @@ import {
 } from "./history.js";
 import {
   aiCoverageLabel,
+  zizmorCoverageLabel,
   coverageLabel,
   repositoryLabel,
   type Label,
@@ -429,8 +430,9 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
           repository.specialistReasons?.gitleaks,
         ),
         aiCoverageLabel(repository.coverage.ai),
+        zizmorCoverageLabel(repository.coverage.zizmor),
       ];
-      const headings = ["Status", "Secret scan", "AI code review"];
+      const headings = ["Status", "Secret scan", "AI code review", "Workflow audit"];
       row.append(
         name,
         ...cells.map((label, index) => {
@@ -598,6 +600,30 @@ async function loadRepositories(
   return repositories;
 }
 
+/**
+ * Worst first. The API pages findings in storage order, which put a medium
+ * workflow lint above a critical SQL injection on a live report. Sorted once
+ * here so the screen, the print view and the PDF all agree; ties keep a
+ * stable secondary order so two loads of one report never shuffle.
+ */
+const SEVERITY_RANK: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+  unknown: 5,
+};
+
+function bySeverity(left: PublicFinding, right: PublicFinding): number {
+  const severity =
+    (SEVERITY_RANK[left.severity] ?? 9) - (SEVERITY_RANK[right.severity] ?? 9);
+  if (severity !== 0) return severity;
+  const repository = left.repository_id - right.repository_id;
+  if (repository !== 0) return repository;
+  return left.rule_id.localeCompare(right.rule_id);
+}
+
 async function loadFindings(requestId: string): Promise<PublicFinding[]> {
   const findings: PublicFinding[] = [];
   let cursor: string | undefined;
@@ -609,7 +635,7 @@ async function loadFindings(requestId: string): Promise<PublicFinding[]> {
     findings.push(...page.findings);
     cursor = page.nextCursor;
   } while (cursor !== undefined);
-  return findings;
+  return findings.toSorted(bySeverity);
 }
 
 async function poll(requestId: string): Promise<void> {

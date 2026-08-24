@@ -364,3 +364,54 @@ const AI_COVERAGE: Record<string, Label> = {
 export function aiCoverageLabel(coverage: string): Label {
   return AI_COVERAGE[coverage] ?? UNKNOWN;
 }
+
+/**
+ * The workflow audit column, live since zizmor was switched on 2026-08-24.
+ *
+ * Most repositories legitimately have no GitHub Actions workflows, so the
+ * empty case is worded as a fact about the repository rather than as a check
+ * that went wrong. Reports from before the switch-on carry `unsupported`
+ * everywhere, and that history renders honestly as "Not switched on".
+ */
+const ZIZMOR_COVERAGE: Record<string, Label> = {
+  complete: {
+    text: "Audited",
+    tone: "ok",
+    detail:
+      "Every GitHub Actions workflow file in this repository was checked offline against zizmor 1.29.0's audit rules.",
+  },
+  partial: {
+    text: "Partly audited",
+    tone: "problem",
+    detail:
+      "The workflow audit saw some of this repository's workflow files but not all of them, so its findings here are a floor rather than a total.",
+  },
+  not_applicable: {
+    text: "No workflows",
+    tone: "skipped",
+    detail:
+      "This repository has no GitHub Actions workflow files, so there was nothing for the workflow audit to read. That is a fact about the repository, not a failure.",
+  },
+  unsupported: {
+    text: "Not switched on",
+    tone: "skipped",
+    detail:
+      "The workflow audit was not running when this scan happened. Scans made after 24 August 2026 include it wherever workflow files exist.",
+  },
+  failed: {
+    text: "Audit failed",
+    tone: "problem",
+    detail:
+      "The workflow audit did not finish for this repository. Its other entries say how the rest of the scan went.",
+  },
+  waiting: {
+    text: "Waiting",
+    tone: "active",
+    detail: "This repository has not reached the workflow audit yet.",
+  },
+};
+
+/** The visible outcome of the workflow audit for one repository. */
+export function zizmorCoverageLabel(coverage: string): Label {
+  return ZIZMOR_COVERAGE[coverage] ?? UNKNOWN;
+}

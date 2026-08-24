@@ -143,12 +143,12 @@
           <p class="legend"><span class="dot complete"></span>scanned <span class="dot skipped"></span>skipped <span class="dot waiting"></span>running <span class="dot failed"></span>problem</p>
         </div>
         <p id="no-repositories" class="nothing-found is-neutral" hidden>No repositories were listed, because the scan stopped before it got that far.</p>
-        <p id="ledger-columns" class="findings-note">Two checks run today: the secret scan on every repository it can download that is not a fork, and the AI code review on up to three per scan. Three more exist and are not switched on yet, so this ledger does not show a column for them: dependency CVEs, GitHub Actions workflow hardening, and static analysis.</p>
+        <p id="ledger-columns" class="findings-note">Three checks run today: the secret scan on every repository it can download that is not a fork, the AI code review on up to three per scan, and the workflow audit wherever GitHub Actions workflow files exist. Two more exist and are not switched on yet, so this ledger does not show a column for them: dependency CVEs and static analysis.</p>
         <p id="ledger-note" class="findings-note"></p>
         <div id="ledger-table" class="table-shell" aria-label="Table of repositories">
           <table>
             <thead>
-              <tr><th scope="col">Repository</th><th scope="col">Status</th><th scope="col">Secret scan</th><th scope="col">AI code review</th></tr>
+              <tr><th scope="col">Repository</th><th scope="col">Status</th><th scope="col">Secret scan</th><th scope="col">AI code review</th><th scope="col">Workflow audit</th></tr>
             </thead>
             <tbody id="repository-rows"></tbody>
           </table>
