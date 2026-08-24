@@ -218,6 +218,20 @@ describe("the two dark palettes", () => {
   });
 });
 
+describe("colour never claims more than the words do", () => {
+  it("does not leave the all-clear green on a scan that read nothing", () => {
+    // .nothing-found is green, and its own CSS comment says green means a
+    // check ran and found nothing. Over an account with no public
+    // repositories nothing ran, and the box still rendered green directly
+    // under an amber verdict saying there was nothing to check.
+    const script = read("src/main.ts");
+    expect(script).toContain(
+      'nothingFound.classList.toggle("is-neutral", repositories.length === 0)',
+    );
+    expect(read("src/style.css")).toContain(".nothing-found.is-neutral");
+  });
+});
+
 describe("the owner's hard rule about em dashes", () => {
   it("finds no em dash anywhere in the repository", () => {
     // Was scoped to apps/web, which let twenty-seven of them accumulate in

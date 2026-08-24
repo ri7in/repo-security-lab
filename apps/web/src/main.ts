@@ -508,6 +508,10 @@ function renderFindings(
     repositories.length,
     NOTHING_FOUND_TEXT,
   );
+  // The same rule the class was written for: green means a check ran and found
+  // nothing. Over an account with no public repositories nothing ran, and the
+  // honest sentence was still sitting in the green box that says all clear.
+  nothingFound.classList.toggle("is-neutral", repositories.length === 0);
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
