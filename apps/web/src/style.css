@@ -328,6 +328,10 @@ tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 
    the shared tooltip explains it on hover and on tap. */
 .deepscan-badge {
   display: inline-flex; align-items: center; gap: 5px;
+  /* fit-content, or the badge stretches to the full name column: a table
+     cell gives a block child its whole width and inline-flex after a block
+     span inherited that. This hugs the label whatever the display context. */
+  width: fit-content; max-width: 100%;
   margin-top: 7px; padding: 3px 8px;
   font: 700 8.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
   color: var(--deepscan); background: var(--deepscan-soft);
