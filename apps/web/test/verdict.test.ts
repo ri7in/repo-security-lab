@@ -326,3 +326,39 @@ describe("the verdict does not count one repository twice", () => {
     expect(verdict.text).not.toContain("the 0 repositories");
   });
 });
+
+describe("the headline promises only what the table delivers", () => {
+  const repo = {
+    repositoryId: 1,
+    name: "one",
+    state: "complete",
+    coverage: { snapshot: "complete", archive_guard: "complete", gitleaks: "complete", osv: "not_applicable", zizmor: "not_applicable", opengrep: "not_applicable", ai: "not_applicable" },
+    aiLane: "ai_not_run",
+  } as unknown as RepositoryRow;
+
+  it("says file and line when every finding has one", () => {
+    const withLocation = {
+      rule_id: "generic-api-key",
+      severity: "high",
+      locations: [{ path: "a.ts", startLine: 1 }],
+    } as unknown as PublicFinding;
+    expect(summarizeVerdict("someone", [repo], [withLocation]).text).toContain(
+      "listed below with the file and the line.",
+    );
+  });
+
+  it("does not promise a line for a finding that has none", () => {
+    // `locations` is optional on a published finding and one without any
+    // renders as "not located", so the headline was breaking its own promise
+    // in the table directly underneath it.
+    const located = {
+      rule_id: "generic-api-key",
+      severity: "high",
+      locations: [{ path: "a.ts", startLine: 1 }],
+    } as unknown as PublicFinding;
+    const unlocated = { rule_id: "aws-access-token", severity: "high" } as unknown as PublicFinding;
+    const text = summarizeVerdict("someone", [repo], [located, unlocated]).text;
+    expect(text).toContain("wherever the scanner recorded one");
+    expect(text).not.toContain("below with the file and the line.");
+  });
+});

@@ -109,12 +109,19 @@ export function summarizeVerdict(
       : ` ${String(onPurpose)} ${onPurpose === 1 ? "was" : "were"} skipped on purpose, as forks or as repositories with no commit.`;
 
   if (findings.length > 0) {
+    // "with the file and the line" was promised unconditionally. `locations`
+    // is optional on a published finding, and one without any renders as "not
+    // located", so the headline was making a promise the table under it broke.
+    const located = findings.every(
+      (finding) => (finding.locations?.length ?? 0) > 0,
+    );
     return {
       tone: "concern",
       text:
         `${String(findings.length)} thing${findings.length === 1 ? "" : "s"} to fix in ` +
-        `${username}'s public code, ${findings.length === 1 ? "listed" : "all listed"} below ` +
-        `with the file and the line.${unexamined}${deliberate}`,
+        `${username}'s public code, ${findings.length === 1 ? "listed" : "all listed"} below` +
+        `${located ? " with the file and the line" : ", with the file and the line wherever the scanner recorded one"}.` +
+        `${unexamined}${deliberate}`,
     };
   }
   if (total === 0) {
