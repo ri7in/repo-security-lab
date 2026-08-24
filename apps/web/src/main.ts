@@ -588,6 +588,12 @@ async function poll(requestId: string): Promise<void> {
       }
       if (!response.ok) throw new Error("REQUEST_FAILED");
       summary = scanRequestSummarySchema.parse(await response.json());
+      // Set here rather than after the repository fetch. It means "the service
+      // has answered something valid at least once", and a valid summary
+      // proves that. retryPlan gives up immediately when it is false, so
+      // waiting for both calls made a 429 on the very first repository fetch
+      // give up with no retry at all: the narrower version of the bug below.
+      everSucceeded = true;
       // Inside the same guard as the summary, and not after it. One 429 or
       // 500 on this call used to reject poll() outright: a running scan was
       // headlined "Scan stopped early", told the visitor "this scan could not
@@ -602,7 +608,6 @@ async function poll(requestId: string): Promise<void> {
       // that would have recovered, leaving the page frozen for good.
       etag = response.headers.get("etag") ?? undefined;
       consecutiveFailures = 0;
-      everSucceeded = true;
     } catch (error) {
       if (error instanceof Error && error.message === "REQUEST_GONE") throw error;
       consecutiveFailures += 1;

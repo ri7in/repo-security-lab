@@ -48,3 +48,19 @@ describe("what to do when a poll fails", () => {
     expect(retryPlan(POLL_ATTEMPTS, true, 3).message).toBe("");
   });
 });
+
+describe("what counts as the service having answered", () => {
+  it("retries a failure that follows a single good answer", () => {
+    // The caller sets everSucceeded on a valid summary rather than on a whole
+    // successful poll. Waiting for the repository fetch too meant a 429 on the
+    // very first one gave up with no retry: a running scan told "this scan
+    // could not start", which is the bug this module exists to prevent.
+    const plan = retryPlan(1, true, 3);
+    expect(plan.giveUp).toBe(false);
+    expect(plan.message).toContain("The scan itself keeps running.");
+  });
+
+  it("still gives up when nothing has ever answered", () => {
+    expect(retryPlan(1, false, 3).giveUp).toBe(true);
+  });
+});
