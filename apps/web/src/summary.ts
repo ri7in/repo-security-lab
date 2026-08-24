@@ -96,6 +96,17 @@ export function statusLine(summary: ScanRequestSummary): string {
   // twice, word for word.
   if (summary.state === "failed") return "This scan stopped before it finished.";
   if (summary.state === "complete") {
+    // An account with no public repositories reaches `complete` with nothing
+    // in it, and "All 0 repositories finished." was the line under a heading
+    // reading "Scan finished".
+    if (total === 0) return "This account has no public repositories to scan.";
+    // "All N repositories finished." sat seventeen pixels under a verdict
+    // reading "1 repository did not finish, so there may be more", and under
+    // "9 repositories did not finish" on a larger account.
+    const missed = summary.repositoryTotals.failed + summary.repositoryTotals.partial;
+    if (missed > 0) {
+      return `${String(total - missed)} of ${String(total)} repositories finished.`;
+    }
     return `All ${String(total)} ${total === 1 ? "repository" : "repositories"} finished.`;
   }
   return `${String(terminalCount(summary))} of ${String(total)} repositories finished so far.`;

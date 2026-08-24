@@ -54,7 +54,12 @@ import {
 import { retryPlan } from "./polling.js";
 import { installTooltips } from "./tooltip.js";
 import { usernameProblem } from "./username.js";
-import { secretScannedCount, summarizeVerdict } from "./verdict.js";
+import {
+  emptyLedgerText,
+  nothingFoundText,
+  secretScannedCount,
+  summarizeVerdict,
+} from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
   const element = document.querySelector<T>(selector);
@@ -78,6 +83,9 @@ const rows = $<HTMLElement>("#repository-rows");
 const findingRows = $<HTMLElement>("#finding-rows");
 const findingTable = $<HTMLElement>("#finding-table");
 const nothingFound = $<HTMLElement>("#nothing-found");
+// Read from the markup so index.html stays the single home of the
+// sentence, which is what the shipped-copy test reads.
+const NOTHING_FOUND_TEXT = nothingFound.textContent ?? "";
 const botCode = $<HTMLElement>("#bot-code");
 const ledgerNote = $<HTMLElement>("#ledger-note");
 const ledgerTable = $<HTMLElement>("#ledger-table");
@@ -368,8 +376,11 @@ function renderSummary(summary: ScanRequestSummary): void {
 function renderRepositories(repositories: readonly RepositoryRow[]): void {
   // Counted from the rows rather than from the request's coverage totals: the
   // stored totals predate the AI engine and never move for it.
-  reviewedShown = repositories.filter(
-    (repository) => repository.coverage.ai === "complete",
+  // complete and partial, matching secretScannedCount. Counting only
+  // `complete` put a 0 on the code-reviewed card above five ledger rows
+  // reading "Partly reviewed".
+  reviewedShown = repositories.filter((repository) =>
+    ["complete", "partial"].includes(repository.coverage.ai),
   ).length;
   scannedShown = secretScannedCount(repositories);
   rows.replaceChildren(
@@ -489,6 +500,14 @@ function renderFindings(
   // An empty table with a header row reads as a rendering fault. Say it.
   findingTable.hidden = findings.length === 0;
   nothingFound.hidden = findings.length > 0;
+  // The standing sentence credits Gitleaks with reading a commit. Over an
+  // account with no public repositories no commit was read, and the green box
+  // saying otherwise sat directly under an amber verdict saying there was
+  // nothing to check. The green box is the one a reader believes.
+  nothingFound.textContent = nothingFoundText(
+    repositories.length,
+    NOTHING_FOUND_TEXT,
+  );
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
@@ -546,6 +565,7 @@ async function poll(requestId: string): Promise<void> {
   let everSucceeded = false;
   while (true) {
     let summary;
+    let repositories: readonly RepositoryRow[] = [];
     try {
       const response = await fetch(`/api/scan-requests/${requestId}`, {
         headers: etag === undefined ? {} : { "if-none-match": etag },
@@ -564,6 +584,18 @@ async function poll(requestId: string): Promise<void> {
       }
       if (!response.ok) throw new Error("REQUEST_FAILED");
       summary = scanRequestSummarySchema.parse(await response.json());
+      // Inside the same guard as the summary, and not after it. One 429 or
+      // 500 on this call used to reject poll() outright: a running scan was
+      // headlined "Scan stopped early", told the visitor "this scan could not
+      // start. Too many scans too quickly", and had its ledger, cards and
+      // findings wiped, all of it false.
+      repositories = await loadRepositories(
+        requestId,
+        summary.state === "complete" || summary.state === "failed",
+      );
+      // Only once both calls are in. Adopting the etag before the second one
+      // succeeded meant the next poll came back 304 and skipped the render
+      // that would have recovered, leaving the page frozen for good.
       etag = response.headers.get("etag") ?? undefined;
       consecutiveFailures = 0;
       everSucceeded = true;
@@ -583,7 +615,6 @@ async function poll(requestId: string): Promise<void> {
     retryAfterSeconds = summary.retryAfterSeconds;
     renderSteps(summary);
     const terminal = summary.state === "complete" || summary.state === "failed";
-    const repositories = await loadRepositories(requestId, terminal);
     // Before the cards, because one of them counts reviewed repositories and
     // that count is derived here. Drawing first left it a poll behind.
     renderRepositories(repositories);
@@ -592,6 +623,9 @@ async function poll(requestId: string): Promise<void> {
     // A header row over nothing reads as something failing to load. The
     // findings section already says so; the ledger said nothing at all.
     const nothingListed = repositories.length === 0 && terminal;
+    // An account with no public repositories also lands here, and it was told
+    // the scan had stopped early when it had finished perfectly well.
+    noRepositories.textContent = emptyLedgerText(summary.state === "failed");
     ledgerTable.hidden = nothingListed;
     ledgerColumns.hidden = nothingListed;
     noRepositories.hidden = !nothingListed;

@@ -136,3 +136,34 @@ export function summarizeVerdict(
       `${total === 1 ? "repository at its" : "repositories at their"} current commit and matched nothing.`,
   };
 }
+
+/**
+ * The line that stands where the ledger would be, when it has no rows.
+ *
+ * Two very different things land here: a scan that stopped before discovery,
+ * and an account that genuinely has no public repositories. Both were told
+ * "the scan stopped before it got that far", under a heading reading "Scan
+ * finished".
+ */
+export function emptyLedgerText(stopped: boolean): string {
+  return stopped
+    ? "No repositories were listed, because the scan stopped before it got that far."
+    : "This account has no public repositories, so there was nothing to scan.";
+}
+
+/**
+ * The sentence under an empty findings table.
+ *
+ * The standing one credits Gitleaks with reading a commit. Over an account
+ * with no public repositories no commit was read, and that sentence rendered
+ * in green directly under an amber verdict saying there was nothing to check.
+ * On a security page the green box is the one a reader believes.
+ */
+export function nothingFoundText(
+  repositoryCount: number,
+  standard: string,
+): string {
+  return repositoryCount === 0
+    ? "There was nothing to scan, so nothing was checked and nothing was found."
+    : standard;
+}

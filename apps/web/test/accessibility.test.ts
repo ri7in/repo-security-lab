@@ -41,6 +41,27 @@ describe("production accessibility invariants", () => {
     expect(css).toMatch(/\.input-row button\s*\{[^}]*color:\s*var\(--signal-contrast\)/s);
   });
 
+  it("keeps every text token at WCAG AA on both page surfaces", async () => {
+    // --muted-dim shipped at #767c85 under a comment claiming it "still clears
+    // 4.5:1". It measures 4.21:1 on --paper-raised and 4.02:1 on --paper, and
+    // it colours the ten and eleven pixel step numbers and labels, where 4.5:1
+    // is the threshold that applies.
+    const css = await readFile(new URL("src/style.css", root), "utf8");
+    const light = /^:root\s*\{([\s\S]*?)\}/m.exec(css)?.[1] ?? "";
+    const dark = /:root\[data-theme="dark"\]\s*\{([\s\S]*?)\}/m.exec(css)?.[1] ?? "";
+    for (const block of [light, dark]) {
+      for (const ink of ["ink", "muted", "muted-dim"]) {
+        for (const paper of ["paper", "paper-raised"]) {
+          const ratio = contrast(token(block, ink), token(block, paper));
+          expect(
+            ratio,
+            `--${ink} on --${paper} is ${ratio.toFixed(2)}:1`,
+          ).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+    }
+  });
+
   it("exposes and updates the theme toggle pressed state", async () => {
     const [html, script] = await Promise.all([
       readFile(new URL("index.html", root), "utf8"),

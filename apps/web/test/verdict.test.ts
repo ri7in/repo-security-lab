@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PublicFinding, RepositoryRow } from "@app/contracts";
 import {
+  emptyLedgerText,
+  nothingFoundText,
   secretScannedCount,
   skippedOnPurposeCount,
   summarizeVerdict,
@@ -203,5 +205,33 @@ describe("the verdict", () => {
         repository({ repositoryId: 4, coverage: coverage("failed") }),
       ]),
     ).toBe(2);
+  });
+});
+
+describe("the lines that stand in for an absent result", () => {
+  it("does not tell a finished empty account that its scan stopped early", () => {
+    // An account with no public repositories reaches `complete` with an empty
+    // ledger, and was handed the sentence written for a scan that died during
+    // discovery, under a heading reading "Scan finished".
+    expect(emptyLedgerText(false)).toBe(
+      "This account has no public repositories, so there was nothing to scan.",
+    );
+    expect(emptyLedgerText(false)).not.toContain("stopped");
+    expect(emptyLedgerText(true)).toContain("stopped before it got that far");
+  });
+
+  it("does not credit the scanner with reading a commit it never read", () => {
+    const standard = "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read.";
+    // Over an empty account this green box sat directly under an amber verdict
+    // saying there was nothing to check, and the green box wins the reader.
+    const empty = nothingFoundText(0, standard);
+    expect(empty).not.toContain("Gitleaks");
+    expect(empty).not.toContain("commit");
+    expect(empty).toBe(
+      "There was nothing to scan, so nothing was checked and nothing was found.",
+    );
+    // With repositories in the ledger it is the standing sentence, unchanged.
+    expect(nothingFoundText(23, standard)).toBe(standard);
+    expect(nothingFoundText(1, standard)).toBe(standard);
   });
 });

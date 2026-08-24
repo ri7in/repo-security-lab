@@ -4,9 +4,11 @@
   --paper-raised: #ffffff;
   --ink: #16181d;
   --muted: #626870;
-  /* A dimmed text colour that still clears 4.5:1. The steps used to reach
-     this by compositing --muted at 55% opacity, which lands on 2.28:1. */
-  --muted-dim: #767c85;
+  /* 4.77:1 on --paper-raised and 4.56:1 on --paper, both measured. The steps
+     used to reach this by compositing --muted at 55% opacity, which lands on
+     2.28:1; the fix for that was #767c85, which is 4.21:1 and 4.02:1, so it
+     failed the 4.5:1 its own comment claimed. */
+  --muted-dim: #6e737c;
   --line: #d8d9d3;
   /* For anything that bounds a control or signals a state, where --line's
      1.4:1 leaves no perceivable edge. */

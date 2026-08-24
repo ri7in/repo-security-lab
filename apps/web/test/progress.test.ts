@@ -139,6 +139,17 @@ describe("the progress model", () => {
     );
   });
 
+  it("does not announce a completed scan of nothing", () => {
+    // An account with no public repositories reaches `complete` with an empty
+    // ledger, and the live region announced "Complete. All 0 repositories
+    // have been checked." to a screen reader.
+    const model = progressModel(summary("complete", {}));
+    expect(model.liveDetail).toBe(
+      "This account has no public repositories to scan.",
+    );
+    expect(model.liveDetail).not.toContain("0");
+  });
+
   it("holds nothing once the request is complete", () => {
     const model = progressModel(summary("complete", { complete: 3 }));
     expect(model.active).toBeNull();

@@ -161,10 +161,12 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
     liveDetail: stopped
       ? "The request stopped before every repository was checked. Details below."
       : finished
-        ? // Not "all N have been checked": a fork is in `all` and was never
-          // opened, so that sentence sat in green directly above a red verdict
-          // saying four were skipped.
-          skippedOnPurpose === 0
+        ? all === 0
+          ? "This account has no public repositories to scan."
+          : // Not "all N have been checked": a fork is in `all` and was never
+            // opened, so that sentence sat in green directly above a red
+            // verdict saying four were skipped.
+            skippedOnPurpose === 0
           ? `All ${String(all)} ${all === 1 ? "repository has" : "repositories have"} been checked.`
           : `${String(all - skippedOnPurpose)} of ${String(all)} repositories checked, ${String(skippedOnPurpose)} skipped as forks or as empty.`
         : all === 0

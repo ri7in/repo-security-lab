@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "../src/labels.js";
-import { FAILURE_CLASSES } from "@app/contracts";
+import { FAILURE_CLASSES, SPECIALIST_PROGRESS_STATES } from "@app/contracts";
 
 /**
  * The label layer is where internal vocabulary becomes something a visitor can
@@ -117,6 +117,30 @@ describe("coverage labels", () => {
     expect(label.tone).toBe("ok");
     expect(label.text).toBe("Fully scanned");
     expect(label.text.toLowerCase()).not.toContain("clear");
+  });
+
+  it("has a label for every progress state the contract can send", () => {
+    // The map keyed the not-started state as `pending` while the contract
+    // sends `waiting`, so `coverageLabel("waiting")` fell through to UNKNOWN:
+    // a red chip reading "this is a bug in this tool" on every not-yet-scanned
+    // row, for the whole of every live scan. Three review rounds missed it
+    // because every fixture they used was already finished.
+    for (const state of SPECIALIST_PROGRESS_STATES) {
+      const label = coverageLabel(state);
+      expect(label.text, `${state} has no label`).not.toBe("Unknown");
+      // `partial` is legitimately toned "problem", so the invariant is the
+      // fall-through itself: no state the contract can send may reach UNKNOWN.
+      expect(label.detail, `${state} reaches UNKNOWN`).not.toContain(
+        "bug in this tool",
+      );
+    }
+  });
+
+  it("shows a not-yet-started check as waiting, not as a fault", () => {
+    const label = coverageLabel("waiting");
+    expect(label.text).toBe("Waiting");
+    expect(label.tone).toBe("active");
+    expect(label.detail).not.toContain("bug in this tool");
   });
 
   it("lets a specific reason override the generic coverage state", () => {

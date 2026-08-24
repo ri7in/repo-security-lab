@@ -204,7 +204,12 @@ const COVERAGE: Record<string, Label> = {
     detail: "There is relevant code here, but this check is not switched on yet.",
   },
   failed: { text: "Failed", tone: "problem", detail: "This check did not finish." },
-  pending: { text: "Waiting", tone: "active", detail: "This check has not started yet." },
+  // Keyed `pending` until now, while the contract sends `waiting`
+  // (SPECIALIST_PROGRESS_STATES). Every not-yet-started row therefore fell
+  // through to UNKNOWN and wore a red chip reading "this is a bug in this
+  // tool" for the whole of every live scan, which is the screen every first
+  // visitor watches.
+  waiting: { text: "Waiting", tone: "active", detail: "This check has not started yet." },
 };
 
 const UNKNOWN: Label = {

@@ -151,6 +151,32 @@ describe("the status line", () => {
       "All 1 repository finished.",
     );
   });
+
+  it("does not say everything finished when some of it did not", () => {
+    // "All 23 repositories finished." sat seventeen pixels under a verdict
+    // reading "1 repository did not finish, so there may be more", and on a
+    // larger account under "9 repositories did not finish".
+    const line = statusLine(summary("complete", { complete: 22, failed: 1 }));
+    expect(line).toBe("22 of 23 repositories finished.");
+    expect(line).not.toContain("All ");
+    expect(statusLine(summary("complete", { complete: 98, failed: 4, partial: 5 }))).toBe(
+      "98 of 107 repositories finished.",
+    );
+  });
+
+  it("still says all finished when all of them did", () => {
+    // A fork is `cancelled`, which is a correct outcome and not a miss.
+    expect(statusLine(summary("complete", { complete: 19, cancelled: 4 }))).toBe(
+      "All 23 repositories finished.",
+    );
+  });
+
+  it("does not count an empty account as a finished scan of nothing", () => {
+    // "All 0 repositories finished." under a heading reading "Scan finished".
+    const line = statusLine(summary("complete", {}));
+    expect(line).toBe("This account has no public repositories to scan.");
+    expect(line).not.toContain("0");
+  });
 });
 
 describe("the heading over the result", () => {

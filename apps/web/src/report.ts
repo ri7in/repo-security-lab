@@ -5,7 +5,7 @@ import type {
   ScanRequestSummary,
 } from "@app/contracts";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
-import { secretScannedCount } from "./verdict.js";
+import { nothingFoundText, secretScannedCount } from "./verdict.js";
 import type { PdfReport } from "./pdf.js";
 import { remediationLabel } from "./remediation.js";
 
@@ -65,8 +65,13 @@ export function reportDocument(
         heading: "What was found",
         layout: "list",
         note: "File paths and line numbers only. No source code and no secret values.",
-        emptyText:
+        // Same rule as the page: over an account with no public repositories
+        // no commit was read, so the sentence crediting Gitleaks with reading
+        // one is false on paper too.
+        emptyText: nothingFoundText(
+          state.repositories.length,
           "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
+        ),
         columns: [
           // Only the first value titles the block; the rest are labelled
           // lines under it, so nothing here needs a width.
