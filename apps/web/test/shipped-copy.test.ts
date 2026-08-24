@@ -24,6 +24,7 @@ const PAGES = [
   "index.html",
   "public/privacy.html",
   "public/acceptable-use.html",
+  "public/how-it-works.html",
 ];
 
 describe("links between the shipped pages", () => {
@@ -177,7 +178,8 @@ describe("claims the code contradicts", () => {
     // constant dressed as a gauge.
     const script = read("src/main.ts");
     expect(script).not.toContain("full code reviews left today");
-    expect(script).toContain("Up to ${String(budget.deepReadsPerDay)} full code reviews a day");
+    expect(script).not.toContain("DeepScans left today");
+    expect(script).toContain("up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan");
   });
 
   it("does not promise the secret scan runs on every repository", () => {
@@ -186,6 +188,10 @@ describe("claims the code contradicts", () => {
     const script = read("src/main.ts");
     expect(script).not.toContain("still runs on every repository.");
     expect(script).not.toContain("Every repository still gets the secret scan");
+    // The new copy must qualify "every repository" so forks and repositories
+    // that cannot be downloaded are not promised a scan they never get.
+    expect(script).not.toContain("Every repository you own gets scanned");
+    expect(script).not.toContain("Every repository still gets");
   });
 });
 
@@ -222,14 +228,14 @@ describe("the two dark palettes", () => {
 
 describe("the disclosure that says where a visitor's code goes", () => {
   it("counts the same number of providers the code discloses", () => {
-    // The sentence says whole files go to "the first of those" and an
-    // excerpt to "all three". That is three, hard-coded in prose, beside a
-    // list built from DISCLOSED_PROVIDERS. The models behind this have
-    // already been swapped once, and the footer telling people where their
-    // source goes is the worst place for that to drift quietly.
-    const html = read("index.html");
-    expect(html).toContain("the first of those");
-    expect(html).toContain("all three");
+    // The where-your-code-goes disclosure moved off the landing footer to
+    // the privacy page, which names the providers by hand. If a provider is
+    // added to DISCLOSED_PROVIDERS, this count breaks and forces the prose to
+    // be updated rather than drifting quietly.
+    const privacy = read("public/privacy.html");
+    for (const name of ["OpenRouter", "Google", "Groq"]) {
+      expect(privacy, `privacy page must name ${name}`).toContain(name);
+    }
     const disclosed = readFileSync(
       path.join(ROOT, "packages/quota/src/models.ts"),
       "utf8",

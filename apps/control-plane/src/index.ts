@@ -38,6 +38,13 @@ export interface ControlPlaneEnvironment extends NotificationEnvironment {
   readonly USERNAME_RATE_LIMITER: RateLimitPort;
   readonly INTERNAL_RATE_LIMITER: RateLimitPort;
   readonly PUBLIC_SCANNING_ENABLED: string;
+  /**
+   * How many OpenRouter reader keys the scan worker rotates. The keys live in
+   * the worker's environment, so their count is mirrored here as a plain var
+   * to keep the advertised daily DeepScan number honest: N keys means N times
+   * the daily reads. Absent or unparseable means one.
+   */
+  readonly OPENROUTER_KEY_POOL_SIZE?: string;
   readonly PRIVATE_SLICE_LOGINS: string;
   readonly PRIVATE_SLICE_ACCOUNT_IDS: string;
   readonly GITHUB_TOKEN?: string;
@@ -207,7 +214,12 @@ export async function handleControlPlaneRequest(
           configuredScope.requestedLogins === null ? "public" : "private_preview",
         emailNotifications: configuredNotifications !== null,
       },
-      deepReadBudget: () => readDeepReadBudget(environment.DB, Date.now()),
+      deepReadBudget: () =>
+        readDeepReadBudget(
+          environment.DB,
+          Date.now(),
+          Math.max(1, Number(environment.OPENROUTER_KEY_POOL_SIZE ?? "1") || 1),
+        ),
     });
     return secured(await app.fetch(request));
   }

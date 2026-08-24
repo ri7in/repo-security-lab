@@ -4,7 +4,7 @@ import type {
   RepositoryRow,
   ScanRequestSummary,
 } from "@app/contracts";
-import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
+import { repositoryLabel } from "./labels.js";
 import {
   fullyScannedCount,
   nothingFoundText,
@@ -171,21 +171,21 @@ export function reportDocument(
         heading: "What was covered",
         emptyText: "No repositories were examined.",
         columns: [
-          // The name is the only value that identifies a row, so it gets the
-          // width; the three outcomes are short fixed phrases.
-          { title: "Repository", weight: 7 },
-          { title: "Status", weight: 3 },
-          { title: "Secret scan", weight: 3 },
-          { title: "AI code review", weight: 3 },
+          // The name identifies the row, so it gets the width; Status is a
+          // short fixed phrase; DeepScan marks the repositories a model read
+          // line by line. The per-engine columns were dropped to match the
+          // on-screen ledger.
+          { title: "Repository", weight: 8 },
+          { title: "Status", weight: 4 },
+          { title: "DeepScan", weight: 3 },
         ],
         rows: state.repositories.map((repository) => [
           repository.name,
           repositoryLabel(repository.state, repository.reason).text,
-          coverageLabel(
-            repository.coverage.gitleaks,
-            repository.specialistReasons?.gitleaks,
-          ).text,
-          aiCoverageLabel(repository.coverage.ai).text,
+          repository.coverage.ai === "complete" ||
+          repository.coverage.ai === "partial"
+            ? "Deep scanned"
+            : "",
         ]),
       },
     ],

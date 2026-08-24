@@ -139,7 +139,29 @@ export function modelCapacity(
 export function councilBudget(
   spend: ReadonlyMap<string, ModelSpend> = new Map(),
   council: readonly ModelAllowance[] = COUNCIL,
+  readerKeyPoolSize = 1,
 ): CouncilBudget {
+  // Contributed reader keys each carry their own daily provider meter, so a
+  // pool of N keys serves roughly N times the reads. The pool lives in the
+  // scan worker's environment, not here, so its size is passed in and applied
+  // only to reader-role limits: a judge's key is not pooled the same way and
+  // must not have its scarcity quietly multiplied.
+  const pool = Number.isSafeInteger(readerKeyPoolSize) && readerKeyPoolSize >= 1
+    ? readerKeyPoolSize
+    : 1;
+  council =
+    pool === 1
+      ? council
+      : council.map((model) =>
+          model.role === "reader"
+            ? {
+                ...model,
+                requestsPerDay: model.requestsPerDay * pool,
+                tokensPerDay:
+                  model.tokensPerDay === null ? null : model.tokensPerDay * pool,
+              }
+            : model,
+        );
   if (council.length === 0) {
     return {
       percentRemaining: 0,

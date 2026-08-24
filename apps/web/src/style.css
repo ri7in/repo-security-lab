@@ -20,6 +20,8 @@
   --signal-soft: #dff4e9;
   --amber: #a45305;
   --amber-soft: #fff0d8;
+  --deepscan: #5b3fb8;
+  --deepscan-soft: #ece7fb;
   --red: #b42318;
   --red-soft: #fde8e7;
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -42,6 +44,8 @@
   --signal-soft: #153a2d;
   --amber: #f2ad57;
   --amber-soft: #3c2b16;
+  --deepscan: #b9a6f5;
+  --deepscan-soft: #241a3d;
   --red: #ff7b72;
   --red-soft: #421f22;
 }
@@ -73,6 +77,8 @@
     --signal-soft: #153a2d;
     --amber: #f2ad57;
     --amber-soft: #3c2b16;
+    --deepscan: #b9a6f5;
+    --deepscan-soft: #241a3d;
     --red: #ff7b72;
     --red-soft: #421f22;
   }
@@ -308,7 +314,7 @@ tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
    text colour that lands on this background clears 4.5:1 in both
    themes; the amber chip inside it is 4.90 light and 7.03 dark. */
 tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 3px 0 0 var(--amber); }
-.repo-name { width: 34%; max-width: 520px; white-space: nowrap; }
+.repo-name { width: 62%; max-width: 640px; white-space: nowrap; }
 .state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
 /* Tone, not state name. A skipped fork and a checker with nothing to do are
    correct outcomes and must not wear the same colour as a real failure, or a
@@ -316,6 +322,18 @@ tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 
    that the full explanation is one hover away. */
 [data-detail] { cursor: help; }
 .state-chip::before { content: "○"; }
+/* The DeepScan badge: a small brand mark under a repository name, set apart
+   from the state chips by its own accent so a reader spots at a glance which
+   repositories a model actually read line by line. Carries a data-detail, so
+   the shared tooltip explains it on hover and on tap. */
+.deepscan-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-top: 7px; padding: 3px 8px;
+  font: 700 8.5px var(--mono); letter-spacing: .07em; text-transform: uppercase;
+  color: var(--deepscan); background: var(--deepscan-soft);
+  border: 1px solid var(--deepscan); white-space: nowrap; cursor: help;
+}
+.deepscan-badge::before { content: "\2726"; }
 .state-chip.tone-ok::before { content: "✓"; }
 .state-chip.tone-problem::before { content: "!"; }
 .state-chip.tone-skipped::before { content: "–"; }
@@ -565,6 +583,8 @@ footer p { max-width: 720px; margin: 0; }
     --signal-soft: #dff4e9;
     --amber: #a45305;
     --amber-soft: #fff0d8;
+    --deepscan: #5b3fb8;
+    --deepscan-soft: #ece7fb;
     --red: #b42318;
     --red-soft: #fde8e7;
     --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -609,6 +629,8 @@ footer p { max-width: 720px; margin: 0; }
   /* An explanation that cannot wrap is an explanation chopped mid-word. */
   .state-chip, .advice { white-space: normal !important; }
   .state-chip::before { display: none; }
+  .deepscan-badge { display: inline; border: 0; background: none !important; padding: 0; margin: 0 0 0 6px; color: #444; font-size: 8pt; }
+  .deepscan-badge::before { content: "\2726 "; }
   /* Nothing can be hovered on paper, so the explanation is printed. */
   [data-detail]::after { content: " - " attr(data-detail); color: #444; font-size: 8pt; text-transform: none; font-weight: 400; }
   .tip { display: none !important; }

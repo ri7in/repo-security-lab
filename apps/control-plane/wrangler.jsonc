@@ -48,6 +48,7 @@
   "vars": {
     "PUBLIC_APP_ORIGIN": "https://repo-security-lab.rivinsand.workers.dev",
     "PUBLIC_SCANNING_ENABLED": "false",
+    "OPENROUTER_KEY_POOL_SIZE": "2",
     "PRIVATE_SLICE_LOGINS": "ri7in",
     "PRIVATE_SLICE_ACCOUNT_IDS": "121791882"
   }

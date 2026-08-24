@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <title>How it works · repository security service</title>
+    <link rel="stylesheet" href="/legal.css" />
+  </head>
+  <body>
+    <nav><a href="/">← scanner</a></nav>
+    <main>
+      <h1>How it works</h1>
+      <p class="meta">The technical details, in plain terms.</p>
+
+      <p>You paste a GitHub username. Every public repository that account owns is scanned for exposed credentials and for insecure GitHub Actions workflows, a few of them are read line by line by an AI, and you get back one report. It costs nothing to run and it is meant to stay that way.</p>
+
+      <h2 id="goal">The goal</h2>
+      <p>Most security tools either cost money, need an account, or hand you a wall of findings you cannot tell apart. This one is free, needs no sign-up, never runs your code, and tries hard to only tell you about things that are actually real. The report is public to anyone with the link and is deleted after 30 days.</p>
+
+      <h2 id="every-repo">What runs on every repository</h2>
+      <ul>
+        <li><strong>Secret scan.</strong> Gitleaks 8.30.1 reads every file under 20 MB and looks for the shapes of leaked credentials: API keys, tokens, private keys. It runs at one pinned version so the report can say exactly what was and was not checked.</li>
+        <li><strong>Workflow audit.</strong> Zizmor 1.29.0 checks your GitHub Actions workflow files for security problems: actions pinned to a tag instead of a commit, jobs handed more permissions than they use, checkouts that leak their own credentials, untrusted input reaching a run step.</li>
+      </ul>
+      <p>Two more checks exist in the code and are not switched on yet: dependency vulnerabilities and deeper static analysis.</p>
+
+      <h2 id="deepscan">DeepScan: the AI code review</h2>
+      <p>A handful of repositories per scan carry the <strong>DeepScan</strong> badge. For those, a model reads the actual code, line by line, looking for the kinds of bugs a pattern scanner cannot see: SQL injection, broken authentication, unsafe deserialization, path traversal, and other classes it is trained on. On real repositories this has found genuine SQL injection and a login flow that stored a password in a cookie, neither of which a secret scanner could ever catch.</p>
+      <p>Reading whole repositories with a capable model is the expensive part, so it is rationed: a bounded number of DeepScans per day, shared across everyone using the service, and only a few repositories within each scan. The secret scan and workflow audit are cheap and run on everything.</p>
+
+      <h2 id="council">Why you can trust a finding</h2>
+      <p>A single model saying "this looks like a bug" is not enough to put on a security report, so nothing a model raises is published on its own word. Every AI finding goes through two gates:</p>
+      <ul>
+        <li><strong>Grounding.</strong> The system checks that the exact line and code the model pointed at really exist in the repository. Anything it cannot prove it saw is discarded.</li>
+        <li><strong>A council.</strong> Separate models from different companies then vote on whether the finding is real. They never see each other's answers. A finding is only published when a majority of the ones that answered agree, and a finding no model could confirm is dropped.</li>
+      </ul>
+      <p>The same council also reviews the secret scan's findings and can remove a false alarm, but only when the two most trusted models both agree it is one, and only for that single finding: a fake key can be removed while a real key on the next line stays. When a model's provider is unreachable, whoever answered decides and the repository is marked as partly reviewed, so the report never hides that the check behind a finding was thinner than usual.</p>
+
+      <h2 id="source-blind">The core idea: the scanner never trusts the code</h2>
+      <p>The repository being scanned is treated as hostile. It runs inside a sealed sandbox with no network access, and the only thing allowed to leave that sandbox is numbers: a code for which rule matched and a rough count. The rule's name, its severity, and the advice you read are all looked up on the trusted side from a fixed list. This is what stops a malicious repository from writing anything of its own into a report, and it is why a model can take part as just another checker without being able to invent a finding or put words on the page.</p>
+      <p>The one exception, made deliberately, is that a short, comment-stripped excerpt around a secret-scan finding is sent to the council so it can judge whether the value is real. The secret itself is blanked out first; what the model learns about the value is its length and whether it contains common placeholder words like "example".</p>
+
+      <h2 id="architecture">The architecture</h2>
+      <ul>
+        <li><strong>The website and database</strong> run on a free Cloudflare Worker with a D1 database. This serves the page, accepts scans, and stores the ledger of what happened to each repository.</li>
+        <li><strong>The scanning compute</strong> runs on free GitHub Actions minutes. A queue hands work out; a run picks it up, downloads each repository into the sealed sandbox, runs the scanners, and reports back over a signed channel.</li>
+        <li><strong>The AI layer</strong> runs outside the sandbox, because that is the only side with a network. The reader and the council are wired in there, and can be switched off entirely with one setting.</li>
+      </ul>
+      <p>The models, as configured today. The reader is an unbranded preview called <code>ox-alpha</code> on OpenRouter, with a chain of stable free models behind it in case it disappears. The council is drawn from separate companies: the same reader model, Google's Gemini, an open GPT model on Groq, and a Qwen model. Free model names change often, so these are overridable and the report always states what actually ran.</p>
+
+      <h2 id="free">Why it is free, and what that costs</h2>
+      <p>Everything runs on free tiers: Cloudflare, GitHub Actions, and free model APIs. That is a deliberate constraint, and it is why the DeepScan is rationed. It also means the honest limits below are real:</p>
+      <ul>
+        <li>The best reader model is an anonymous preview that could vanish or start charging at any time. The tool falls back to weaker models rather than breaking when that happens.</li>
+        <li>The daily DeepScan number shown on the front page is a stated ceiling, not a live countdown.</li>
+        <li>Dependency vulnerabilities are not checked yet, so a report saying nothing was found is not a promise your code is secure.</li>
+      </ul>
+
+      <h2 id="privacy">Privacy and use</h2>
+      <p>What is stored, what is sent to which provider, and how to have a report deleted are all set out on the <a href="/privacy.html">privacy page</a>. What is and is not allowed, including scanning accounts other than your own, is on the <a href="/acceptable-use.html">acceptable use page</a>. The whole thing is open source.</p>
+    </main>
+  </body>
+</html>

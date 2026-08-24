@@ -21,9 +21,6 @@ import {
   type HistoryEntry,
 } from "./history.js";
 import {
-  aiCoverageLabel,
-  zizmorCoverageLabel,
-  coverageLabel,
   repositoryLabel,
   type Label,
 } from "./labels.js";
@@ -43,7 +40,6 @@ import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
 import {
   explainFailure,
   printCoverText,
-  providerNames,
   runOutcome,
   percentDone,
   statusHeading,
@@ -124,8 +120,6 @@ const quotaPercent = $<HTMLElement>("#quota-percent");
 const quotaBar = $<HTMLElement>("#quota-bar");
 const quotaLine = $<HTMLElement>("#quota-line");
 const quotaSub = $<HTMLElement>("#quota-sub");
-const aiDisclosure = $<HTMLElement>("#ai-disclosure");
-const aiProviderName = $<HTMLElement>("#ai-provider-name");
 let emailEnabled = false;
 let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limited" = "not_requested";
 
@@ -419,48 +413,32 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       if (repository.name.length > NAME_FITS) {
         name.dataset["detail"] = repository.name;
       }
-      // Three columns a visitor can act on. The pipeline stages that used to
-      // sit here (snapshot, guard, normalize) are internal bookkeeping, and
-      // the checkers that are not switched on yet only ever said "not
-      // applicable", which read as a fault rather than as nothing to do.
-      // A repository that was never downloaded gets one explanation, on the
-      // Status chip, not four. Its engine columns used to echo "failed" three
-      // more times ("Audit failed" over an audit that was never attempted),
-      // which dressed a size ceiling as a triple malfunction.
-      const neverDownloaded = repository.coverage.snapshot === "failed";
-      const notDownloadedCell: Label = {
-        text: "Not scanned",
-        tone: "skipped",
-        detail:
-          "The repository itself could not be downloaded, so no check ran. The Status entry says why.",
-      };
-      const cells: readonly Label[] = [
-        repositoryLabel(repository.state, repository.reason),
-        neverDownloaded
-          ? notDownloadedCell
-          : coverageLabel(
-              repository.coverage.gitleaks,
-              repository.specialistReasons?.gitleaks,
-            ),
-        neverDownloaded
-          ? { ...notDownloadedCell, text: "Not reviewed" }
-          : aiCoverageLabel(repository.coverage.ai),
-        neverDownloaded
-          ? { ...notDownloadedCell, text: "Not audited" }
-          : zizmorCoverageLabel(repository.coverage.zizmor),
-      ];
-      const headings = ["Status", "Secret scan", "AI code review", "Workflow audit"];
-      row.append(
-        name,
-        ...cells.map((label, index) => {
-          const cell = document.createElement("td");
-          // Read out by the stacked layout on a phone, where there is no
-          // header row left to tell you which column this is.
-          cell.dataset["label"] = headings[index] ?? "";
-          cell.append(labelChip(label));
-          return cell;
-        }),
-      );
+      // The DeepScan badge: this repository got the full line-by-line AI
+      // review, not just the secret scan. A scan gives that to only a few
+      // repositories, so the badge is how a reader tells at a glance which
+      // ones. It rides the name rather than a column of its own; the per
+      // engine columns were dropped because Status carries the headline and
+      // the findings table below carries what was actually found.
+      const deepScanned =
+        repository.coverage.ai === "complete" ||
+        repository.coverage.ai === "partial";
+      if (deepScanned) {
+        const badge = document.createElement("span");
+        badge.className = "deepscan-badge";
+        badge.textContent = "DeepScan";
+        badge.dataset["detail"] =
+          repository.coverage.ai === "partial"
+            ? "A model read this repository's code line by line, though not all of it fit. A council of separate models confirmed anything it flagged."
+            : "A model read this repository's code line by line, and a council of separate models confirmed anything it flagged. Only a few repositories per scan get this.";
+        name.append(badge);
+      }
+      // One column now: Status. It carries the headline for the repository,
+      // and the DeepScan badge above says whether the deep review ran.
+      const status = repositoryLabel(repository.state, repository.reason);
+      const cell = document.createElement("td");
+      cell.dataset["label"] = "Status";
+      cell.append(labelChip(status));
+      row.append(name, cell);
       return row;
     }),
   );
@@ -880,11 +858,6 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
         ? "low"
         : "healthy";
 
-  // The disclosure appears only while the lane can actually run. A standing
-  // warning about a disabled feature trains people to skip the footer.
-  aiDisclosure.hidden = !budget.available;
-  aiProviderName.textContent = providerNames(budget.providers);
-
   quotaMeter.dataset["level"] = level;
   // The number, not a percentage of it. Nothing records what a scan spends, so
   // the percentage was always 100 and the bar was always full: a gauge that
@@ -892,30 +865,24 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   quotaPercent.textContent = String(budget.deepReadsPerDay);
   quotaBar.style.width = `${String(percent)}%`;
 
-  // Written for someone who does not know or care what a model is. No model
-  // names, no provider names, no "deep read". Just how much is left and what
-  // to do when it runs out.
+  // Written for someone who does not know or care what a model is. The
+  // DeepScan brand carries the idea; the two facts are the daily total and
+  // what each scan gives you.
   if (!budget.available) {
     quotaLine.textContent =
-      "Today's free compute is used up. The secret scan still runs on every repository it can download that is not a fork.";
+      "Today's free DeepScans are used up. Every repository that can be downloaded still gets the secret scan and the workflow audit; the line-by-line DeepScan comes back tomorrow.";
     quotaSub.textContent =
-      "This is a free side project, so there is only so much to go around each day. It resets overnight. Please come back tomorrow.";
+      "This is a free project run by one person, so there is only so much model time to go around each day. It resets overnight.";
     return;
   }
 
   const repos = budget.repoLimitPerRequest;
-  // A ceiling, not a reading. Nothing records what a scan spends, so the
-  // remaining figure never moves, and presenting a constant as a live gauge is
-  // worse than presenting it as the limit it actually is.
-  //
-  // Not "your most recently updated" either: repositories are claimed in id
-  // order, so that claim was falsifiable from the ledger on the same page.
   quotaLine.textContent =
-    `Up to ${String(budget.deepReadsPerDay)} full code reviews a day, shared by everyone using this. ` +
-    `A scan reads ${String(repos)} ${repos === 1 ? "repository" : "repositories"} line by line, ` +
-    "and fewer when the shared budget is already spent. Every repository it can download that is not a fork gets the secret scan.";
+    `To keep this free, up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan, shared by everyone using it. ` +
+    "Every repository that is not a fork and can be downloaded gets scanned for exposed secrets and workflow problems; " +
+    `${String(repos)} of them per scan also get the DeepScan, where a model reads the code line by line and a council of separate models double-checks anything it flags.`;
   quotaSub.textContent =
-    "Free and open source, run by one person. The daily ceiling is small on purpose and resets overnight.";
+    "Free and open source. The daily limit is small on purpose and resets overnight.";
 }
 
 void requestJson("/api/capabilities")

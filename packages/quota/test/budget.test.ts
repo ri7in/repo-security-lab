@@ -124,6 +124,22 @@ describe("council budget", () => {
     expect(budget.available).toBe(true);
   });
 
+  it("multiplies the reader capacity by the key pool size", () => {
+    // Contributed keys each carry their own daily provider meter, so two keys
+    // serve twice the reads. Only the reader is scaled: a judge's key is not
+    // pooled the same way and its scarcity must not be silently multiplied.
+    const one = councilBudget(new Map(), undefined, 1);
+    const two = councilBudget(new Map(), undefined, 2);
+    expect(one.deepReadsPerDay).toBe(50);
+    expect(two.deepReadsPerDay).toBe(100);
+    expect(two.scarcestModelId).toBe(one.scarcestModelId);
+  });
+
+  it("treats a missing or bad pool size as a single key", () => {
+    expect(councilBudget(new Map(), undefined, 0).deepReadsPerDay).toBe(50);
+    expect(councilBudget(new Map(), undefined, -3).deepReadsPerDay).toBe(50);
+  });
+
   it("still models the judges as scarcer than the reader", () => {
     // The judge pool being smaller is exactly why it was demoted from the
     // anchor: this pin documents the asymmetry the decision rests on.

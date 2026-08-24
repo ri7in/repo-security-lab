@@ -62,7 +62,7 @@
             </div>
             <section id="quota-meter" class="quota-meter" data-level="unknown" aria-labelledby="quota-title">
               <div class="quota-head">
-                <p class="eyebrow" id="quota-title">DAILY CODE REVIEW CEILING</p>
+                <p class="eyebrow" id="quota-title">FREE DEEPSCANS PER DAY</p>
                 <strong id="quota-percent" aria-hidden="true">--%</strong>
               </div>
               <div class="quota-track">
@@ -143,12 +143,12 @@
           <p class="legend"><span class="dot complete"></span>scanned <span class="dot skipped"></span>skipped <span class="dot waiting"></span>running <span class="dot failed"></span>problem</p>
         </div>
         <p id="no-repositories" class="nothing-found is-neutral" hidden>No repositories were listed, because the scan stopped before it got that far.</p>
-        <p id="ledger-columns" class="findings-note">Three checks run today: the secret scan on every repository it can download that is not a fork, the AI code review on up to three per scan, and the workflow audit wherever GitHub Actions workflow files exist. Two more exist and are not switched on yet, so this ledger does not show a column for them: dependency CVEs and static analysis.</p>
+        <p id="ledger-columns" class="findings-note">Every repository you own that can be downloaded is scanned for exposed secrets and for GitHub Actions workflow problems. A few per scan also carry the <strong>DeepScan</strong> badge: a model read their code line by line and a council of separate models double-checked anything it flagged. <a href="/how-it-works.html">How it works</a>.</p>
         <p id="ledger-note" class="findings-note"></p>
         <div id="ledger-table" class="table-shell" aria-label="Table of repositories">
           <table>
             <thead>
-              <tr><th scope="col">Repository</th><th scope="col">Status</th><th scope="col">Secret scan</th><th scope="col">AI code review</th><th scope="col">Workflow audit</th></tr>
+              <tr><th scope="col">Repository</th><th scope="col">Status</th></tr>
             </thead>
             <tbody id="repository-rows"></tbody>
           </table>
@@ -189,8 +189,7 @@
     </main>
 
     <footer>
-      <p><strong>Public report:</strong> visible to anyone with the link, retained for 30 days. File paths and line numbers are shown; source code and secret values are not. <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
-      <p class="ai-disclosure" id="ai-disclosure" hidden><strong>The code review sends your public code to a model.</strong> It sends code from your public repositories to <span id="ai-provider-name">an external model provider</span>. Whole source files go to the first of those, with every line the secret scanner matched blanked out first. An excerpt of up to 120 lines around each secret-scan finding goes to all three, so models from different companies can vote on whether it is a false alarm. Those providers may keep or train on what they receive, which is what pays for the free tier this runs on. The scanner itself runs with no network access and sends nothing; it is this service that sends the excerpts afterwards, and only while the code review is switched on, which is when this section appears. <a href="/privacy.html#ai-review">Exactly what is sent</a></p>
+      <p><strong>Public report:</strong> visible to anyone with the link, retained for 30 days. File paths and line numbers are shown; source code and secret values are not. <a href="/how-it-works.html">How it works</a> · <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
       <p id="footer-name"></p>
     </footer>
   </body>

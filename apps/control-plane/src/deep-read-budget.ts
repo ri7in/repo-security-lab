@@ -19,6 +19,7 @@ import type { D1Database } from "@app/store-d1";
 export async function readDeepReadBudget(
   database: D1Database,
   nowMs: number,
+  readerKeyPoolSize = 1,
 ): Promise<DeepReadBudget> {
   const day = new Date(nowMs).toISOString().slice(0, 10);
   const spend = new Map<string, ModelSpend>();
@@ -41,9 +42,9 @@ export async function readDeepReadBudget(
       });
     }
   } catch {
-    return toDeepReadBudget(councilBudget());
+    return toDeepReadBudget(councilBudget(new Map(), undefined, readerKeyPoolSize));
   }
-  return toDeepReadBudget(councilBudget(spend));
+  return toDeepReadBudget(councilBudget(spend, undefined, readerKeyPoolSize));
 }
 
 /**
