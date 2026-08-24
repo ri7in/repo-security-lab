@@ -221,3 +221,22 @@ describe("the progress model", () => {
     expect(percent("review")).toBe(0);
   });
 });
+
+describe("which step the agent is shown to be on", () => {
+  it("keeps the earlier step when a later one is not busier", () => {
+    // The sign follows the step holding the most repositories. On a tie the
+    // earlier one wins, so the sign does not flick back and forth between two
+    // steps carrying the same load while nothing has actually moved.
+    const model = progressModel(
+      summary("scanning", { acquiring: 2, scanning: 2, complete: 1 }),
+    );
+    expect(model.signText).toBe("Downloading snapshots");
+  });
+
+  it("moves on once a later step is carrying more", () => {
+    const model = progressModel(
+      summary("scanning", { acquiring: 1, scanning: 4, complete: 1 }),
+    );
+    expect(model.signText).toBe("Scanning for secrets");
+  });
+});

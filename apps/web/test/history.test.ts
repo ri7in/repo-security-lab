@@ -221,3 +221,30 @@ describe("what the history list says happened", () => {
     );
   });
 });
+
+describe("history survives whatever is already in storage", () => {
+  it("ignores a stored value that is not a list", () => {
+    // Another script on the origin, an older format, or a half-written value:
+    // any of them turn the past-scans panel into a page that fails to render.
+    localStorage.setItem("scan-history-v1", JSON.stringify({ requestId: "x" }));
+    expect(readHistory()).toEqual([]);
+    localStorage.setItem("scan-history-v1", JSON.stringify("a string"));
+    expect(readHistory()).toEqual([]);
+  });
+
+  it("drops only the corrupt entries, keeping the rest", () => {
+    // One bad row must never cost a visitor the whole list.
+    localStorage.setItem(
+      "scan-history-v1",
+      JSON.stringify([entry({ requestId: "req_keep" }), null, 42, "text", { requestId: "no-fields" }]),
+    );
+    const kept = readHistory();
+    expect(kept).toHaveLength(1);
+    expect(kept[0]?.requestId).toBe("req_keep");
+  });
+
+  it("returns nothing rather than throwing on unparseable text", () => {
+    localStorage.setItem("scan-history-v1", "{not json");
+    expect(readHistory()).toEqual([]);
+  });
+});
