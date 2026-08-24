@@ -57,7 +57,15 @@ export function validatePublishInput(input: PublishInput): void {
       input.terminalState,
     ) ||
     (input.terminalState === "complete" && input.reason !== null) ||
-    (input.terminalState !== "complete" && input.reason === null) ||
+    // Partial is the one non-complete state allowed a null reason. The domain
+    // contract says so in as many words: there is no class in the closed enum
+    // that means "one engine covered part of this", and the worker's fallback
+    // to FINDING_LIMIT printed a cap explanation over repositories that never
+    // hit a cap. This validator kept demanding one anyway, so the first live
+    // repository whose AI read was partial had its real result refused as
+    // INVALID_BODY and was published as a bare failure instead.
+    (input.terminalState === "failed" && input.reason === null) ||
+    (input.terminalState === "cancelled" && input.reason === null) ||
     (input.reason !== null &&
       !failureClassSchema.safeParse(input.reason).success) ||
     (input.terminalState === "complete" &&
@@ -71,7 +79,8 @@ export function validatePublishInput(input: PublishInput): void {
         (partialEngines.length === 0 && failedEngines.length === 0) ||
         (failedEngines.length > 0
           ? !allFailedEnginesAttributed || input.reason !== firstFailedReason
-          : input.reason !== "FINDING_LIMIT" || reasonEntries.length > 0))) ||
+          : (input.reason !== null && input.reason !== "FINDING_LIMIT") ||
+            reasonEntries.length > 0))) ||
     (input.terminalState === "failed" &&
       (!coverageValues.includes("failed") ||
         successfulEngines.length > 0 ||

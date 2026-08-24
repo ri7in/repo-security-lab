@@ -38,6 +38,70 @@ function input(overrides: Partial<PublishInput> = {}): PublishInput {
 }
 
 describe("refusing a publication", () => {
+  it("accepts a partial row with no reason when an engine was partly read", () => {
+    // The exact shape the worker publishes when the AI reader could not fit a
+    // large repository: scanners complete, ai partial, nothing failed, no
+    // class in the closed enum that could explain it. The validator refused
+    // this live and the repository's real findings were thrown away in favour
+    // of a bare "failed" row.
+    expect(() => {
+      validatePublishInput(
+        input({
+          terminalState: "partial",
+          reason: null,
+          coverage: coverage({
+            snapshot: "complete",
+            archive_guard: "complete",
+            gitleaks: "complete",
+            ai: "partial",
+          }),
+        }),
+      );
+    }).not.toThrow();
+  });
+
+  it("still refuses a partial row that invents a reason nothing reported", () => {
+    expect(() => {
+      validatePublishInput(
+        input({
+          terminalState: "partial",
+          reason: "SCANNER_INTERNAL",
+          coverage: coverage({
+            snapshot: "complete",
+            archive_guard: "complete",
+            gitleaks: "complete",
+            ai: "partial",
+          }),
+        }),
+      );
+    }).toThrow("invalid publication metadata");
+  });
+
+  it("still requires a reason on failed and cancelled rows", () => {
+    expect(() => {
+      validatePublishInput(
+        input({
+          terminalState: "failed",
+          // The type forbids this pair on purpose; the cast exists to prove
+          // the runtime validator refuses it too.
+          reason: null as never,
+          coverage: coverage({
+            snapshot: "complete",
+            archive_guard: "complete",
+            gitleaks: "failed",
+          }),
+          specialistReasons: { gitleaks: "SCANNER_INTERNAL" },
+        }),
+      );
+    }).toThrow("invalid publication metadata");
+    expect(() => {
+      validatePublishInput(
+        input({ terminalState: "cancelled", reason: null as never }),
+      );
+    }).toThrow("invalid publication metadata");
+  });
+
+
   it("accepts the ordinary complete case", () => {
     expect(() => {
       validatePublishInput(input());
