@@ -251,8 +251,13 @@ const REQUEST_REASONS: Record<string, string> = {
     "Scanning is limited to the operator's own account at the moment. Existing report links still work.",
   INVALID_USERNAME:
     "That is not a GitHub username. Letters, numbers and single hyphens, and it cannot start or end with a hyphen.",
+  // The running scan's id is deliberately not handed back. Reports are public
+  // to anyone holding the link and the privacy page promises the link is
+  // unguessable, which would stop being true if submitting a username returned
+  // the id of a scan somebody else had started. So this points at the one
+  // place the visitor's own link is already kept.
   DUPLICATE_ACTIVE_REQUEST:
-    "A scan of that account is already running. Wait for it to finish rather than starting a second one.",
+    "A scan of that account is already running. Wait for it to finish rather than starting a second one. If you started it, it is under Your past scans below.",
   RATE_LIMITED:
     "Too many scans too quickly. This service allows two a minute per account and five a minute per visitor.",
   CAPACITY_EXHAUSTED:

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { aiCoverageLabel, coverageLabel, repositoryLabel } from "../src/labels.js";
+import {
+  aiCoverageLabel,
+  coverageLabel,
+  failureDetail,
+  repositoryLabel,
+} from "../src/labels.js";
 import { FAILURE_CLASSES, SPECIALIST_PROGRESS_STATES } from "@app/contracts";
 
 /**
@@ -218,5 +223,19 @@ describe("AI review labels", () => {
 
   it("falls back rather than throwing on an unknown state", () => {
     expect(aiCoverageLabel("something_new").text).toBe("Unknown");
+  });
+});
+
+describe("an error that leaves the reader somewhere to go", () => {
+  it("points a duplicate scan at the panel that holds the visitor's own link", () => {
+    // "Wait for it to finish" was the whole message: correct, and a dead end.
+    // The running scan's id is deliberately not returned, because reports are
+    // public to anyone holding the link and the privacy page promises that
+    // link is unguessable.
+    const detail = failureDetail("DUPLICATE_ACTIVE_REQUEST") ?? "";
+    expect(detail).toContain("already running");
+    expect(detail).toContain("Your past scans below");
+    // The panel is below the field, so the direction has to say so.
+    expect(detail).not.toContain("above");
   });
 });
