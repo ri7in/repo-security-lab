@@ -53,7 +53,7 @@ import {
 } from "./panel-states.js";
 import { retryPlan } from "./polling.js";
 import { installTooltips } from "./tooltip.js";
-import { usernameProblem } from "./username.js";
+import { normaliseUsername, usernameProblem } from "./username.js";
 import {
   emptyLedgerText,
   nothingFoundText,
@@ -727,6 +727,10 @@ form.addEventListener("submit", (event) => {
     showUsernameProblem(problem);
     return;
   }
+  // Written back into the field, so a pasted profile URL visibly becomes the
+  // username that is about to be scanned rather than being quietly rewritten
+  // behind the reader's back.
+  username.value = normaliseUsername(username.value);
   usernameHelp.textContent = "";
   username.removeAttribute("aria-invalid");
   if (emailEnabled && email.value !== "" && !email.checkValidity()) {

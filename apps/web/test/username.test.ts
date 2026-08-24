@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { MAX_USERNAME, usernameProblem } from "../src/username.js";
+import {
+  MAX_USERNAME,
+  normaliseUsername,
+  usernameProblem,
+} from "../src/username.js";
 
 /**
  * The field used to lean on `pattern` plus `reportValidity()`, which says
@@ -55,5 +59,44 @@ describe("what is wrong with a username", () => {
     expect(MAX_USERNAME).toBe(39);
     expect(usernameProblem("a".repeat(MAX_USERNAME))).toBeNull();
     expect(usernameProblem("a".repeat(MAX_USERNAME + 1))).not.toBeNull();
+  });
+});
+
+describe("what people actually paste into the field", () => {
+  it("takes the username out of a profile URL", () => {
+    // The placeholder reads "github.com/username", so pasting the profile is
+    // the first thing to try, and it was answered with "A GitHub username is
+    // letters, numbers and single hyphens. Nothing else, and no spaces."
+    for (const pasted of [
+      "https://github.com/ri7in",
+      "http://github.com/ri7in",
+      "https://www.github.com/ri7in",
+      "github.com/ri7in",
+      "GitHub.com/ri7in",
+      "https://github.com/ri7in/",
+      "@ri7in",
+      "  https://github.com/ri7in  ",
+    ]) {
+      expect(normaliseUsername(pasted), pasted).toBe("ri7in");
+      expect(usernameProblem(pasted), pasted).toBeNull();
+    }
+  });
+
+  it("takes the owner out of a repository URL, which is what it scans anyway", () => {
+    expect(normaliseUsername("https://github.com/ri7in/some-project")).toBe("ri7in");
+    expect(normaliseUsername("https://github.com/ri7in/repo?tab=readme#top")).toBe("ri7in");
+  });
+
+  it("leaves anything else exactly as typed, so the errors stay true", () => {
+    // The messages describe what was typed. A normaliser that invents a value
+    // makes them describe something the reader never wrote.
+    expect(normaliseUsername("hello world")).toBe("hello world");
+    expect(normaliseUsername("https://gitlab.com/ri7in")).toBe("https://gitlab.com/ri7in");
+    expect(usernameProblem("hello world")).toContain("no spaces");
+  });
+
+  it("still refuses a github address with nothing after it", () => {
+    expect(usernameProblem("https://github.com/")).not.toBeNull();
+    expect(usernameProblem("github.com")).not.toBeNull();
   });
 });
