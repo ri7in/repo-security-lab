@@ -202,7 +202,7 @@ const SPAN_MARGIN = 2;
  *
  * This is the only fact about a value that may leave the scanner: the value
  * itself is blanked out of every excerpt, which removes exactly the clue that
- * settles "sk_test_placeholder". Each listed word is one bit, the list is a
+ * settles an sk_test placeholder key. Each listed word is one bit, the list is a
  * closed enum in the contract, and matching is case-insensitive so
  * "PLACEHOLDER" does not slip past. Input is capped so a pathological match
  * cannot make this quadratic.

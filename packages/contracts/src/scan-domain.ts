@@ -44,7 +44,7 @@ export const REVIEW_MAX_LINE_LENGTH = 200;
 /**
  * The closed list of giveaway words the scanner may report about a redacted
  * value. The value itself never crosses; what crosses is which of these fixed
- * words it contains, which is decisive for "sk_test_placeholder" and reveals
+ * words it contains, which is decisive for an sk_test placeholder key and reveals
  * at most one bit per listed word about a real credential. The list is an
  * enum so the channel cannot be widened by a hostile repository.
  */

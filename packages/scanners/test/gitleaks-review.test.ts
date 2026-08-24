@@ -205,11 +205,15 @@ describe("gitleaks review context", () => {
   });
 
   it("reports the giveaway words the blanked value contained, never the value", async () => {
-    // "sk_test_placeholder" is exactly the finding the council kept alive on
+    // An sk_test placeholder key is exactly the finding the council kept
+    // alive on
     // the operator's own account: the blanking removed the word that settles
     // it. These derived facts put the clue back. The value itself must still
     // be absent from every field of the channel.
-    const line = 'const stripe = "sk_test_placeholder";';
+    // Shaped like the live false positive (19 characters, the words "test"
+    // and "placeholder") but with a prefix no vendor rule matches, so the
+    // repository's own self-scan does not flag its own regression test.
+    const line = 'const stripe = "xx_test_placeholder";';
     const setup = await fixture({ "src/payments.ts": `${line}\n` });
     const result = await new GitleaksScanner({
       binaryPath: setup.binary,
@@ -234,7 +238,7 @@ describe("gitleaks review context", () => {
     expect(entry?.valueHints).toEqual(["placeholder", "test"]);
     expect(entry?.valueLength).toBe(19);
     expect(entry?.fileLineCount).toBe(2);
-    expect(JSON.stringify(result.review)).not.toContain("sk_test_placeholder");
+    expect(JSON.stringify(result.review)).not.toContain("xx_test_placeholder");
   });
 
   it("reports no giveaway words for a value that has none", async () => {
