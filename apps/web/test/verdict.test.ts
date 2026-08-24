@@ -220,18 +220,50 @@ describe("the lines that stand in for an absent result", () => {
     expect(emptyLedgerText(true)).toContain("stopped before it got that far");
   });
 
+  it("does not paint an all-clear over a ledger of failures", () => {
+    // Keyed on the repository count, so an account whose repositories all
+    // failed still got the green panel and the sentence crediting Gitleaks
+    // with reading a commit, directly under three red rows. A request reaches
+    // `complete` as soon as every repository is terminal and `failed` is
+    // terminal, so this was reachable in production, on screen and in the PDF.
+    const standard = "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read.";
+    const allFailed = nothingFoundText(3, 0, 3, standard);
+    expect(allFailed.neutral).toBe(true);
+    expect(allFailed.text).not.toContain("Gitleaks");
+    expect(allFailed.text).not.toContain("commit");
+    expect(allFailed.text).toContain("Nothing here was read");
+  });
+
+  it("qualifies the all-clear when some repositories did not finish", () => {
+    const standard = "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read.";
+    const partly = nothingFoundText(23, 19, 1, standard);
+    expect(partly.neutral).toBe(true);
+    expect(partly.text).toContain("19 repositories the secret scan read");
+    expect(partly.text).toContain("1 did not finish");
+    expect(partly.text).toContain("not the whole picture");
+  });
+
+  it("earns the green only when everything that was meant to run did", () => {
+    const standard = "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read.";
+    const clean = nothingFoundText(23, 23, 0, standard);
+    expect(clean.neutral).toBe(false);
+    expect(clean.text).toBe(standard);
+    // A single repository still reads as English.
+    expect(nothingFoundText(2, 1, 1, standard).text).toContain("the 1 repository the secret scan read");
+  });
+
   it("does not credit the scanner with reading a commit it never read", () => {
     const standard = "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read.";
     // Over an empty account this green box sat directly under an amber verdict
     // saying there was nothing to check, and the green box wins the reader.
-    const empty = nothingFoundText(0, standard);
+    const empty = nothingFoundText(0, 0, 0, standard).text;
     expect(empty).not.toContain("Gitleaks");
     expect(empty).not.toContain("commit");
     expect(empty).toBe(
       "There was nothing to scan, so nothing was checked and nothing was found.",
     );
     // With repositories in the ledger it is the standing sentence, unchanged.
-    expect(nothingFoundText(23, standard)).toBe(standard);
-    expect(nothingFoundText(1, standard)).toBe(standard);
+    expect(nothingFoundText(23, 23, 0, standard).text).toBe(standard);
+    expect(nothingFoundText(1, 1, 0, standard).text).toBe(standard);
   });
 });

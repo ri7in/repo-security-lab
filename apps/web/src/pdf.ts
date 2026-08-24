@@ -21,6 +21,103 @@ const PAGE_WIDTH = 595;
 const PAGE_HEIGHT = 842;
 const MARGIN = 40;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+
+/**
+ * Advance widths in 1/1000 em for printable ASCII, space through tilde.
+ *
+ * Measured from the system Helvetica with the canvas text-measurement API at
+ * 1000px, and checked against the values a viewer uses for the base-14 faces
+ * this document names: space 278, period 278, M 833, W 944, digits 556, and
+ * the at sign 1015 regular, 975 bold.
+ *
+ * The writer used to divide the page width by a flat points-per-character
+ * guess. At 0.49 em against a real average of 0.53 that was already too
+ * generous for ordinary text, and for a title it was not applied at all: a
+ * report for a 39 character username, which the login schema allows, put the
+ * title's right edge 224 points past the end of the paper, and the words on
+ * it were simply gone.
+ */
+const HELVETICA_WIDTHS: readonly number[] = [
+  278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333,
+  278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 278, 278,
+  584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278,
+  500, 667, 556, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944,
+  667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556,
+  278, 556, 556, 222, 222, 500, 222, 833, 556, 556, 556, 556, 333, 500,
+  278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584,
+];
+
+/** The same, for Helvetica-Bold. */
+const HELVETICA_BOLD_WIDTHS: readonly number[] = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333,
+  278, 278, 556, 556, 556, 556, 556, 556, 556, 556, 556, 556, 333, 333,
+  584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278,
+  556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944,
+  667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556,
+  333, 611, 611, 278, 278, 556, 278, 889, 611, 611, 611, 611, 389, 556,
+  333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+
+/** Courier and Courier-Bold are fixed pitch at 600/1000 em. */
+const COURIER_WIDTH = 600;
+
+/** How wide a string is in points, in the font the writer will draw it with. */
+function measure(text: string, font: string, size: number): number {
+  const table =
+    font === "F1"
+      ? HELVETICA_WIDTHS
+      : font === "F2"
+        ? HELVETICA_BOLD_WIDTHS
+        : null;
+  let units = 0;
+  for (const character of text) {
+    const code = character.codePointAt(0) ?? 32;
+    if (table === null) {
+      units += COURIER_WIDTH;
+      continue;
+    }
+    // Outside printable ASCII the writer substitutes "?", which is why an
+    // unknown character is charged at that width rather than at zero.
+    const index = code >= 32 && code <= 126 ? code - 32 : "?".charCodeAt(0) - 32;
+    units += table[index] ?? COURIER_WIDTH;
+  }
+  return (units * size) / 1000;
+}
+
+/** Breaks text into lines that fit a real width, measured rather than guessed. */
+function wrapToWidth(
+  text: string,
+  font: string,
+  size: number,
+  maxWidth: number,
+): readonly string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/).filter((entry) => entry !== "")) {
+    const candidate = line === "" ? word : `${line} ${word}`;
+    if (line !== "" && measure(candidate, font, size) > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+    // A single word wider than the line, a 39 character username or a deep
+    // path, is broken rather than allowed off the page. This has to run on
+    // the branch above too: the first version skipped it whenever the long
+    // word had just started a fresh line, which is exactly when it happens.
+    while (measure(line, font, size) > maxWidth && line.length > 1) {
+      let cut = line.length - 1;
+      while (cut > 1 && measure(line.slice(0, cut), font, size) > maxWidth) {
+        cut -= 1;
+      }
+      lines.push(line.slice(0, cut));
+      line = line.slice(cut);
+    }
+  }
+  if (line !== "") lines.push(line);
+  return lines.length === 0 ? [""] : lines;
+}
+
 const TOP = PAGE_HEIGHT - MARGIN;
 const BOTTOM = 58;
 const MONO_SIZE = 8;
@@ -178,14 +275,20 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
     }
   };
 
-  write(page, MARGIN, page.cursor, "F2", 17, report.title);
-  advance(19);
-  write(page, MARGIN, page.cursor, "F1", 9, report.meta);
-  advance(20);
-  // Helvetica-Bold at 11pt averages a little over half its point size per
-  // character. The verdict is a sentence, and as one unwrapped line it ran
-  // about 200pt off the right edge of the page.
-  for (const line of wrap(report.verdict, Math.floor(CONTENT_WIDTH / 5.4))) {
+  // The title was written straight out with no wrapping at all, on the
+  // assumption that "Security report for <name>" is short. The login schema
+  // allows 39 characters, and a wide one put the right edge 224 points past
+  // the paper with the end of the name gone.
+  for (const line of wrapToWidth(report.title, "F2", 17, CONTENT_WIDTH)) {
+    write(page, MARGIN, page.cursor, "F2", 17, line);
+    advance(19);
+  }
+  for (const line of wrapToWidth(report.meta, "F1", 9, CONTENT_WIDTH)) {
+    write(page, MARGIN, page.cursor, "F1", 9, line);
+    advance(11);
+  }
+  advance(9);
+  for (const line of wrapToWidth(report.verdict, "F2", 11, CONTENT_WIDTH)) {
     write(page, MARGIN, page.cursor, "F2", 11, line);
     advance(14);
   }

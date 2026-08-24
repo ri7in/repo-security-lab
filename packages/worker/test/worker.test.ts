@@ -1218,3 +1218,25 @@ describe("council review of scanner findings", () => {
     expect(await findingCountWith([])).toBe(1);
   });
 });
+
+describe("the reason a partly scanned repository publishes with", () => {
+  it("has no literal fallback that invents a cap", async () => {
+    // The publish used `?? "FINDING_LIMIT"`, whose label reads "This
+    // repository has more findings than one report can list. The ones shown
+    // are real; there are more." An AI review that came back partial has no
+    // failed engine, so that literal fired and a cap explanation was printed
+    // for a repository that never hit one. The type now allows a partial
+    // publish with no reason, because the per-engine entry already says what
+    // happened, and this holds the source to it.
+    const source = await readFile(
+      new URL("../src/worker.ts", import.meta.url),
+      "utf8",
+    );
+    // The literal fallback is gone. A genuine cap still carries its reason,
+    // because the normalizer produces one and it is read from there; the test
+    // above this file's "finding-limit partial row" case covers that.
+    expect(source).not.toContain('?? "FINDING_LIMIT"');
+    expect(source).toContain("entry.normalized.reason");
+    expect(source).toContain('terminalState: "partial"');
+  });
+});

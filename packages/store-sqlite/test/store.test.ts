@@ -171,6 +171,19 @@ function publication(
       nowMs: 1_500,
     };
   }
+  if (terminalState === "partial") {
+    // A partly scanned repository may publish with no reason: the per-engine
+    // entry carries the truth, and the worker used to invent FINDING_LIMIT.
+    return {
+      ...lease,
+      terminalState: "partial",
+      reason,
+      coverage: outcomes(),
+      specialistReasons: {},
+      findings: [],
+      nowMs: 1_500,
+    };
+  }
   if (reason === null) {
     throw new Error("test requires a failure reason");
   }

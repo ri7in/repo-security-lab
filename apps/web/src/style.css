@@ -348,7 +348,10 @@ footer p { max-width: 720px; margin: 0; }
   tbody td > .state-chip, tbody td > .advice { justify-self: start; }
   .repo-name { width: auto; white-space: normal; }
   .repo-name > span { max-width: none; overflow: visible; white-space: normal; overflow-wrap: anywhere; }
-  tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--signal); }
+  /* The stacked layout has its own rail, and the desktop fix only changed
+     the desktop rule, so below 816px a running row kept the success colour
+     on exactly the devices most shared report links are opened on. */
+  tbody tr[data-active="true"] { box-shadow: inset 3px 0 0 var(--amber); }
 }
 
 @media (max-width: 1050px) {

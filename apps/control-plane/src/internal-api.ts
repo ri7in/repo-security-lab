@@ -102,6 +102,12 @@ function publication(
       ? { ...common, terminalState: "complete", reason: null }
       : null;
   }
+  // A partly scanned repository is allowed to arrive with no reason: no class
+  // in the enum means "one engine covered part of this", and the worker used
+  // to fall back to FINDING_LIMIT, which claims a cap that was never hit.
+  if (parsed.terminalState === "partial") {
+    return { ...common, terminalState: "partial", reason: parsed.reason };
+  }
   return parsed.reason === null
     ? null
     : { ...common, terminalState: parsed.terminalState, reason: parsed.reason };

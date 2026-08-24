@@ -5,7 +5,11 @@ import type {
   ScanRequestSummary,
 } from "@app/contracts";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
-import { nothingFoundText, secretScannedCount } from "./verdict.js";
+import {
+  nothingFoundText,
+  secretScannedCount,
+  uncheckedCount,
+} from "./verdict.js";
 import type { PdfReport } from "./pdf.js";
 import { remediationLabel } from "./remediation.js";
 
@@ -70,8 +74,10 @@ export function reportDocument(
         // one is false on paper too.
         emptyText: nothingFoundText(
           state.repositories.length,
+          secretScannedCount(state.repositories),
+          uncheckedCount(state.repositories),
           "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
-        ),
+        ).text,
         columns: [
           // Only the first value titles the block; the rest are labelled
           // lines under it, so nothing here needs a width.

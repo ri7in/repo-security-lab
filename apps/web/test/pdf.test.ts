@@ -313,3 +313,72 @@ describe("the list layout stays inside its own text block", () => {
     expect(endX, `title ends at ${endX.toFixed(1)}pt`).toBeLessThanOrEqual(555);
   });
 });
+
+describe("nothing is drawn past the right margin", () => {
+  /** Every drawn string with the x it starts at, from the content stream. */
+  interface Drawn {
+    readonly x: number;
+    readonly size: number;
+    readonly text: string;
+    readonly font: string;
+  }
+
+  function drawn(bytes: Uint8Array): Drawn[] {
+    const text = decode(bytes);
+    return [...text.matchAll(/\/(F\d) ([\d.]+) Tf[\s\S]{0,60}?1 0 0 1 ([\d.]+) [\d.]+ Tm[\s\S]{0,40}?\((.*?)\) Tj/g)].map(
+      (match) => ({
+        x: Number(match[3]),
+        size: Number(match[2]),
+        text: match[4] ?? "",
+        font: match[1] ?? "F1",
+      }),
+    );
+  }
+
+  // Helvetica and Helvetica-Bold advance widths for printable ASCII, the same
+  // numbers the writer uses, restated here so the test measures rather than
+  // trusting the module under test.
+  const HELVETICA = [278,278,355,556,556,889,667,191,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,278,278,584,584,584,556,1015,667,667,722,722,667,611,778,722,278,500,667,556,833,722,778,667,778,722,667,611,722,667,944,667,667,611,278,278,278,469,556,333,556,556,500,556,556,278,556,556,222,222,500,222,833,556,556,556,556,333,500,278,556,500,722,500,500,500,334,260,334,584];
+  const HELVETICA_BOLD = [278,333,474,556,556,889,722,238,333,333,389,584,278,333,278,278,556,556,556,556,556,556,556,556,556,556,333,333,584,584,584,611,975,722,722,722,722,667,611,778,722,278,556,722,611,833,722,778,667,778,722,667,611,722,667,944,667,667,611,333,278,333,584,556,333,556,611,556,611,556,333,611,611,278,278,556,278,889,611,611,611,611,389,556,333,611,556,778,556,556,500,389,280,389,584];
+
+  function width(entry: Drawn): number {
+    const table = entry.font === "F2" ? HELVETICA_BOLD : HELVETICA;
+    let units = 0;
+    for (const character of entry.text) {
+      const code = character.codePointAt(0) ?? 32;
+      const index = code >= 32 && code <= 126 ? code - 32 : "?".charCodeAt(0) - 32;
+      units += entry.font.startsWith("F3") || entry.font.startsWith("F4")
+        ? 600
+        : (table[index] ?? 600);
+    }
+    return (units * entry.size) / 1000;
+  }
+
+  it("keeps a 39 character username inside the page", () => {
+    // githubLoginSchema allows 39 characters, and W is the widest letter.
+    // Written with no wrapping at all, this put the title's right edge 224
+    // points past the end of the paper with the rest of the name gone.
+    const bytes = buildPdf(
+      report({ title: `Security report for ${"W".repeat(39)}` }),
+    );
+    for (const entry of drawn(bytes)) {
+      const right = entry.x + width(entry);
+      expect(right, `"${entry.text.slice(0, 30)}" ends at ${right.toFixed(1)}pt`)
+        .toBeLessThanOrEqual(556);
+    }
+  });
+
+  it("keeps a long verdict inside the page", () => {
+    const bytes = buildPdf(
+      report({
+        verdict:
+          "9 things to fix in someone's public code, all listed below with the file and the line. 9 repositories did not finish, so there may be more. 4 were skipped on purpose, as forks or as repositories with no commit.",
+      }),
+    );
+    for (const entry of drawn(bytes)) {
+      const right = entry.x + width(entry);
+      expect(right, `"${entry.text.slice(0, 30)}" ends at ${right.toFixed(1)}pt`)
+        .toBeLessThanOrEqual(556);
+    }
+  });
+});

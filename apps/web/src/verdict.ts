@@ -159,11 +159,42 @@ export function emptyLedgerText(stopped: boolean): string {
  * in green directly under an amber verdict saying there was nothing to check.
  * On a security page the green box is the one a reader believes.
  */
+export interface NothingFound {
+  readonly text: string;
+  /** True when the panel must not wear the all-clear green. */
+  readonly neutral: boolean;
+}
+
 export function nothingFoundText(
-  repositoryCount: number,
+  total: number,
+  scanned: number,
+  missed: number,
   standard: string,
-): string {
-  return repositoryCount === 0
-    ? "There was nothing to scan, so nothing was checked and nothing was found."
-    : standard;
+): NothingFound {
+  if (total === 0) {
+    return {
+      text: "There was nothing to scan, so nothing was checked and nothing was found.",
+      neutral: true,
+    };
+  }
+  // Keyed on the repository count until now, so an account whose repositories
+  // all failed still got the green panel and the sentence crediting Gitleaks
+  // with reading a commit, directly under a ledger of red rows. Nothing was
+  // read. A request reaches `complete` as soon as every repository is
+  // terminal, and `failed` is terminal, so this was reachable in production.
+  if (scanned === 0) {
+    return {
+      text: "Nothing here was read, so nothing was found. The ledger above says what happened to each repository.",
+      neutral: true,
+    };
+  }
+  if (missed > 0) {
+    return {
+      text:
+        `No exposed credential in the ${String(scanned)} ${scanned === 1 ? "repository" : "repositories"} the secret scan read. ` +
+        `${String(missed)} did not finish, so this is not the whole picture.`,
+      neutral: true,
+    };
+  }
+  return { text: standard, neutral: false };
 }

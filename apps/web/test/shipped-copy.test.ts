@@ -262,16 +262,21 @@ describe("the parts of the interface a phone can reach", () => {
 
 describe("colour never claims more than the state does", () => {
   it("does not paint a running row the colour its own legend calls scanned", () => {
-    // The legend two inches above says green means scanned and amber means
-    // running. A row still being downloaded wore the green while the only
-    // finished row beside it stayed plain white.
+    // The legend says green means scanned and amber means running. This was
+    // asserted as one exact declaration, which passed while a second rule
+    // inside the 815px media query kept the success rail: below 816px, on the
+    // devices most shared report links are opened on, a running row still wore
+    // the green. So the assertion is now every declaration, not one of them.
     const css = read("src/style.css");
-    expect(css).toContain(
-      'tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 3px 0 0 var(--amber); }',
-    );
-    expect(css).not.toContain(
-      'tbody tr[data-active="true"] { background: var(--signal-soft)',
-    );
+    const rules = [...css.matchAll(/tbody tr\[data-active="true"\]\s*\{([^}]*)\}/g)];
+    expect(rules.length, "no rule styles a running row").toBeGreaterThan(0);
+    for (const rule of rules) {
+      const body = rule[1] ?? "";
+      expect(body, `a running row uses --signal: ${body.trim()}`).not.toMatch(
+        /var\(--signal/,
+      );
+      expect(body).toMatch(/var\(--amber/);
+    }
   });
 });
 
@@ -295,10 +300,14 @@ describe("colour never claims more than the words do", () => {
     // check ran and found nothing. Over an account with no public
     // repositories nothing ran, and the box still rendered green directly
     // under an amber verdict saying there was nothing to check.
+    // Was pinned to the exact expression, which said nothing about whether the
+    // predicate was right: it keyed on the repository count, so an account
+    // whose repositories all failed still got the green. The behaviour lives
+    // in nothingFoundText and is tested there; this only holds the wiring.
     const script = read("src/main.ts");
-    expect(script).toContain(
-      'nothingFound.classList.toggle("is-neutral", repositories.length === 0)',
-    );
+    expect(script).toContain('nothingFound.classList.toggle("is-neutral", box.neutral)');
+    expect(script).toContain("secretScannedCount(repositories)");
+    expect(script).toContain("uncheckedCount(repositories)");
     expect(read("src/style.css")).toContain(".nothing-found.is-neutral");
   });
 });

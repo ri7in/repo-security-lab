@@ -152,8 +152,22 @@ interface PublishInputBase extends LeaseRef {
 export type PublishInput = PublishInputBase &
   (
     | { readonly terminalState: "complete"; readonly reason: null }
+    /**
+     * A partly scanned repository may publish without a row-level reason.
+     *
+     * There is no class in the closed enum that means "one engine covered part
+     * of this", and the worker was falling back to FINDING_LIMIT, which renders
+     * as "this repository has more findings than one report can list", a cap
+     * that was never hit. The per-engine entry already says exactly what
+     * happened, and the row's own label reads "Partly scanned. Some checks
+     * finished and at least one did not" without needing a reason at all.
+     */
+    | { readonly terminalState: "partial"; readonly reason: FailureClass | null }
     | {
-        readonly terminalState: Exclude<RepositoryTerminalState, "complete" | "empty">;
+        readonly terminalState: Exclude<
+          RepositoryTerminalState,
+          "complete" | "empty" | "partial"
+        >;
         readonly reason: FailureClass;
       }
   );

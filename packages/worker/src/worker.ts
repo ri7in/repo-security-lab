@@ -741,10 +741,27 @@ export class RepositoryWorker {
           publication = await this.#store.publish({
             ...lease,
             terminalState: "partial",
+            // The fallback was the literal "FINDING_LIMIT", whose label reads
+            // "this repository has more findings than one report can list".
+            // A repository whose AI review came back partial has no failed
+            // engine, so that fired and printed a cap explanation over a
+            // repository that never hit a cap: an invented rationale on a page
+            // whose whole argument is that it does not invent.
+            //
+            // A real cap does have a reason and the normalizer already
+            // produces it, but in the normalized result rather than in
+            // specialistReasons, which only carries outright failures. So:
+            // the failed engine's class if one failed, else whatever reason an
+            // engine actually reported, else none at all. The per-engine entry
+            // says the rest, and the row's own label reads "Partly scanned.
+            // Some checks finished and at least one did not" without a reason.
             reason:
-              (failedEngine === undefined
-                ? undefined
-                : specialistReasons[failedEngine]) ?? "FINDING_LIMIT",
+              failedEngine === undefined
+                ? ([...normalizedByEngine.values()]
+                    .map((entry) => entry.normalized.reason)
+                    .find((reason) => reason !== null && reason !== undefined) ??
+                  null)
+                : (specialistReasons[failedEngine] ?? null),
             coverage,
             specialistReasons,
             findings,

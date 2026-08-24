@@ -59,6 +59,7 @@ import {
   nothingFoundText,
   secretScannedCount,
   summarizeVerdict,
+  uncheckedCount,
 } from "./verdict.js";
 
 const $ = <T extends Element>(selector: string): T => {
@@ -517,18 +518,19 @@ function renderFindings(
   // An empty table with a header row reads as a rendering fault. Say it.
   findingTable.hidden = findings.length === 0;
   nothingFound.hidden = findings.length > 0;
-  // The standing sentence credits Gitleaks with reading a commit. Over an
-  // account with no public repositories no commit was read, and the green box
-  // saying otherwise sat directly under an amber verdict saying there was
-  // nothing to check. The green box is the one a reader believes.
-  nothingFound.textContent = nothingFoundText(
+  // The standing sentence credits Gitleaks with reading a commit, and the
+  // panel is green, which on a security page is the strongest claim anything
+  // makes. Both have to be earned by a scan that actually read something: a
+  // green all-clear over a ledger of red rows is the worst output this tool
+  // can produce.
+  const box = nothingFoundText(
     repositories.length,
+    secretScannedCount(repositories),
+    uncheckedCount(repositories),
     NOTHING_FOUND_TEXT,
   );
-  // The same rule the class was written for: green means a check ran and found
-  // nothing. Over an account with no public repositories nothing ran, and the
-  // honest sentence was still sitting in the green box that says all clear.
-  nothingFound.classList.toggle("is-neutral", repositories.length === 0);
+  nothingFound.textContent = box.text;
+  nothingFound.classList.toggle("is-neutral", box.neutral);
 }
 
 async function requestJson(url: string, init?: RequestInit): Promise<unknown> {
