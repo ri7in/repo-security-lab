@@ -219,34 +219,41 @@ describe("the two dark palettes", () => {
 });
 
 describe("the owner's hard rule about em dashes", () => {
-  it("finds no em dash in anything that ships", () => {
+  it("finds no em dash anywhere in the repository", () => {
+    // Was scoped to apps/web, which let twenty-seven of them accumulate in
+    // README.md and docs/ where the rule applies just as hard: the README is
+    // the first page anyone visiting the public repository reads.
+    const SKIP_DIRECTORIES = new Set([
+      "node_modules",
+      ".git",
+      "dist",
+      "build",
+      "coverage",
+      ".wrangler",
+      ".turbo",
+    ]);
+    // The two files that must contain the character are the guards themselves.
+    const ALLOWED = new Set([
+      path.join(ROOT, "apps/web/test/shipped-copy.test.ts"),
+      path.join(ROOT, "apps/web/test/remediation.test.ts"),
+    ]);
+    const TEXT = /\.(ts|tsx|js|mjs|html|css|md|json|yml|yaml|sh|sql|toml)$/;
+
     const offenders: string[] = [];
-    const roots = [
-      path.join(WEB, "src"),
-      path.join(WEB, "public"),
-      path.join(WEB, "index.html"),
-    ];
-    const walk = (target: string): void => {
-      let entries;
-      try {
-        entries = readdirSync(target, { withFileTypes: true });
-      } catch {
-        // A file rather than a directory.
-        const body = readFileSync(target, "utf8");
-        if (body.includes("—")) offenders.push(target);
-        return;
-      }
-      for (const entry of entries) {
-        const next = path.join(target, entry.name);
+    const walk = (directory: string): void => {
+      for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const next = path.join(directory, entry.name);
         if (entry.isDirectory()) {
-          walk(next);
+          if (!SKIP_DIRECTORIES.has(entry.name)) walk(next);
           continue;
         }
-        if (!/\.(ts|html|css)$/.test(entry.name)) continue;
-        if (readFileSync(next, "utf8").includes("—")) offenders.push(next);
+        if (!entry.isFile() || !TEXT.test(entry.name) || ALLOWED.has(next)) continue;
+        if (readFileSync(next, "utf8").includes("\u2014")) {
+          offenders.push(path.relative(ROOT, next));
+        }
       }
     };
-    for (const target of roots) walk(target);
+    walk(ROOT);
     expect(offenders).toEqual([]);
   });
 });

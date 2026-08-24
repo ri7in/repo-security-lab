@@ -27,7 +27,7 @@ what grants Bubblewrap only the namespace operations needed by this worker.
 
 3. Provision a new worker ID in D1 and derive its generation-1 secret from the
    same `WORKER_AUTH_MASTER_SECRET` installed in Cloudflare. Put only the
-   derived worker secret—not the master secret—into
+   derived worker secret, not the master secret, into
    `/etc/repository-security/worker.env` with `sudoedit`. The file is root-only.
 4. Keep `PUBLIC_WORKER=false` for the first operator-account proof. Then run:
 

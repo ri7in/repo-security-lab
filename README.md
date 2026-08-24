@@ -3,12 +3,13 @@
 > **Placeholder name.** `repo-security-lab` is a replaceable development
 > placeholder (decision D-067); the final product name is still owned by the
 > project owner. All branding lives in `packages/branding` and renaming is
-> mechanical — see `docs/maintenance.md`.
+> mechanical. See `docs/maintenance.md`.
 
 Zero-cost, privacy-preserving security reports for all public
-repositories of a GitHub account. A visitor enters a GitHub username; a
-backend agent system attempts every owned public repository and returns one
-clear combined report with exact per-repository, per-specialist coverage.
+repositories of a GitHub account. A visitor enters a GitHub username. A
+Cloudflare Worker queues every public repository the account owns, a pull
+worker on GitHub Actions scans each one inside Bubblewrap, and the result is
+one combined report that states, per repository, which checks actually ran.
 
 **Live and open.** The website and D1 control plane are live at
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev).
@@ -17,7 +18,7 @@ sign-up, and the pull worker runs on GitHub Actions under enforced Bubblewrap
 isolation. The AI code review is on, and it calls OpenRouter, Groq and Google.
 Current guarantees:
 
-- Target repository code is treated as hostile data and is **never executed** —
+- Target repository code is treated as hostile data and is **never executed**:
   no dependencies, scripts, tests, builds, or hooks of scanned repositories run.
 - A scanner finding is deleted only when every judge on the council rejects it,
   and the council is two models from different families. Fewer than two judges,
@@ -65,42 +66,42 @@ Current guarantees:
 
 ## Layout
 
-- `packages/branding` — the only place the product name exists; guarded by a test.
-- `packages/contracts` — versioned Zod schemas and types for states, coverage,
+- `packages/branding`: the only place the product name exists; guarded by a test.
+- `packages/contracts`: versioned Zod schemas and types for states, coverage,
   failure classes, API DTOs, source-blind broker primitives, and AI tagging.
-- `packages/core` — state graph, scheduler, complete-ledger aggregation, and
+- `packages/core`: state graph, scheduler, complete-ledger aggregation, and
   the portable durable Store contract.
-- `packages/store-sqlite` — exercised STRICT SQLite adapter with atomic leases,
+- `packages/store-sqlite`: exercised STRICT SQLite adapter with atomic leases,
   generation-based stale rejection, and idempotent publication.
-- `packages/store-d1` — workerd-tested D1 adapter with atomic complete-ledger
+- `packages/store-d1`: workerd-tested D1 adapter with atomic complete-ledger
   installation, materialized totals, bounded finding chunks, and a conservative
   daily free-tier write reserve.
-- `packages/worker-protocol` and `packages/store-http` — rotating,
+- `packages/worker-protocol` and `packages/store-http`: rotating,
   generation-bound HMAC worker transport with bounded bodies and server time.
-- `packages/github` — complete public-repository discovery and exact-commit
+- `packages/github`: complete public-repository discovery and exact-commit
   archive acquisition with redirect, size, pacing, and timeout guards.
-- `packages/archive` — streaming hostile tar.gz validation and private-mode
+- `packages/archive`: streaming hostile tar.gz validation and private-mode
   extraction without executing repository content.
-- `packages/scanners` — verified Gitleaks and Zizmor adapters plus explicit
+- `packages/scanners`: verified Gitleaks and Zizmor adapters plus explicit
   fail-closed placeholders for specialists that are not integrated yet.
-- `packages/normalize` and `packages/broker` — the hostile-domain numeric
+- `packages/normalize` and `packages/broker`: the hostile-domain numeric
   result encoder and source-blind trusted decoder.
-- `packages/worker` — lease-bound fetch, guard, scan, cleanup, broker, publish,
+- `packages/worker`: lease-bound fetch, guard, scan, cleanup, broker, publish,
   and stale-generation janitor flow.
-- `packages/ai` — the two-pass funnel: a reader, a deterministic grounding
+- `packages/ai`: the two-pass funnel: a reader, a deterministic grounding
   gate no model takes part in, and a judge council of distinct model families.
   `packages/ai-providers` is the external model adapter.
-- `apps/api` — Hono control plane and loopback-only private runtime.
-- `apps/control-plane` — Cloudflare Workers, D1, Static Assets, rate limiting,
+- `apps/api`: Hono control plane and loopback-only private runtime.
+- `apps/control-plane`: Cloudflare Workers, D1, Static Assets, rate limiting,
   cron recovery, public source-blind reports, and the signed worker API.
-- `apps/scan-worker` — external pull worker for trusted private-slice compute.
-- `apps/scan-domain` — bundled credential-free extraction/scanning process with
+- `apps/scan-worker`: external pull worker for trusted private-slice compute.
+- `apps/scan-domain`: bundled credential-free extraction/scanning process with
   a strict numeric result contract.
-- `apps/web` — responsive vanilla TypeScript report interface.
-- `deploy/oci` — ARM64 Always Free bootstrap, hardened systemd service, and
+- `apps/web`: responsive vanilla TypeScript report interface.
+- `deploy/oci`: ARM64 Always Free bootstrap, hardened systemd service, and
   local-to-host deployment runbook.
-- `integrations/google-apps-script` — optional no-domain report-email relay.
-- `docs/` — architecture, threat model, research record, maintenance,
+- `integrations/google-apps-script`: optional no-domain report-email relay.
+- `docs/`: architecture, threat model, research record, maintenance,
   decisions, and private-slice retrospective.
 
 ## Development

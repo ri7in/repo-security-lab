@@ -52,8 +52,8 @@ set that fits the accepted API surface:
 `accepted | discovering | scanning | complete | failed`.
 
 Confirmed semantics: `complete` is the only success terminal and means every
-ledger repository reached a terminal state — even when individual
-repositories ended `partial`, `failed`, or `cancelled` — because that detail
+ledger repository reached a terminal state (even when individual
+repositories ended `partial`, `failed`, or `cancelled`), because that detail
 is fully expressed in the exhaustive `repositoryTotals`. A request-level
 `partial` or `cancelled` state would duplicate derived information and was
 deliberately rejected. `failed` means the request itself could not proceed
@@ -67,8 +67,8 @@ failures.
 The first cut of `brokerResultPacketSchema` carried `engine` as an enum field
 inside the packet crossing the hostile-domain egress boundary. Review pass 2
 identified this as a boundary defect: the authority threat model specifies
-"one fixed engine channel", and a packet-carried engine claim — even a closed
-enum — would let a compromised normalizer relabel a packet and route its
+"one fixed engine channel", and a packet-carried engine claim, even a closed
+enum, would let a compromised normalizer relabel a packet and route its
 tokens through another engine's manifest.
 
 The hostile packet now contains only `schemaVersion` and numeric

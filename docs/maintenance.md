@@ -22,8 +22,8 @@ To rename the product:
    `isPlaceholderName: false` once the final name is chosen.
 2. Update the name and placeholder note in `README.md`.
 3. Rename the local project directory to the new slug.
-4. Rename the GitHub repository (`gh repo rename <new-slug>`) — the repository
-   slug is the one unavoidable external use of the name.
+4. Rename the GitHub repository (`gh repo rename <new-slug>`). The repository slug is the one
+   unavoidable external use of the name.
 5. Run `pnpm check`; the rename guard reads the current branding values, so it
    verifies the new name automatically and fails on any leftover literal.
 6. When packages are ever published, take npm package names from the branding
