@@ -232,7 +232,7 @@ export const GITLEAKS_RULE_IDS = [
 export const GITLEAKS_CONFIG_SHA256 =
   "382f8613e18183f864d626bd0941ddcdf943e02766bb9b574e51ad0407b58d10";
 export const GITLEAKS_IGNORE_SHA256 =
-  "ea68bdd01a8597472c88f67d6d2d1c4bcc545a776547ee9fabd2a8a6d774a4e5";
+  "e1240940f19c666a63d4c85f364f0e3c007bc4ed0a4a8c9f3ab556a08b638d52";
 
 const TOKENS = new Map<string, number>(
   GITLEAKS_RULE_IDS.map((ruleId, index) => [ruleId, index + 1]),
