@@ -1,1 +1,18 @@
-# Intentionally empty trusted ignore policy. Target-owned ignore files are not used.
+# Trusted ignore policy. Target-owned ignore files are not used, and every
+# entry here must be commit-scoped so it can only ever match this
+# repository's own history scan, never a target scanned in directory mode.
+
+# 2026-08-24: five history-only entries, all one commit, all the same string.
+# The commit that taught the council about giveaway words quoted the live
+# false positive (a 19-character sk_test value) in two comments and built it
+# in a regression test, and this repository's own history scan flagged all
+# five, which is the guard working. The working tree was fixed the same day;
+# a commit is immutable, so history needs these fingerprints. They are
+# commit-scoped, and the live scanner runs in directory mode where a
+# commit-scoped fingerprint can never match, so nothing here can ever
+# suppress a finding in a scanned repository.
+ab97ce5fc0e3ccaa3b8857135fb7cfe666cf98c1:packages/contracts/src/scan-domain.ts:stripe-access-token:47
+ab97ce5fc0e3ccaa3b8857135fb7cfe666cf98c1:packages/scanners/src/review-context.ts:stripe-access-token:205
+ab97ce5fc0e3ccaa3b8857135fb7cfe666cf98c1:packages/scanners/test/gitleaks-review.test.ts:stripe-access-token:208
+ab97ce5fc0e3ccaa3b8857135fb7cfe666cf98c1:packages/scanners/test/gitleaks-review.test.ts:stripe-access-token:212
+ab97ce5fc0e3ccaa3b8857135fb7cfe666cf98c1:packages/scanners/test/gitleaks-review.test.ts:stripe-access-token:237
