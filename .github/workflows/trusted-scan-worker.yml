@@ -146,6 +146,11 @@ jobs:
           # finding before it is dropped, so fewer than two keys present means
           # review simply never runs and every finding is reported.
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # A comma-separated pool: the runtime rotates to the next key on a
+          # rate limit and filters empty entries, so a repository without the
+          # second secret composes to a clean single-key pool. Set as two
+          # separate secrets because GitHub secrets are write-only and the
+          # first key must never need re-entering to add a second.
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }},${{ secrets.OPENROUTER_API_KEY_2 }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: pnpm dev:worker
