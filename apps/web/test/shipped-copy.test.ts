@@ -218,6 +218,26 @@ describe("the two dark palettes", () => {
   });
 });
 
+describe("the disclosure that says where a visitor's code goes", () => {
+  it("counts the same number of providers the code discloses", () => {
+    // The sentence says whole files go to "the first of those" and a twelve
+    // line excerpt to "the other two". That is three, hard-coded in prose,
+    // beside a list built from DISCLOSED_PROVIDERS. The models behind this
+    // have already been swapped once, and the footer telling people where
+    // their source goes is the worst place for that to drift quietly.
+    const html = read("index.html");
+    expect(html).toContain("the first of those");
+    expect(html).toContain("the other two");
+    const disclosed = readFileSync(
+      path.join(ROOT, "packages/quota/src/models.ts"),
+      "utf8",
+    );
+    const list = /DISCLOSED_PROVIDERS[^=]*=\s*\[([\s\S]*?)\]/.exec(disclosed)?.[1] ?? "";
+    const count = list.split(",").filter((entry) => entry.trim() !== "").length;
+    expect(count, "the footer says one reader and two voters").toBe(3);
+  });
+});
+
 describe("the parts of the interface a phone can reach", () => {
   it("does not dismiss the tooltip on the same tap that opens it", () => {
     // A tap emits pointerover then pointerdown. pointerover showed the
