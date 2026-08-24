@@ -28,14 +28,28 @@ export interface NormalizedResult {
   readonly packetBytes: Uint8Array;
   readonly coverage: "complete" | "partial";
   readonly reason: null | "FINDING_LIMIT";
+  /**
+   * Exact per-token counts behind the packet's buckets, when the normalizer
+   * had them. The council needs these to remove one rejected finding from a
+   * group: a bucket cannot say "two_to_five, minus one" but a count of 4 can
+   * become 3. The published report still only ever sees buckets.
+   */
+  readonly counts?: readonly { readonly token: number; readonly count: number }[];
 }
 
-function bucket(count: number): CountBucketCode {
+/**
+ * Exported so the worker rebuilds a packet with the identical rule after the
+ * council subtracts rejected findings. Two bucket functions drifting apart
+ * would let a subtraction change a bucket the report never shows.
+ */
+export function bucketForCount(count: number): CountBucketCode {
   if (count === 1) return 0;
   if (count <= 5) return 1;
   if (count <= 20) return 2;
   return 3;
 }
+
+const bucket = bucketForCount;
 
 const ZIZMOR_FINDING_LIMIT = 1_000;
 const ZIZMOR_SEVERITY_RANK: Readonly<Record<ZizmorSeverity, number>> = {
@@ -85,6 +99,9 @@ export function normalizeGitleaks(result: GitleaksScanResult): NormalizedResult 
       packetBytes: encoder.encode(JSON.stringify(packet)),
       coverage: result.findingLimitExceeded ? "partial" : "complete",
       reason: result.findingLimitExceeded ? "FINDING_LIMIT" : null,
+      counts: [...counts.entries()]
+        .toSorted(([left], [right]) => left - right)
+        .map(([token, count]) => ({ token, count })),
     };
   } catch {
     throw new NormalizationError();

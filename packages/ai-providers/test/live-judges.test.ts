@@ -51,6 +51,10 @@ function finding(
     ruleId: "generic-api-key",
     startLine: 14,
     entropy: 4.2,
+    fileLineCount: 40,
+    valueLength: 43,
+    valueHints: [],
+    contextStartLine: 13,
     contextLines: ["data:", "  JWT_SECRET: REDACTED"],
     ...overrides,
   };
@@ -62,6 +66,10 @@ const PLACEHOLDER = finding({
   ruleId: "telegram-bot-api-token",
   startLine: 101,
   entropy: 3.2,
+  fileLineCount: 120,
+  valueLength: 46,
+  valueHints: ["placeholder"],
+  contextStartLine: 101,
   contextLines: ["TELEGRAM_BOT_TOKEN=REDACTED"],
 });
 

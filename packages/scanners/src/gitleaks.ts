@@ -21,6 +21,8 @@ import {
 } from "@app/contracts";
 import {
   buildReviewContext,
+  reviewContextStartLine,
+  valueHintsFor,
   redactMatches,
   reviewablePath,
   type MatchSpan,
@@ -356,7 +358,10 @@ async function buildReview(
   const root = path.resolve(sourceDirectory);
   const wrapper = await archiveWrapperDirectory(root);
   const review: ReviewFinding[] = [];
-  const fileCache = new Map<string, readonly string[] | null>();
+  const fileCache = new Map<
+    string,
+    { readonly raw: readonly string[]; readonly redacted: readonly string[] } | null
+  >();
 
   // Every match in a file is blanked before any excerpt is cut, because a
   // window around one finding routinely spans another finding's credential.
@@ -382,8 +387,8 @@ async function buildReview(
     const relative = relativeToRoot(entry.File, root);
     if (relative === null) continue;
 
-    let lines = fileCache.get(relative);
-    if (lines === undefined) {
+    let cached = fileCache.get(relative);
+    if (cached === undefined) {
       try {
         const absolute = path.resolve(sourceDirectory, relative);
         // Refuse anything that escapes the extracted tree. The archive guard
@@ -394,16 +399,30 @@ async function buildReview(
           absolute === root || absolute.startsWith(`${root}${path.sep}`)
             ? (await readFile(absolute, "utf8")).split("\n")
             : null;
-        lines =
+        // Raw lines stay in this function. They exist so the value can be
+        // measured and checked for giveaway words; only those derived facts
+        // enter the review entry, never the value.
+        cached =
           raw === null
             ? null
-            : redactMatches(raw, spansByFile.get(relative) ?? []);
+            : { raw, redacted: redactMatches(raw, spansByFile.get(relative) ?? []) };
       } catch {
-        lines = null;
+        cached = null;
       }
-      fileCache.set(relative, lines);
+      fileCache.set(relative, cached);
     }
-    if (lines === null) continue;
+    if (cached === null) continue;
+
+    // The matched span on its first line, before redaction. A span crossing
+    // lines contributes its first line's tail, which is enough for the hints
+    // and keeps this trivially bounded.
+    const rawLine = cached.raw[Math.max(1, entry.StartLine) - 1] ?? "";
+    const from = Math.max(0, (entry.StartColumn ?? 1) - 1);
+    const to =
+      (entry.EndLine ?? entry.StartLine) > entry.StartLine
+        ? rawLine.length
+        : Math.min(rawLine.length, Math.max(from, entry.EndColumn ?? rawLine.length));
+    const rawValue = rawLine.slice(from, to);
 
     review.push({
       engine: "gitleaks",
@@ -411,7 +430,11 @@ async function buildReview(
       path: withoutWrapper(relative, wrapper),
       startLine: Math.max(1, entry.StartLine),
       entropy: Math.min(10, entry.Entropy ?? 0),
-      contextLines: buildReviewContext(lines, Math.max(1, entry.StartLine)),
+      fileLineCount: Math.max(1, cached.raw.length),
+      valueLength: Math.min(10_000, rawValue.length),
+      valueHints: valueHintsFor(rawValue),
+      contextStartLine: reviewContextStartLine(Math.max(1, entry.StartLine)),
+      contextLines: buildReviewContext(cached.redacted, Math.max(1, entry.StartLine)),
     });
   }
   return review;

@@ -125,11 +125,22 @@ rather than pushed back out through a result channel built for numbers.
 | Judge (pass 2) | `openai/gpt-oss-120b` | Groq | One flag, its excerpt, its file and line | Vote real, not real, or unsure |
 | Judge (pass 2) | `gemini-flash-lite-latest` | Google | The same, independently | The same |
 
-Both judges also sit on a separate path where they may delete a *scanner*
-finding all of them reject as a false alarm. Every other outcome keeps the
-finding: fewer than two judges, two judges of one family, an exhausted quota, a
-provider timing out, or any thrown error at all. Deleting a real finding is far
-worse than showing a false one.
+The judges also sit on a separate path, the council, where they review the
+*scanner's* findings. That panel is trust-ordered and adds the reader's model:
+`stealth/ox-alpha`, then Gemini, then gpt-oss. Each finding is decided by the
+two most trusted judges that answered for it, unanimously; a junior judge can
+neither veto them nor convict without them, and with the preview model down
+the stable pair decides exactly as it always did. Rejection is per finding:
+the rejected one is subtracted from its rule's exact count before the report's
+buckets form, so a false alarm dies alone while the real finding beside it
+survives. Every other outcome keeps the finding: fewer than two judges, two
+judges of one family, an exhausted quota, a provider timing out, or any thrown
+error at all. Deleting a real finding is far worse than showing a false one.
+
+The reader judging scanner findings is not the reader judging itself: the
+council reviews Gitleaks output, which `ox-alpha` had no hand in producing.
+On the funnel that judges the reader's own flags, the panel still excludes
+the reader's family entirely.
 
 Four rules hold the pass together, and each is enforced in code rather than
 described here:

@@ -20,11 +20,13 @@ Current guarantees:
 
 - Target repository code is treated as hostile data and is **never executed**:
   no dependencies, scripts, tests, builds, or hooks of scanned repositories run.
-- A scanner finding is deleted only when every judge on the council rejects it,
-  and the council is two models from different families. Fewer than two judges,
-  two of one family, an exhausted quota, a provider timing out, a partly
-  reviewed repository or any thrown error all keep the finding. No model
-  declares a repository safe; the verdict is computed from coverage.
+- A scanner finding is deleted only when the two most trusted judges that
+  answered for it both reject it, and judges are always models from different
+  companies. Fewer than two judges, two of one family, an exhausted quota, a
+  provider timing out or any thrown error all keep the finding. Deletion is
+  per finding: a false alarm dies alone and the finding beside it survives
+  with its exact count intact. No model declares a repository safe; the
+  verdict is computed from coverage.
 - The evidence channel out of the sandbox carries no archive-derived strings:
   only manifest-issued numeric tokens and four count-bucket codes cross the
   source-blind broker. Locations travel separately and deliberately: a
@@ -45,16 +47,16 @@ Current guarantees:
   privacy maintenance has a protected band up to 60%.
 - The AI pass sends public source code to model providers. A reader on
   OpenRouter takes whole source files with every secret-scanner line blanked
-  first. Separately, a twelve line excerpt around each secret-scanner finding
-  goes to Groq and to Google, so two models from different families can vote on
-  whether it is a false alarm. Providers may keep or train on what they
-  receive, which is what pays for the free tier, and the site says so.
-  `AI_REVIEW_ENABLED=false` stops both.
-- A model can delete a secret-scan finding, but only when every judge rejects
-  it. Fewer than two judges, two of one family, an exhausted quota, a provider
-  timing out, a partly reviewed repository or any thrown error all keep the
-  finding, because showing a false positive is far cheaper than deleting a
-  real one.
+  first. Separately, an excerpt of up to 120 lines around each secret-scanner
+  finding goes to OpenRouter, Google and Groq, so models from different
+  companies can vote on whether it is a false alarm. Providers may keep or
+  train on what they receive, which is what pays for the free tier, and the
+  site says so. `AI_REVIEW_ENABLED=false` stops both.
+- A model can delete a secret-scan finding, but only when the two most
+  trusted judges that answered both reject it. Fewer than two judges, two of
+  one family, an exhausted quota, a provider timing out or any thrown error
+  all keep the finding, because showing a false positive is far cheaper than
+  deleting a real one.
 - A model cannot write into a report. It picks one of ten weakness classes, and
   every word a reader sees, the rule name and the remediation included, is
   looked up from that class in a fixed manifest. The severity is that class's

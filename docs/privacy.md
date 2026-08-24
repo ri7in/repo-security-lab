@@ -33,9 +33,13 @@ URL solely to send one transactional message.
 
 Repository source IS sent to model providers. The reader takes whole source
 files to OpenRouter, with every line the secret scanner matched blanked first.
-A twelve line excerpt around each secret-scanner finding goes to Groq and to
-Google, so two models from different families can vote on whether it is a
-false alarm. Those providers may retain or train on what they receive.
+An excerpt of up to 120 lines around each secret-scanner finding goes to
+OpenRouter, Google and Groq, so models from different companies can vote on
+whether it is a false alarm; a finding is removed only when the two most
+capable models that answered both reject it. The excerpt has every matched
+credential blanked; the only facts a model gets about the value are its
+length and which common placeholder words it contains, from a fixed list.
+Those providers may retain or train on what they receive.
 `AI_REVIEW_ENABLED=false` stops both. The user-facing statement of this is
 `apps/web/public/privacy.html`; `docs/architecture.md` has the mechanics.
 

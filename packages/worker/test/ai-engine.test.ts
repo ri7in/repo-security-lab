@@ -127,6 +127,10 @@ describe("the AI engine", () => {
         path: "src/config.ts",
         startLine: 1,
         entropy: 4.5,
+        fileLineCount: 1,
+        valueLength: 40,
+        valueHints: [],
+        contextStartLine: 1,
         contextLines: [],
       },
     ];
@@ -162,6 +166,10 @@ describe("the AI engine", () => {
         path: "src/config.ts",
         startLine: 1,
         entropy: 4.5,
+        fileLineCount: 1,
+        valueLength: 40,
+        valueHints: [],
+        contextStartLine: 1,
         contextLines: [],
       },
     ];

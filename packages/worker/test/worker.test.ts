@@ -1093,9 +1093,13 @@ describe("leased repository worker", () => {
  * Council review: the one place a model may delete deterministic evidence.
  *
  * Every test here is really the same question asked from a different angle:
- * does anything short of a unanimous rejection by two distinct families still
- * keep the finding? Showing a false positive costs a reader a few seconds.
- * Deleting a real leaked credential costs them the credential.
+ * does anything short of the two most trusted answering judges both rejecting
+ * a finding still keep it? Showing a false positive costs a reader a few
+ * seconds. Deleting a real leaked credential costs them the credential.
+ *
+ * Suppression is per finding: a rejected finding is subtracted from its
+ * rule's exact count before the report's buckets form, so the finding beside
+ * it survives with its own location intact.
  */
 function reviewingScanner(reviewComplete = true): SecretScanner {
   return {
@@ -1112,6 +1116,10 @@ function reviewingScanner(reviewComplete = true): SecretScanner {
             path: ".env.example",
             startLine: 3,
             entropy: 3.2,
+            fileLineCount: 3,
+            valueLength: 40,
+            valueHints: ["example"],
+            contextStartLine: 3,
             contextLines: ["GITHUB_PAT=REDACTED"],
           },
         ],
@@ -1203,15 +1211,108 @@ describe("council review of scanner findings", () => {
     ).toBe(1);
   });
 
-  it("suppresses nothing when the review was incomplete", async () => {
-    // Reports use coarse count buckets, so a partly reviewed group cannot be
-    // honestly reduced: there is no way to say "two_to_five, minus one".
+  it("still removes an individually judged finding when the wider review is incomplete", async () => {
+    // The old rule kept everything unless the whole engine was reviewed,
+    // because buckets cannot say "two_to_five, minus one". Exact counts can:
+    // this finding was fully judged by both deciding judges, so it dies on
+    // its own merits while anything unjudged stands untouched.
     expect(
       await findingCountWith(
         [fakeJudge("alpha", "not_real"), fakeJudge("beta", "not_real")],
         false,
       ),
+    ).toBe(1 - 1);
+  });
+
+  it("removes only the rejected finding from a rule, keeping its neighbour", async () => {
+    // Two findings of one rule; the council rejects exactly one. The rule's
+    // count drops from 2 to 1, the report keeps the rule, and the rejected
+    // finding's location vanishes while the survivor's stays.
+    const files = await workspace();
+    const store = new SqliteStore({ filename: files.database, migrationTimeMs: 1 });
+    await createLedger(store);
+    const twoFindingScanner: SecretScanner = {
+      async scan() {
+        return {
+          findings: [{ ruleId: "github-pat" }, { ruleId: "github-pat" }],
+          rawFindingCount: 2,
+          findingLimitExceeded: false,
+          locations: [
+            { engine: "gitleaks" as const, ruleId: "github-pat", path: "docs/example.md", startLine: 3 },
+            { engine: "gitleaks" as const, ruleId: "github-pat", path: "deploy/secrets.yaml", startLine: 9 },
+          ],
+          review: [
+            {
+              engine: "gitleaks" as const,
+              ruleId: "github-pat",
+              path: "docs/example.md",
+              startLine: 3,
+              entropy: 3.2,
+              fileLineCount: 3,
+              valueLength: 40,
+              valueHints: ["example" as const],
+              contextStartLine: 1,
+              contextLines: ["GITHUB_PAT=REDACTED"],
+            },
+          ],
+          // Only one of the two findings could be reviewed.
+          reviewComplete: false,
+        };
+      },
+    };
+    const result = await worker(
+      store,
+      files.scratch,
+      archiveFetcher(archive("root/file.txt", "x")),
+      twoFindingScanner,
+      { judges: [fakeJudge("alpha", "not_real"), fakeJudge("beta", "not_real")] },
+    ).runOne();
+    expect(result).toBe("complete");
+    const findings = await store.listFindings({
+      requestId: "req_0000000001",
+      afterFindingId: null,
+      limit: 10,
+    });
+    store.close();
+    expect(findings.findings).toHaveLength(1);
+    const locations = findings.findings[0]?.locations ?? [];
+    expect(locations.map((entry) => entry.path)).toEqual(["deploy/secrets.yaml"]);
+  });
+
+  it("lets the two most trusted judges decide over a junior dissent", async () => {
+    // Judges are trust-ordered. The third opinion is advisory: it can neither
+    // veto the seniors nor convict without them.
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "not_real"),
+        fakeJudge("beta", "not_real"),
+        fakeJudge("gamma", "real"),
+      ]),
+    ).toBe(0);
+  });
+
+  it("keeps the finding when a senior judge is unsure, whatever juniors say", async () => {
+    expect(
+      await findingCountWith([
+        fakeJudge("alpha", "unsure"),
+        fakeJudge("beta", "not_real"),
+        fakeJudge("gamma", "not_real"),
+      ]),
     ).toBe(1);
+  });
+
+  it("falls back to the next judge when the most trusted is unreachable", async () => {
+    const dead: JudgePort = {
+      family: "alpha",
+      review: () => Promise.reject(new Error("provider down")),
+    };
+    expect(
+      await findingCountWith([
+        dead,
+        fakeJudge("beta", "not_real"),
+        fakeJudge("gamma", "not_real"),
+      ]),
+    ).toBe(0);
   });
 
   it("behaves exactly as before when no judges are configured", async () => {

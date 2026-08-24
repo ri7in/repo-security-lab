@@ -78,6 +78,35 @@ describe("scan worker configuration", () => {
     );
   });
 
+  it("orders the judge panel by trust, strongest first", () => {
+    // The council decides each finding by the two most senior judges that
+    // answer, so this order is policy: ox, then Gemini, then gpt-oss. The
+    // OpenRouter key alone is not a panel; all three keys give all three
+    // judges in that order.
+    const input = environment();
+    input["OPENROUTER_API_KEY"] = "or-key";
+    input["GEMINI_API_KEY"] = "gm-key";
+    input["GROQ_API_KEY"] = "gq-key";
+    const parsed = parseScanWorkerConfiguration(input);
+    expect(parsed.judges.map((judge) => judge.family)).toEqual([
+      "openrouter",
+      "google",
+      "groq",
+    ]);
+    expect(parsed.judges[0]?.model).toBe("stealth/ox-alpha");
+  });
+
+  it("still forms the stable pair when the preview model's key is absent", () => {
+    const input = environment();
+    input["GEMINI_API_KEY"] = "gm-key";
+    input["GROQ_API_KEY"] = "gq-key";
+    const parsed = parseScanWorkerConfiguration(input);
+    expect(parsed.judges.map((judge) => judge.family)).toEqual([
+      "google",
+      "groq",
+    ]);
+  });
+
   it("rejects missing secrets, roots, and malformed identities", () => {
     for (const mutation of [
       (input: NodeJS.ProcessEnv) => delete input["WORKER_SECRET"],

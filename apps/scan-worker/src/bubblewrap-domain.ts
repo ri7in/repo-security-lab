@@ -401,6 +401,7 @@ export class BubblewrapRepositoryScanDomain implements RepositoryScanDomain {
           packetBytes: encoder.encode(JSON.stringify(entry.packet)),
           coverage: entry.coverage,
           reason: entry.reason,
+          ...(entry.counts === undefined ? {} : { counts: entry.counts }),
         };
         return { engine: entry.engine, normalized };
       });

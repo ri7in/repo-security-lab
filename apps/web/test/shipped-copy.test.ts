@@ -144,13 +144,15 @@ describe("acceptable use", () => {
 
 describe("claims the code contradicts", () => {
   it("does not say a model can never delete a scanner finding", () => {
-    // It can, and it does, on every scan: two judges that both call a
-    // secret-scan finding a false alarm remove it. The landing page said the
-    // opposite in as many words.
+    // It can, and it does, on every scan: the two most trusted judges that
+    // answered both calling a secret-scan finding a false alarm remove it.
+    // The landing page said the opposite in as many words.
     const page = read("index.html").toLowerCase();
     expect(page).not.toContain("never delete one the secret scanner");
     expect(page).not.toContain("can never hide");
-    expect(page).toContain("only when both call it a false alarm");
+    expect(page).toContain(
+      "only when the two most trusted models that answered both call it a false alarm",
+    );
   });
 
   it("names every provider that can receive code", () => {
@@ -220,14 +222,14 @@ describe("the two dark palettes", () => {
 
 describe("the disclosure that says where a visitor's code goes", () => {
   it("counts the same number of providers the code discloses", () => {
-    // The sentence says whole files go to "the first of those" and a twelve
-    // line excerpt to "the other two". That is three, hard-coded in prose,
-    // beside a list built from DISCLOSED_PROVIDERS. The models behind this
-    // have already been swapped once, and the footer telling people where
-    // their source goes is the worst place for that to drift quietly.
+    // The sentence says whole files go to "the first of those" and an
+    // excerpt to "all three". That is three, hard-coded in prose, beside a
+    // list built from DISCLOSED_PROVIDERS. The models behind this have
+    // already been swapped once, and the footer telling people where their
+    // source goes is the worst place for that to drift quietly.
     const html = read("index.html");
     expect(html).toContain("the first of those");
-    expect(html).toContain("the other two");
+    expect(html).toContain("all three");
     const disclosed = readFileSync(
       path.join(ROOT, "packages/quota/src/models.ts"),
       "utf8",

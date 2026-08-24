@@ -8,13 +8,65 @@ const normalizedEngineResultSchema = z.strictObject({
   coverage: z.enum(["complete", "partial"]),
   reason: z.literal("FINDING_LIMIT").nullable(),
   packet: brokerResultPacketSchema,
+  /**
+   * Exact per-token counts behind the packet's coarse buckets.
+   *
+   * The published report keeps buckets; this exists so the council can remove
+   * ONE rejected finding from a group of three, which bucket arithmetic cannot
+   * express. Numeric only, bounded, and cross-checked against the packet on
+   * the trusted side before anything uses it.
+   */
+  counts: z
+    .array(
+      z.strictObject({
+        token: z.number().int().positive(),
+        count: z.number().int().positive().max(10_000),
+      }),
+    )
+    .max(256)
+    .optional(),
 });
 
 /** Hard bounds on the review channel, enforced by schema rather than by care. */
 export const REVIEW_MAX_FINDINGS = 20;
 export const REVIEW_MAX_PATH_LENGTH = 256;
-export const REVIEW_MAX_CONTEXT_LINES = 12;
+/**
+ * 120 rather than 12, on operator instruction: a twelve line window forced a
+ * judge to rule on a finding it could barely see. 120 lines is the whole file
+ * for the config and example files where most false alarms live, and for a
+ * bigger file the prompt says which slice is shown so the judge knows what it
+ * does not know. The channel stays bounded: at most 120 lines of at most 200
+ * characters for at most 20 findings.
+ */
+export const REVIEW_MAX_CONTEXT_LINES = 120;
 export const REVIEW_MAX_LINE_LENGTH = 200;
+
+/**
+ * The closed list of giveaway words the scanner may report about a redacted
+ * value. The value itself never crosses; what crosses is which of these fixed
+ * words it contains, which is decisive for "sk_test_placeholder" and reveals
+ * at most one bit per listed word about a real credential. The list is an
+ * enum so the channel cannot be widened by a hostile repository.
+ */
+export const REVIEW_VALUE_HINTS = [
+  "placeholder",
+  "example",
+  "sample",
+  "test",
+  "demo",
+  "dummy",
+  "fake",
+  "mock",
+  "changeme",
+  "your",
+  "here",
+  "insert",
+  "xxxx",
+  "1234",
+  "abcd",
+] as const;
+export const reviewValueHintSchema = z.enum(REVIEW_VALUE_HINTS);
+export type ReviewValueHint = z.infer<typeof reviewValueHintSchema>;
 
 /**
  * The review channel: the only archive-derived strings permitted to leave the
@@ -52,6 +104,22 @@ export const reviewFindingSchema = z.strictObject({
   startLine: z.number().int().positive(),
   /** Shannon entropy gitleaks measured for the match. */
   entropy: z.number().nonnegative().max(10),
+  /** How many lines the whole file has, so a judge knows what it is not shown. */
+  fileLineCount: z.number().int().positive(),
+  /** Length of the redacted value. The value itself never crosses. */
+  valueLength: z.number().int().nonnegative().max(10_000),
+  /** Which of the fixed giveaway words the redacted value contains. */
+  valueHints: z.array(reviewValueHintSchema).max(REVIEW_VALUE_HINTS.length),
+  /**
+   * The file line `contextLines[0]` is, which is not `startLine`.
+   *
+   * The excerpt is a window centred on the match and therefore opens above it.
+   * Without this the renderer had to assume the window opened at the match,
+   * and it did, so every line label in a review prompt sat up to five lines
+   * too high and the label the prompt told the judge to look at pointed at the
+   * wrong line. Never published: this whole object is worker-only.
+   */
+  contextStartLine: z.number().int().positive(),
   /**
    * Lines around the match, with comments stripped. Comments are removed
    * because the target repository is hostile input: a comment reading "test

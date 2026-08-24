@@ -184,6 +184,9 @@ async function scan(): Promise<void> {
       coverage: normalized.coverage,
       reason: normalized.reason,
       packet: parseJsonPacket(normalized.packetBytes),
+      // Exact counts behind the buckets, so the council outside can subtract
+      // a single rejected finding. Numeric only, schema-bounded.
+      counts: normalized.counts,
     });
   } catch (error) {
     engineFailures.gitleaks = recordScannerFailure("gitleaks", error);

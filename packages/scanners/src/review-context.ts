@@ -2,6 +2,8 @@ import {
   REVIEW_MAX_CONTEXT_LINES,
   REVIEW_MAX_LINE_LENGTH,
   REVIEW_MAX_PATH_LENGTH,
+  REVIEW_VALUE_HINTS,
+  type ReviewValueHint,
 } from "@app/contracts";
 
 /**
@@ -98,6 +100,22 @@ export function stripComments(lines: readonly string[]): string[] {
 }
 
 /**
+ * The 1-based file line the excerpt for a match begins at.
+ *
+ * The excerpt is a window centred on the match, so it usually opens several
+ * lines above it. Whatever renders the excerpt has to number from here rather
+ * than from the match, and it did not: the prompt numbered the first excerpt
+ * line as the match's own line, so every label sat up to five lines too high.
+ * A judge was told "Line: 14" and handed a block whose line 14 was five lines
+ * past the credential, which on a short file was blank. Exported so the offset
+ * is computed once and cannot drift from the slice below.
+ */
+export function reviewContextStartLine(startLine: number): number {
+  const before = Math.floor((REVIEW_MAX_CONTEXT_LINES - 1) / 2);
+  return Math.max(0, startLine - 1 - before) + 1;
+}
+
+/**
  * Extracts the bounded excerpt around a match.
  *
  * Long lines are truncated rather than dropped: a minified bundle would
@@ -108,8 +126,7 @@ export function buildReviewContext(
   fileLines: readonly string[],
   startLine: number,
 ): string[] {
-  const before = Math.floor((REVIEW_MAX_CONTEXT_LINES - 1) / 2);
-  const from = Math.max(0, startLine - 1 - before);
+  const from = reviewContextStartLine(startLine) - 1;
   const to = Math.min(fileLines.length, from + REVIEW_MAX_CONTEXT_LINES);
   return stripComments(fileLines.slice(from, to)).map((line) =>
     line.length > REVIEW_MAX_LINE_LENGTH
@@ -179,6 +196,21 @@ export const REDACTION_MARKER = "<redacted-secret>";
  * of an identifier are a cheap price for covering that.
  */
 const SPAN_MARGIN = 2;
+
+/**
+ * Which of the fixed giveaway words a matched value contains.
+ *
+ * This is the only fact about a value that may leave the scanner: the value
+ * itself is blanked out of every excerpt, which removes exactly the clue that
+ * settles "sk_test_placeholder". Each listed word is one bit, the list is a
+ * closed enum in the contract, and matching is case-insensitive so
+ * "PLACEHOLDER" does not slip past. Input is capped so a pathological match
+ * cannot make this quadratic.
+ */
+export function valueHintsFor(rawValue: string): ReviewValueHint[] {
+  const value = rawValue.slice(0, 4_096).toLowerCase();
+  return REVIEW_VALUE_HINTS.filter((hint) => value.includes(hint));
+}
 
 export function redactMatches(
   lines: readonly string[],

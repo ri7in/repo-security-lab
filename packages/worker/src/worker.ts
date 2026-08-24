@@ -1,6 +1,7 @@
 import { createReadStream, createWriteStream } from "node:fs";
 import {
   reviewScannerFindings,
+  type FindingReviewOutcome,
   type JudgePort,
   type ScoutPort,
 } from "@app/ai";
@@ -26,6 +27,7 @@ import {
   type RepositoryActiveState,
   type ScanEngine,
   MAX_LOCATIONS_PER_FINDING,
+  brokerResultPacketSchema,
   type BrokerDerivedFinding,
   type FindingLocation,
   type ReviewFinding,
@@ -45,6 +47,7 @@ import {
   type ArchiveRef,
 } from "@app/github";
 import {
+  bucketForCount,
   normalizeGitleaks,
   NormalizationError,
   type NormalizedResult,
@@ -53,6 +56,7 @@ import {
   ScannerError,
   type GitleaksScanResult,
   AI_BROKER_MANIFEST,
+  gitleaksRuleToken,
 } from "@app/scanners";
 import {
   detectSpecialistApplicability,
@@ -134,6 +138,14 @@ export interface RepositoryWorkerOptions {
    * before review existed.
    */
   readonly judges?: readonly JudgePort[];
+  /**
+   * Judges for the scanner-finding council, TRUST-ORDERED, most trusted
+   * first: each finding is decided by the two most senior judges that answer.
+   * Separate from `judges` because the council may include the scout's own
+   * family, which must never judge the scout's findings in the funnel.
+   * Absent means the council uses `judges`.
+   */
+  readonly councilJudges?: readonly JudgePort[];
   /**
    * Pass-1 reader. Absent means the AI engine never runs and every repository
    * reports `unsupported` for it, which is honest: the check exists and did
@@ -297,6 +309,7 @@ export class RepositoryWorker {
   readonly #additionalEngines: readonly AdditionalEngineRunner[];
   readonly #scanDomain: RepositoryScanDomain | null;
   readonly #judges: readonly JudgePort[];
+  readonly #councilJudges: readonly JudgePort[];
   readonly #scout: ScoutPort | null;
   readonly #aiBroker: SourceBlindBroker | null;
   #aiBudget: number;
@@ -315,6 +328,7 @@ export class RepositoryWorker {
     this.#additionalEngines = Object.freeze([...(options.additionalEngines ?? [])]);
     this.#scanDomain = options.scanDomain ?? null;
     this.#judges = options.judges ?? [];
+    this.#councilJudges = options.councilJudges ?? this.#judges;
     this.#scout = options.scout ?? null;
     this.#aiBudget = options.aiRepositoryBudget ?? 3;
     // Built once. The broker validates the manifest on construction, so a
@@ -687,10 +701,42 @@ export class RepositoryWorker {
       // Council review runs here: outside the sandbox, which is the only side
       // with a network, and before anything is brokered, so a suppressed
       // finding never becomes a stored finding at all.
-      const suppressedRuleIds = await this.#reviewFindings(
+      const councilOutcome = await this.#reviewFindings(
         scanReview,
         scanReviewComplete,
       );
+      // Per-finding suppression, the primary path. Each rejected finding is
+      // subtracted from its rule's exact count before the report's buckets
+      // are formed, and its location goes with it, so one false alarm dies
+      // while the real finding beside it survives. Falls back to whole-rule
+      // suppression when a packet carries no exact counts.
+      const gitleaksEntry = normalizedByEngine.get("gitleaks");
+      let publishLocations = scanLocations;
+      let suppressedRuleIds: ReadonlySet<string> = new Set();
+      if (councilOutcome !== null && councilOutcome.rejected.length > 0) {
+        const subtracted =
+          gitleaksEntry === undefined
+            ? null
+            : subtractRejectedFindings(
+                gitleaksEntry.normalized,
+                councilOutcome.rejected,
+              );
+        if (subtracted !== null && gitleaksEntry !== undefined) {
+          normalizedByEngine.set("gitleaks", {
+            normalized: subtracted,
+            broker: gitleaksEntry.broker,
+          });
+          publishLocations = withoutRejectedLocations(
+            scanLocations,
+            councilOutcome.rejected,
+          );
+        } else if (councilOutcome.complete) {
+          // No exact counts. A whole rule may still vanish, but only when
+          // every reviewed occurrence of it was rejected and the review was
+          // complete, because a bucket cannot honestly shrink by one.
+          suppressedRuleIds = new Set(councilOutcome.suppressedRuleIds);
+        }
+      }
       const findings = [];
       for (const [engine, result] of normalizedByEngine) {
         try {
@@ -706,7 +752,7 @@ export class RepositoryWorker {
           const surviving = accepted.filter(
             (finding) => !suppressedRuleIds.has(finding.rule_id),
           );
-          findings.push(...attachLocations(surviving, scanLocations));
+          findings.push(...attachLocations(surviving, publishLocations));
         } catch {
           coverage[engine] = "failed";
           specialistReasons[engine] = "NORMALIZATION_REJECTED";
@@ -960,38 +1006,24 @@ export class RepositoryWorker {
   /**
    * Asks the council which scanner findings are false alarms.
    *
-   * Returns the rule ids every judge rejected, and an empty set for every
-   * other outcome. Deleting a real finding is far worse than showing a false
-   * one, so every path that is not an explicit unanimous rejection keeps the
-   * finding: too few judges, two judges of one family, an unreviewable
-   * repository, an exhausted quota, a provider timing out, or any thrown
-   * error at all.
-   *
-   * A partly reviewed result suppresses nothing either. Reports group findings
-   * into coarse count buckets, so there is no honest way to express
-   * "two_to_five, minus one".
+   * Returns the full outcome, or null when review could not run at all: too
+   * few judges, two judges of one family, nothing to review, or any thrown
+   * error. Deleting a real finding is far worse than showing a false one, so
+   * null means nothing is suppressed anywhere.
    */
   async #reviewFindings(
     review: readonly ReviewFinding[],
     reviewComplete: boolean,
-  ): Promise<ReadonlySet<string>> {
-    const families = new Set(this.#judges.map((judge) => judge.family));
-    if (
-      review.length === 0 ||
-      this.#judges.length < 2 ||
-      families.size !== this.#judges.length
-    ) {
-      return new Set();
+  ): Promise<FindingReviewOutcome | null> {
+    const judges = this.#councilJudges;
+    const families = new Set(judges.map((judge) => judge.family));
+    if (review.length === 0 || judges.length < 2 || families.size !== judges.length) {
+      return null;
     }
     try {
-      const outcome = await reviewScannerFindings(
-        review,
-        this.#judges,
-        reviewComplete,
-      );
-      return outcome.complete ? new Set(outcome.suppressedRuleIds) : new Set();
+      return await reviewScannerFindings(review, judges, reviewComplete);
     } catch {
-      return new Set();
+      return null;
     }
   }
 
@@ -1020,6 +1052,98 @@ export class RepositoryWorker {
  * strings. A finding with no matching location is published without one: a
  * report may omit where something is, it may never invent it.
  */
+/**
+ * Subtracts council-rejected findings from a packet's exact counts.
+ *
+ * Returns null whenever the arithmetic cannot be trusted end to end: no exact
+ * counts, counts that disagree with the packet's own buckets, a rejected rule
+ * outside the manifest, or a subtraction that would go below zero. Null means
+ * nothing is subtracted anywhere, because a report that shows a false alarm
+ * beats a report whose numbers stopped being real.
+ */
+function subtractRejectedFindings(
+  normalized: NormalizedResult,
+  rejected: readonly ReviewFinding[],
+): NormalizedResult | null {
+  const counts = normalized.counts;
+  if (counts === undefined) return null;
+  let packet: unknown;
+  try {
+    packet = JSON.parse(new TextDecoder().decode(normalized.packetBytes));
+  } catch {
+    return null;
+  }
+  const parsed = brokerResultPacketSchema.safeParse(packet);
+  if (!parsed.success) return null;
+  const byToken = new Map(counts.map((entry) => [entry.token, entry.count]));
+  // The counts must describe exactly the packet they arrived beside.
+  if (
+    parsed.data.groups.length !== byToken.size ||
+    parsed.data.groups.some((group) => {
+      const count = byToken.get(group.token);
+      return count === undefined || bucketForCount(count) !== group.bucket;
+    })
+  ) {
+    return null;
+  }
+  const tally = new Map<number, number>();
+  for (const finding of rejected) {
+    if (finding.engine !== "gitleaks") continue;
+    const token = gitleaksRuleToken(finding.ruleId);
+    if (token === null) return null;
+    tally.set(token, (tally.get(token) ?? 0) + 1);
+  }
+  if (tally.size === 0) return null;
+  const remaining: { token: number; count: number }[] = [];
+  for (const [token, count] of byToken) {
+    const removed = tally.get(token) ?? 0;
+    if (removed > count) return null;
+    if (count - removed > 0) remaining.push({ token, count: count - removed });
+  }
+  const rebuilt = {
+    schemaVersion: 1 as const,
+    groups: remaining
+      .toSorted((left, right) => left.token - right.token)
+      .map((entry) => ({ token: entry.token, bucket: bucketForCount(entry.count) })),
+  };
+  if (!brokerResultPacketSchema.safeParse(rebuilt).success) return null;
+  return {
+    packetBytes: new TextEncoder().encode(JSON.stringify(rebuilt)),
+    coverage: normalized.coverage,
+    reason: normalized.reason,
+    counts: remaining.toSorted((left, right) => left.token - right.token),
+  };
+}
+
+/**
+ * Drops each rejected finding's location, one occurrence per rejection.
+ *
+ * Matching is by rule, path and line. Removal is tallied rather than blanket
+ * so that two findings sharing a line lose exactly as many entries as the
+ * council rejected, and only gitleaks entries are ever touched.
+ */
+function withoutRejectedLocations(
+  locations: readonly FindingLocation[],
+  rejected: readonly ReviewFinding[],
+): readonly FindingLocation[] {
+  const key = (ruleId: string, where: string, line: number): string =>
+    `${ruleId}\u0000${where}\u0000${String(line)}`;
+  const tally = new Map<string, number>();
+  for (const finding of rejected) {
+    if (finding.engine !== "gitleaks") continue;
+    const found = key(finding.ruleId, finding.path, finding.startLine);
+    tally.set(found, (tally.get(found) ?? 0) + 1);
+  }
+  return locations.filter((entry) => {
+    if (entry.engine !== "gitleaks") return true;
+    const found = key(entry.ruleId, entry.path, entry.startLine);
+    const left = tally.get(found) ?? 0;
+    if (left === 0) return true;
+    tally.set(found, left - 1);
+    return false;
+  });
+}
+
 function attachLocations(
   findings: readonly BrokerDerivedFinding[],
   locations: readonly FindingLocation[],

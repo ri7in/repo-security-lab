@@ -90,10 +90,28 @@ const repositoryWorker = new RepositoryWorker({
   // Judges are constructed here and injected, never reached for. The worker
   // and the review logic stay network-blind; only this composition root knows
   // a provider exists.
+  //
+  // Two panels from one configuration. The council judging the deterministic
+  // scanners' findings takes every judge in the configuration's trust order.
+  // The funnel judging the SCOUT's findings must exclude the scout's own
+  // family, because a model voting on its own report is one opinion wearing
+  // two hats, which is the failure the council exists to prevent.
   ...(configuration.judges.length === 0
     ? {}
     : {
-        judges: configuration.judges.map(
+        judges: configuration.judges
+          .filter((judge) => judge.family !== "openrouter")
+          .map(
+            (judge) =>
+              new ChatJudge({
+                apiKey: judge.apiKey,
+                model: judge.model,
+                family: judge.family,
+                endpoint: judge.endpoint,
+                fetch: (input, init) => fetch(input, init),
+              }),
+          ),
+        councilJudges: configuration.judges.map(
           (judge) =>
             new ChatJudge({
               apiKey: judge.apiKey,

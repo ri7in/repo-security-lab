@@ -91,8 +91,8 @@ function scoutConfig(
  *
  * Gated on the same switch as the reader, because it was not and that made the
  * switch a lie: the judges also review secret-scanner findings, and that path
- * ships a twelve line window of real source to every judge. Turning the reader
- * off while excerpts kept going to two providers is not "off".
+ * ships a window of up to 120 lines of real source to every judge. Turning the
+ * reader off while excerpts kept going to the providers is not "off".
  */
 function judgePanel(
   environment: NodeJS.ProcessEnv,
@@ -103,15 +103,21 @@ function judgePanel(
   readonly endpoint: string;
 }[] {
   if (environment["AI_REVIEW_ENABLED"] === "false") return [];
-  // Verified against the live providers on 2026-08-23: each of these returned
-  // the correct verdict on two genuine secrets and two documentation
+  // TRUST-ORDERED, strongest first, on operator instruction: the council
+  // decides each finding by the two most senior judges that answer, so this
+  // order is policy rather than style. ox has found real bugs the others
+  // missed; Gemini is the stronger of the stable pair. gpt-oss stays as the
+  // quorum partner for the day the preview model disappears.
+  //
+  // Verified against the live providers on 2026-08-23: each of the stable two
+  // returned the correct verdict on two genuine secrets and two documentation
   // placeholders. Free model ids churn fast, hence the env overrides.
   const candidates = [
     {
-      keyName: "GROQ_API_KEY",
-      family: "groq",
-      endpoint: "https://api.groq.com/openai/v1/chat/completions",
-      model: environment["GROQ_JUDGE_MODEL"] ?? "openai/gpt-oss-120b",
+      keyName: "OPENROUTER_API_KEY",
+      family: "openrouter",
+      endpoint: "https://openrouter.ai/api/v1/chat/completions",
+      model: environment["OPENROUTER_JUDGE_MODEL"] ?? "stealth/ox-alpha",
     },
     {
       keyName: "GEMINI_API_KEY",
@@ -119,6 +125,12 @@ function judgePanel(
       endpoint:
         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       model: environment["GEMINI_JUDGE_MODEL"] ?? "gemini-flash-lite-latest",
+    },
+    {
+      keyName: "GROQ_API_KEY",
+      family: "groq",
+      endpoint: "https://api.groq.com/openai/v1/chat/completions",
+      model: environment["GROQ_JUDGE_MODEL"] ?? "openai/gpt-oss-120b",
     },
   ];
   const panel = candidates.flatMap((candidate) => {

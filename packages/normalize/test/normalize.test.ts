@@ -25,6 +25,12 @@ describe("hostile-domain Gitleaks normalizer", () => {
     ]);
     expect(result).toMatchObject({ coverage: "complete", reason: null });
     expect(decoder.decode(result.packetBytes)).not.toContain("github-pat");
+    // Exact counts travel beside the buckets so the council can subtract one
+    // rejected finding. They must describe the identical groups.
+    expect(result.counts).toEqual([
+      { token: gitleaksRuleToken("aws-access-token"), count: 1 },
+      { token: gitleaksRuleToken("github-pat"), count: 6 },
+    ]);
   });
 
   it("carries a fixed partial outcome when the scanner hit its ceiling", () => {

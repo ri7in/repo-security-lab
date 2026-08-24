@@ -204,6 +204,67 @@ describe("gitleaks review context", () => {
     expect(JSON.stringify(result.review)).not.toMatch(/AKIA|sk_live|ghp_/);
   });
 
+  it("reports the giveaway words the blanked value contained, never the value", async () => {
+    // "sk_test_placeholder" is exactly the finding the council kept alive on
+    // the operator's own account: the blanking removed the word that settles
+    // it. These derived facts put the clue back. The value itself must still
+    // be absent from every field of the channel.
+    const line = 'const stripe = "sk_test_placeholder";';
+    const setup = await fixture({ "src/payments.ts": `${line}\n` });
+    const result = await new GitleaksScanner({
+      binaryPath: setup.binary,
+      expectedBinarySha256: setup.binaryHash,
+      collectReview: true,
+      runCommand: runnerReturning([
+        {
+          RuleID: "stripe-access-token",
+          Secret: "REDACTED",
+          Match: 'const stripe = "REDACTED"',
+          File: "src/payments.ts",
+          StartLine: 1,
+          EndLine: 1,
+          StartColumn: 17,
+          EndColumn: 35,
+          Entropy: 3.1,
+        },
+      ]),
+    }).scan(setup.source);
+
+    const entry = result.review?.[0];
+    expect(entry?.valueHints).toEqual(["placeholder", "test"]);
+    expect(entry?.valueLength).toBe(19);
+    expect(entry?.fileLineCount).toBe(2);
+    expect(JSON.stringify(result.review)).not.toContain("sk_test_placeholder");
+  });
+
+  it("reports no giveaway words for a value that has none", async () => {
+    const value = "9f8e7d6c5b4a39281706f5e4d3c2b1a0";
+    const setup = await fixture({ "deploy/secrets.yaml": `token: ${value}\n` });
+    const result = await new GitleaksScanner({
+      binaryPath: setup.binary,
+      expectedBinarySha256: setup.binaryHash,
+      collectReview: true,
+      runCommand: runnerReturning([
+        {
+          RuleID: "generic-api-key",
+          Secret: "REDACTED",
+          Match: "token: REDACTED",
+          File: "deploy/secrets.yaml",
+          StartLine: 1,
+          EndLine: 1,
+          StartColumn: 8,
+          EndColumn: 39,
+          Entropy: 4.8,
+        },
+      ]),
+    }).scan(setup.source);
+
+    const entry = result.review?.[0];
+    expect(entry?.valueHints).toEqual([]);
+    expect(entry?.valueLength).toBeGreaterThan(20);
+    expect(JSON.stringify(result.review)).not.toContain(value);
+  });
+
   it("still reports a finding whose file cannot be read", async () => {
     const setup = await fixture({});
     const result = await new GitleaksScanner({

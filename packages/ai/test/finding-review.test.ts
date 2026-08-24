@@ -27,6 +27,10 @@ const placeholder: ReviewFinding = {
   path: ".env.example",
   startLine: 3,
   entropy: 3.2,
+  fileLineCount: 4,
+  valueLength: 46,
+  valueHints: ["placeholder"],
+  contextStartLine: 1,
   contextLines: ["", "", "TELEGRAM_BOT_TOKEN=REDACTED"],
 };
 
@@ -36,6 +40,10 @@ const real: ReviewFinding = {
   path: "infrastructure/k8s/secrets.yaml",
   startLine: 14,
   entropy: 4.6,
+  fileLineCount: 40,
+  valueLength: 43,
+  valueHints: [],
+  contextStartLine: 13,
   contextLines: ["data:", "  JWT_SECRET: REDACTED"],
 };
 
@@ -58,11 +66,57 @@ describe("review prompt", () => {
   it("shows the path and numbered lines the verdict depends on", () => {
     const prompt = renderFindingReviewPrompt(placeholder);
     expect(prompt).toContain(".env.example");
-    expect(prompt).toContain("5| TELEGRAM_BOT_TOKEN=REDACTED");
+    expect(prompt).toContain("3| TELEGRAM_BOT_TOKEN=REDACTED");
+  });
+
+  it("puts the credential on the very line it tells the judge to look at", () => {
+    // The excerpt is a window centred on the match, so it opens above it. The
+    // renderer numbered from the match instead, which pushed every label up to
+    // five lines too high: the prompt said "Line: 14" and its own line 14 was
+    // five lines past the credential, blank on a short file. The judge was
+    // being asked about the wrong line in the same breath as the right one.
+    // Asserted as the invariant rather than as a literal, because the literal
+    // is what carried the bug through three review rounds.
+    for (const finding of [placeholder, real]) {
+      const prompt = renderFindingReviewPrompt(finding);
+      const labelled = prompt
+        .split("\n")
+        .find((line) => line.startsWith(`${String(finding.startLine)}| `));
+      expect(labelled, `no line labelled ${String(finding.startLine)}`).toBeDefined();
+      expect(labelled).toContain("REDACTED");
+    }
+  });
+
+  it("numbers from where the excerpt opens, not from the match", () => {
+    const prompt = renderFindingReviewPrompt(real);
+    expect(prompt).toContain("13| data:");
+    expect(prompt).toContain("14|   JWT_SECRET: REDACTED");
+    expect(prompt).not.toContain("15|");
   });
 
   it("carries no secret value, only the redaction marker", () => {
     expect(renderFindingReviewPrompt(placeholder)).not.toMatch(/sk_live|AKIA/);
+  });
+
+  it("says how long the file is and which slice is shown", () => {
+    // A judge shown 120 lines of a 4,000 line file must know it is looking
+    // through a window, or absence of use becomes evidence of disuse.
+    const prompt = renderFindingReviewPrompt(real);
+    expect(prompt).toContain("infrastructure/k8s/secrets.yaml (40 lines; lines 13-14 shown)");
+  });
+
+  it("hands the judge the giveaway words the blanked value contained", () => {
+    // The redaction removes the single most decisive clue there is: the word
+    // "placeholder" inside the value itself. These facts put the clue back
+    // without the value: a closed word list and a length, nothing else.
+    const prompt = renderFindingReviewPrompt(placeholder);
+    expect(prompt).toContain('contains the giveaway word "placeholder"');
+    expect(prompt).toContain("46 characters");
+  });
+
+  it("says plainly when the value had no giveaway words", () => {
+    const prompt = renderFindingReviewPrompt(real);
+    expect(prompt).toContain("contains none of the common placeholder words");
   });
 });
 
@@ -118,6 +172,48 @@ describe("council review of scanner findings", () => {
     );
     expect(outcome.suppressedRuleIds).toEqual([]);
     expect(outcome.complete).toBe(false);
+  });
+
+  it("lists each rejected finding individually", async () => {
+    const outcome = await reviewScannerFindings(
+      [placeholder],
+      [judge("a", "not_real"), judge("b", "not_real")],
+      true,
+    );
+    expect(outcome.rejected).toEqual([placeholder]);
+  });
+
+  it("lets the two most trusted judges convict over a junior dissent", async () => {
+    // The judges array is trust-ordered on operator instruction. A junior
+    // judge is advisory while two seniors answered: it can neither veto them
+    // nor convict without them.
+    const outcome = await reviewScannerFindings(
+      [placeholder],
+      [judge("a", "not_real"), judge("b", "not_real"), judge("c", "real")],
+      true,
+    );
+    expect(outcome.rejected).toEqual([placeholder]);
+  });
+
+  it("lets a senior judge veto whatever the juniors agree on", async () => {
+    const outcome = await reviewScannerFindings(
+      [placeholder],
+      [judge("a", "unsure"), judge("b", "not_real"), judge("c", "not_real")],
+      true,
+    );
+    expect(outcome.rejected).toEqual([]);
+  });
+
+  it("promotes the junior judge when a senior is unreachable", async () => {
+    // With the most trusted judge down, the next two decide unanimously,
+    // which is exactly the rule the two-judge council always had.
+    const outcome = await reviewScannerFindings(
+      [placeholder],
+      [deadJudge("a"), judge("b", "not_real"), judge("c", "not_real")],
+      true,
+    );
+    expect(outcome.rejected).toEqual([placeholder]);
+    expect(outcome.complete).toBe(true);
   });
 
   it("keeps a rule when any one of its occurrences survives", async () => {
