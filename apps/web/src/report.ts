@@ -8,7 +8,6 @@ import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
 import {
   fullyScannedCount,
   nothingFoundText,
-  secretScannedCount,
   uncheckedCount,
 } from "./verdict.js";
 import type { PdfReport } from "./pdf.js";
@@ -55,7 +54,12 @@ export function reportDocument(
     ]),
   );
   const scannedAt = new Date(state.summary.updatedAt);
-  const scanned = secretScannedCount(state.repositories);
+  // Read in full, which is what the verdict printed under this line counts.
+  // secretScannedCount also counts a repository the scanner only partly read,
+  // so a report with five complete and two partial said "7 of 7 public
+  // repositories examined" directly above "Nothing exposed in the 5
+  // repositories the secret scan read in full. 2 did not finish."
+  const scanned = fullyScannedCount(state.repositories);
   return {
     title: `Security report for ${state.summary.username}`,
     // "23 public repositories examined" sat directly above a verdict saying

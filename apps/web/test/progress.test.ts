@@ -176,6 +176,12 @@ describe("the progress model", () => {
     expect(progressModel(summary("complete", { complete: 1 })).liveDetail).toBe(
       "All 1 repository has been checked.",
     );
+    // The running line never got the same treatment, so an account with one
+    // repository read "0 of 1 repositories finished." in the live region for
+    // the whole scan, not just at the end of it.
+    expect(progressModel(summary("scanning", { waiting: 1 })).liveDetail).toBe(
+      "0 of 1 repository finished.",
+    );
   });
 
   it("only says all when all of them really were", () => {
@@ -261,6 +267,19 @@ describe("what a finished scan announces about its own coverage", () => {
     );
     expect(model.liveDetail).toBe(
       "18 of 23 repositories checked, 4 skipped as forks or as empty, 1 did not finish.",
+    );
+  });
+
+  it("agrees with its own count on a one repository account", () => {
+    // "0 of 1 repositories checked" on an account whose single repository is
+    // a fork. Asserted as a prefix and not as the whole sentence: the trailing
+    // clause still names the category rather than agreeing with the count, and
+    // that is a copy decision nobody has taken yet.
+    expect(progressModel(summary("complete", { cancelled: 1 })).liveDetail).toContain(
+      "0 of 1 repository checked,",
+    );
+    expect(progressModel(summary("complete", { failed: 1 })).liveDetail).toBe(
+      "0 of 1 repository checked, 1 did not finish.",
     );
   });
 

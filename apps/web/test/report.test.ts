@@ -147,3 +147,39 @@ describe("the downloaded report says as much as the printed one", () => {
     expect(advice.length).toBeGreaterThan(60);
   });
 });
+
+describe("the report's meta line and its verdict count the same repositories", () => {
+  it("counts only the repositories the secret scan read in full", () => {
+    // "7 of 7 public repositories examined" printed one line above a verdict
+    // reading "Nothing exposed in the 5 repositories the secret scan read in
+    // full. 2 did not finish." secretScannedCount counts a partly scanned
+    // repository too, so the same repository sat on both sides of that page.
+    const document_ = reportDocument(
+      {
+        summary: summary(),
+        repositories: [
+          repository({ repositoryId: 1, name: "read-in-full" }),
+          repository({
+            repositoryId: 2,
+            name: "half-read",
+            state: "partial",
+            coverage: {
+              snapshot: "complete",
+              archive_guard: "complete",
+              gitleaks: "partial",
+              osv: "unsupported",
+              zizmor: "unsupported",
+              opengrep: "unsupported",
+              ai: "unsupported",
+            },
+          }),
+        ],
+        findings: [],
+      },
+      "Nothing exposed in the 1 repository the secret scan read in full.",
+      "https://example.test",
+    );
+    expect(document_.meta).toContain("1 of 2 public repositories examined");
+    expect(document_.meta).not.toContain("2 of 2");
+  });
+});

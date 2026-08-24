@@ -40,6 +40,7 @@ import { ruleName } from "./rule-name.js";
 import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
 import {
   explainFailure,
+  printCoverText,
   providerNames,
   percentDone,
   statusHeading,
@@ -687,7 +688,7 @@ async function poll(requestId: string): Promise<void> {
     // After both tables are populated, so the findings table is measured with
     // its rows in it rather than empty.
     markScrollRegions();
-    setPrintHeader(summary, findingCount);
+    setPrintHeader(summary, repositories, findingCount);
     latest = { summary, repositories, findings: loadedFindings };
     renderVerdict(summary, repositories, loadedFindings, terminal);
     if (terminal) {
@@ -1079,25 +1080,20 @@ printReport.addEventListener("click", () => {
   window.print();
 });
 
-function setPrintHeader(summary: ScanRequestSummary, findings: number): void {
+function setPrintHeader(
+  summary: ScanRequestSummary,
+  repositories: readonly RepositoryRow[],
+  findings: number,
+): void {
   printTitle.textContent = `Security report for ${summary.username}`;
-  const counted = Object.values(summary.repositoryTotals).reduce(
-    (sum, value) => sum + value,
-    0,
-  );
-  // A lookup that never ran was getting the wording of a clean result: "0
-  // public repositories in the account, nothing found". That is the false
-  // all-clear the on-screen verdict already refuses, still alive on paper.
-  if (summary.state === "failed") {
-    printMeta.textContent =
-      "This scan stopped before it finished, so it has no result · " +
-      `${new Date(summary.updatedAt).toLocaleString()} · ` +
-      branding.productDisplayName;
-    return;
-  }
-  printMeta.textContent =
-    `${String(counted)} public ${counted === 1 ? "repository" : "repositories"} in the account · ` +
-    `${findings === 0 ? "nothing found" : `${String(findings)} finding${findings === 1 ? "" : "s"}`} · ` +
-    `scanned ${new Date(summary.updatedAt).toLocaleString()} · ` +
-    `${branding.productDisplayName}`;
+  // The wording is decided in summary.ts and tested there. It was decided here
+  // behind a single `state === "failed"` guard, which let a request that
+  // reached `complete` with every repository failed print "nothing found", and
+  // let a page printed mid-scan print it too.
+  printMeta.textContent = `${printCoverText(
+    summary,
+    fullyScannedCount(repositories),
+    findings,
+    new Date(summary.updatedAt).toLocaleString(),
+  )} · ${branding.productDisplayName}`;
 }

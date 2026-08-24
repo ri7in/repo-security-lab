@@ -62,6 +62,33 @@ describe("production accessibility invariants", () => {
     }
   });
 
+  it("lets a 39 character username wrap inside the verdict box", async () => {
+    // The verdict prints the username, GitHub allows 39 characters, and one
+    // with no hyphen is a single unbreakable run in a flex row. Measured in
+    // Chrome at 320px: the document came out wider than the viewport, with the
+    // name painted past the right edge of its own red box and a horizontal
+    // scrollbar under the whole page. Only `anywhere` fixes it, because it is
+    // the one value that shrinks the flex item's min-content, so this asserts
+    // the value rather than merely the presence of a wrap.
+    const css = await readFile(new URL("src/style.css", root), "utf8");
+    const rules = [...css.matchAll(/(^|\n)(\.verdict|#verdict-text)\s*\{([^}]*)\}/g)];
+    expect(rules.length, "no rule styles the verdict").toBeGreaterThan(0);
+    const wraps = rules.filter((rule) => /overflow-wrap:\s*anywhere/.test(rule[3] ?? ""));
+    expect(wraps.length, "a long username cannot break out of the verdict").toBeGreaterThan(0);
+    // Asserted over every matching rule rather than one of them, for the same
+    // reason the running-row guard carries: a single-declaration assertion
+    // passed there while a second rule further down the file put the wrong
+    // value back. `break-word` and `normal` both measured a document wider
+    // than a 320px viewport, so either arriving later is the whole defect
+    // again with a green test over it.
+    for (const rule of rules) {
+      const body = rule[3] ?? "";
+      expect(body, `a later verdict rule undoes the wrap: ${body.trim()}`).not.toMatch(
+        /overflow-wrap:\s*(normal|break-word)/,
+      );
+    }
+  });
+
   it("gives the findings table a row header, as the ledger has", async () => {
     // Every findings cell was a plain td, including the repository name, so
     // navigating that table cell by cell never re-announced which repository

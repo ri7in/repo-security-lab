@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ScanRequestSummary } from "@app/contracts";
 import {
   explainFailure,
+  printCoverText,
   providerNames,
   percentDone,
   statusHeading,
@@ -171,6 +172,22 @@ describe("the status line", () => {
     );
   });
 
+  it("agrees with its own count on a one repository account", () => {
+    // "0 of 1 repositories finished." was on screen for the whole scan, and
+    // the return directly below the patched one has carried the singular
+    // since it was written.
+    expect(statusLine(summary("complete", { failed: 1 }))).toBe(
+      "0 of 1 repository finished.",
+    );
+    expect(statusLine(summary("scanning", { waiting: 1 }))).toBe(
+      "0 of 1 repository finished so far.",
+    );
+    // The plural keys off the total, not the leading count, so this stays right.
+    expect(statusLine(summary("scanning", { complete: 1, waiting: 1 }))).toBe(
+      "1 of 2 repositories finished so far.",
+    );
+  });
+
   it("does not count an empty account as a finished scan of nothing", () => {
     // "All 0 repositories finished." under a heading reading "Scan finished".
     const line = statusLine(summary("complete", {}));
@@ -270,5 +287,82 @@ describe("naming the model providers", () => {
     expect(providerNames(["openrouter", "somebody-new"])).toBe(
       "OpenRouter and somebody-new",
     );
+  });
+});
+
+describe("the count on a summary card", () => {
+  it("gets the singular right for one public repository", () => {
+    // "1" sat over "public repositories" three lines above a status line this
+    // same change corrected to "0 of 1 repository finished.", and the findings
+    // card in the same function has branched on its own count since it was
+    // written.
+    expect(summaryCards(summary("complete", { complete: 1 }), 1, 0, 1)[0]?.label).toBe(
+      "public repository",
+    );
+    expect(summaryCards(summary("complete", { complete: 2 }), 2, 0, 2)[0]?.label).toBe(
+      "public repositories",
+    );
+  });
+});
+
+describe("the line at the top of a printed page", () => {
+  const when = "24/08/2026, 01:35";
+
+  it("does not say nothing found over a scan that read no repository", () => {
+    // A request reaches `complete` as soon as every repository is terminal,
+    // and `failed` is terminal, so four failed repositories printed "4 public
+    // repositories in the account, nothing found" directly above the verdict
+    // "No repository here was read, so this scan has no result."
+    const line = printCoverText(summary("complete", { failed: 4 }), 0, 0, when);
+    expect(line).toContain("No repository here was read");
+    expect(line).not.toContain("nothing found");
+    expect(line).not.toContain("in the account");
+  });
+
+  it("does not deny a result over a findings table with rows in it", () => {
+    // A repository whose secret scan hit the finding limit is `partial` and
+    // still publishes what it found, so nothing was read in full while twelve
+    // findings print directly under this line. Denying a result there is worse
+    // than the false all-clear this whole change is about.
+    const line = printCoverText(summary("complete", { partial: 1 }), 0, 12, when);
+    expect(line).toBe(
+      `1 public repository in the account · 12 findings · scanned ${when}`,
+    );
+  });
+
+  it("does not claim a result while the scan is still running", () => {
+    // .print-cover has an unconditional display block inside @media print, so
+    // Cmd+P halfway through a scan printed "11 public repositories in the
+    // account, nothing found" over a status section reading "Scan in progress"
+    // and "5 of 11 repositories finished so far".
+    const line = printCoverText(
+      summary("scanning", { complete: 5, scanning: 6 }),
+      5,
+      0,
+      when,
+    );
+    expect(line).toContain("5 of 11 repositories finished so far");
+    expect(line).not.toContain("nothing found");
+  });
+
+  it("tells an empty account there was nothing to scan", () => {
+    const line = printCoverText(summary("complete"), 0, 0, when);
+    expect(line).toContain("no public repositories");
+    expect(line).not.toContain("nothing found");
+  });
+
+  it("keeps the count and the result once something really was read", () => {
+    expect(printCoverText(summary("complete", { complete: 3 }), 3, 0, when)).toBe(
+      `3 public repositories in the account · nothing found · scanned ${when}`,
+    );
+    expect(printCoverText(summary("complete", { complete: 1 }), 1, 2, when)).toBe(
+      `1 public repository in the account · 2 findings · scanned ${when}`,
+    );
+  });
+
+  it("still says a stopped request has no result", () => {
+    const line = printCoverText(summary("failed", {}, "GITHUB_NETWORK"), 0, 0, when);
+    expect(line).toContain("stopped before it finished");
+    expect(line).not.toContain("nothing found");
   });
 });

@@ -61,7 +61,10 @@ function checkedText(all: number, skipped: number, missed: number): string {
   if (missed > 0) {
     reasons.push(`${String(missed)} did not finish`);
   }
-  return `${String(checked)} of ${String(all)} repositories checked, ${reasons.join(", ")}.`;
+  // "0 of 1 repositories checked" on an account whose single repository is a
+  // fork. The branch above returns "All 1 repository has been checked." and
+  // this one never got the same treatment.
+  return `${String(checked)} of ${String(all)} ${all === 1 ? "repository" : "repositories"} checked, ${reasons.join(", ")}.`;
 }
 
 export function progressModel(summary: ScanRequestSummary): ProgressModel {
@@ -199,7 +202,7 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
             checkedText(all, skippedOnPurpose, missed)
         : all === 0
           ? "Looking up the account."
-          : `${String(terminal)} of ${String(all)} repositories finished.`,
+          : `${String(terminal)} of ${String(all)} ${all === 1 ? "repository" : "repositories"} finished.`,
     finished: finished || stopped,
   };
 }

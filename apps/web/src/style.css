@@ -447,7 +447,16 @@ footer p { max-width: 720px; margin: 0; }
    visitor actually came for is "is anything of mine exposed", and making them
    read a table to find that out is the wrong order. */
 .verdict[hidden] { display: none; }
-.verdict { display: flex; align-items: center; gap: 11px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid currentColor; font: 650 14px/1.45 var(--sans); }
+/* GitHub allows a 39 character username, and one with no hyphen in it is a
+   single unbreakable run inside this flex row, so the text span could not
+   shrink below its own min-content: at 320px the sentence ran out through
+   the coloured box, painted off the side of the screen, and gave the whole
+   page a horizontal scrollbar. `anywhere` and not `break-word`, because only
+   `anywhere` shrinks min-content; `min-width: 0` on the span shrinks the box
+   and leaves the text painting outside it, which is the same bug one layer
+   down. Both alternatives were measured in Chrome and both left the document
+   wider than the viewport. */
+.verdict { display: flex; align-items: center; gap: 11px; margin: 0 0 18px; padding: 14px 16px; border: 1px solid currentColor; font: 650 14px/1.45 var(--sans); overflow-wrap: anywhere; }
 .verdict-mark { display: grid; place-items: center; flex: 0 0 26px; width: 26px; height: 26px; border: 2px solid currentColor; border-radius: 50%; font: 700 14px var(--mono); }
 .verdict[data-tone="clear"] { color: var(--signal); background: var(--signal-soft); }
 .verdict[data-tone="clear"] .verdict-mark::after { content: "\2713"; }
