@@ -28,6 +28,8 @@ export interface ScanWorkerConfiguration {
    */
   readonly judges: readonly {
     readonly apiKey: string;
+    /** Every key for this provider, canonical first. See scout.apiKeys. */
+    readonly apiKeys: readonly string[];
     readonly model: string;
     readonly family: string;
     readonly endpoint: string;
@@ -41,6 +43,13 @@ export interface ScanWorkerConfiguration {
    */
   readonly scout: null | {
     readonly apiKey: string;
+    /**
+     * Every OpenRouter key, canonical first. OPENROUTER_API_KEY accepts a
+     * comma-separated pool on operator instruction: contributed accounts,
+     * each with its own daily meter, rotated on a rate limit. The keys are
+     * secrets; nothing may ever log one.
+     */
+    readonly apiKeys: readonly string[];
     /** Preferred reader first, stable fallback last. */
     readonly models: readonly string[];
   };
@@ -55,7 +64,11 @@ export interface ScanWorkerConfiguration {
 /** The pass-1 reader, or null when no key is configured. */
 function scoutConfig(
   environment: NodeJS.ProcessEnv,
-): null | { readonly apiKey: string; readonly models: readonly string[] } {
+): null | {
+  readonly apiKey: string;
+  readonly apiKeys: readonly string[];
+  readonly models: readonly string[];
+} {
   // On wherever a key exists, off with one variable.
   //
   // It was off while the stall that followed it was unexplained. The cause was
@@ -65,8 +78,13 @@ function scoutConfig(
   // worker will not claim past. Both halves are fixed, so the default is back
   // to on.
   if (environment["AI_REVIEW_ENABLED"] === "false") return null;
-  const apiKey = environment["OPENROUTER_API_KEY"];
-  if (apiKey === undefined || apiKey.trim() === "") return null;
+  const raw = environment["OPENROUTER_API_KEY"];
+  const apiKeys = (raw ?? "")
+    .split(",")
+    .map((key) => key.trim())
+    .filter((key) => key !== "");
+  const apiKey = apiKeys[0];
+  if (apiKey === undefined) return null;
   const preferred = environment["OPENROUTER_SCOUT_MODEL"];
   // ox-alpha reads first: it is the sharper reader and cites the offending
   // line rather than the surrounding block. It is also an unbranded preview
@@ -90,6 +108,7 @@ function scoutConfig(
   ];
   return {
     apiKey,
+    apiKeys,
     models: [...new Set(chain)],
   };
 }
@@ -106,6 +125,7 @@ function judgePanel(
   environment: NodeJS.ProcessEnv,
 ): readonly {
   readonly apiKey: string;
+  readonly apiKeys: readonly string[];
   readonly model: string;
   readonly family: string;
   readonly endpoint: string;
@@ -157,12 +177,19 @@ function judgePanel(
     },
   ];
   const panel = candidates.flatMap((candidate) => {
-    const apiKey = environment[candidate.keyName];
-    return apiKey === undefined || apiKey.trim() === ""
+    // A key variable may hold a comma-separated pool; the first key is the
+    // canonical one and the rest are rotation spares.
+    const apiKeys = (environment[candidate.keyName] ?? "")
+      .split(",")
+      .map((key) => key.trim())
+      .filter((key) => key !== "");
+    const apiKey = apiKeys[0];
+    return apiKey === undefined
       ? []
       : [
           {
             apiKey,
+            apiKeys,
             model: candidate.model,
             family: candidate.family,
             endpoint: candidate.endpoint,

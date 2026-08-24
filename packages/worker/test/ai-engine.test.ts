@@ -318,8 +318,10 @@ describe("the AI engine", () => {
     expect(result.coverage).toBe("partial");
   }, 30_000);
 
-  it("reports a review the council could not finish as partial", async () => {
-    // Fewer than two usable verdicts is no council at all for that flag.
+  it("publishes on a short panel and reports the review as partial", async () => {
+    // Operator decision 2026-08-24: a judge provider being unreachable no
+    // longer silences the lane. The surviving judge's confirmation publishes
+    // the flag, and the partial coverage says the panel was short.
     const sourcePath = await sourceTree({ "src/db.ts": VULNERABLE });
     const failing: JudgePort = {
       family: "gamma",
@@ -332,6 +334,25 @@ describe("the AI engine", () => {
       review: [],
       scout: scoutReturning(() => [flag()]),
       judges: [judge("alpha", "real"), failing],
+      tokenBudget: 50_000,
+    });
+    expect(result.coverage).toBe("partial");
+    expect(result.packet?.groups.length).toBe(1);
+  }, 30_000);
+
+  it("publishes nothing when no judge at all could be reached", async () => {
+    const sourcePath = await sourceTree({ "src/db.ts": VULNERABLE });
+    const failing = (family: string): JudgePort => ({
+      family,
+      review: () => Promise.reject(new Error("provider down")),
+    });
+    const result = await runAiEngine({
+      sourcePath,
+      repositoryId: 7,
+      repositoryName: "fixture",
+      review: [],
+      scout: scoutReturning(() => [flag()]),
+      judges: [failing("alpha"), failing("gamma")],
       tokenBudget: 50_000,
     });
     expect(result.coverage).toBe("partial");

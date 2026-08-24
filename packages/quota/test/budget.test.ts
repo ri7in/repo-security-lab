@@ -111,15 +111,22 @@ describe("model capacity", () => {
 });
 
 describe("council budget", () => {
-  it("reports the scarcest member, not the most generous", () => {
+  it("anchors the day to the reader, not to the smallest judge", () => {
+    // Operator decision 2026-08-24: judges no longer cap the day. Groq's
+    // 200K-token judge budget used to cap the whole tool at 16 reads while
+    // the reader could serve 50; publication now proceeds on whichever
+    // judges answer, a short panel marks the lane partial, and the
+    // advertised number is what the reader can actually deliver.
     const budget = councilBudget();
-    expect(budget.scarcestModelId).toBe(GROQ_GPT_OSS.id);
-    expect(budget.deepReadsPerDay).toBe(16);
+    expect(budget.scarcestModelId).toBe(OPENROUTER_NEMOTRON.id);
+    expect(budget.deepReadsPerDay).toBe(50);
     expect(budget.percentRemaining).toBe(100);
     expect(budget.available).toBe(true);
   });
 
-  it("shows the scout is not the bottleneck: it outlasts the judges", () => {
+  it("still models the judges as scarcer than the reader", () => {
+    // The judge pool being smaller is exactly why it was demoted from the
+    // anchor: this pin documents the asymmetry the decision rests on.
     const scout = modelCapacity(OPENROUTER_NEMOTRON);
     const judgePool = modelCapacity(GROQ_GPT_OSS);
     expect(scout.deepReadsPerDay).toBeGreaterThan(judgePool.deepReadsPerDay);
@@ -130,18 +137,19 @@ describe("council budget", () => {
     expect(DEEP_READ_REPO_LIMIT).toBe(3);
   });
 
-  it("falls to the scarcest share when one judge is half spent", () => {
+  it("ignores a judge's spend when anchoring the day", () => {
+    // A half-spent judge no longer moves the advertised number: the lane
+    // degrades to the judges that still answer rather than going scarce.
     const budget = councilBudget(
       new Map([[GROQ_GPT_OSS.id, { tokens: 150_000, requests: 48 }]]),
     );
-    expect(budget.scarcestModelId).toBe(GROQ_GPT_OSS.id);
-    expect(budget.percentRemaining).toBe(25);
-    expect(budget.deepReadsRemaining).toBe(4);
+    expect(budget.scarcestModelId).toBe(OPENROUTER_NEMOTRON.id);
+    expect(budget.percentRemaining).toBe(100);
   });
 
-  it("goes unavailable when any single member is exhausted", () => {
+  it("goes unavailable when the reader itself is exhausted", () => {
     const budget = councilBudget(
-      new Map([[GROQ_GPT_OSS.id, { tokens: 200_000, requests: 64 }]]),
+      new Map([[OPENROUTER_NEMOTRON.id, { tokens: 0, requests: 50 }]]),
     );
     expect(budget.available).toBe(false);
     expect(budget.percentRemaining).toBe(0);

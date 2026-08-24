@@ -21,8 +21,9 @@ import type { JudgePort, ScoutPort } from "./ports.js";
  *
  * 1. AI output is additive. This module never receives, edits, or suppresses a
  *    deterministic finding. Gitleaks results are assembled on a separate path.
- * 2. A flag is published only if it is grounded AND a majority of judges say
- *    "real". "unsure" counts against publication.
+ * 2. A flag is published only if it is grounded AND a majority of the judges
+ *    that answered say "real". "unsure" counts against publication, and a
+ *    panel shorter than configured marks the whole lane partial.
  * 3. Judges must come from distinct model families. Two judges from one family
  *    agreeing is one opinion, not a consensus, and the constructor refuses it.
  * 4. Every failure produces an explicit lane state. A broken scout reports
@@ -165,6 +166,7 @@ export class DetectionFunnel {
     const judged: JudgedFlag[] = [];
     let requestsSpent = 1;
     let judgeFailures = 0;
+    let shortPanels = 0;
 
     for (const candidate of queue) {
       const userPrompt = renderJudgeUserPrompt({
@@ -196,11 +198,18 @@ export class DetectionFunnel {
       const usable = votes.filter(
         (vote): vote is NonNullable<typeof vote> => vote !== null,
       );
-      // A flag judged by fewer than two families has no council behind it.
-      if (usable.length < 2) {
+      // Publication proceeds on whoever answered, on operator instruction:
+      // availability was chosen over a hard two-family floor after a live day
+      // where one provider's quota expiring would have silenced the whole
+      // lane. A flag confirmed by a single judge still publishes, and the
+      // lane is marked partial below so the ledger says the panel was short.
+      // Deleting a SCANNER finding is a different path with a different rule
+      // and still requires two seniors; this floor governs publication only.
+      if (usable.length === 0) {
         judgeFailures += 1;
         continue;
       }
+      if (usable.length < this.#judges.length) shortPanels += 1;
       judged.push({
         grounded: candidate,
         verdicts: usable,
@@ -215,7 +224,11 @@ export class DetectionFunnel {
     // batch we could not finish judging is partial. Only a scout that never
     // produced usable output is `ai_not_run`, because reporting an unfinished
     // review as a clean one is the failure mode this ledger exists to prevent.
-    const incomplete = judgeFailures > 0 || grounded.length > queue.length;
+    // A flag decided by fewer judges than the panel holds is honest cause
+    // for "partly reviewed": the answer stands, the confidence behind it is
+    // thinner than the configured council.
+    const incomplete =
+      judgeFailures > 0 || shortPanels > 0 || grounded.length > queue.length;
 
     return {
       state: incomplete ? "ai_partial" : "ai_complete",

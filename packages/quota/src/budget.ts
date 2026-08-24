@@ -158,8 +158,20 @@ export function councilBudget(
     modelCapacity(model, spend.get(model.id) ?? ZERO_SPEND),
   );
 
-  let scarcest = perModel[0] as ModelCapacity;
-  for (const candidate of perModel) {
+  // The day is anchored to the READERS, on operator instruction. Judges no
+  // longer cap the number: publication proceeds on whichever judges answer
+  // and a short panel marks the lane partial, so a judge provider's small
+  // token day (Groq's 200K capped the whole tool at 16) degrades confidence
+  // rather than availability. Reader capacity is what actually decides
+  // whether a repository can be read at all.
+  const readerIds = new Set(
+    council.filter((model) => model.role === "reader").map((model) => model.id),
+  );
+  const anchored = perModel.filter((entry) => readerIds.has(entry.modelId));
+  const anchor = anchored.length > 0 ? anchored : perModel;
+
+  let scarcest = anchor[0] as ModelCapacity;
+  for (const candidate of anchor) {
     if (
       candidate.percentRemaining < scarcest.percentRemaining ||
       (candidate.percentRemaining === scarcest.percentRemaining &&
@@ -170,10 +182,10 @@ export function councilBudget(
   }
 
   const deepReadsRemaining = Math.min(
-    ...perModel.map((entry) => entry.deepReadsRemaining),
+    ...anchor.map((entry) => entry.deepReadsRemaining),
   );
   const deepReadsPerDay = Math.min(
-    ...perModel.map((entry) => entry.deepReadsPerDay),
+    ...anchor.map((entry) => entry.deepReadsPerDay),
   );
 
   return {

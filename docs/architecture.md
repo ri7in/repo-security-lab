@@ -167,7 +167,10 @@ described here:
    misbehaving reader a free-text channel into the prompt of the thing checking
    it.
 
-Publication needs a strict majority of all judges to say "real". "Unsure"
+Publication needs a strict majority of the judges that answered to say
+"real", with at least one answer; a panel shorter than configured marks the
+lane partial, so availability degrades confidence rather than silencing the
+reader (operator decision, 2026-08-24). "Unsure"
 counts against, because an abstention is not a vote in favour.
 
 ### What leaves the machine

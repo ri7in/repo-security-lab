@@ -8,6 +8,7 @@ import {
 import { HttpWorkerStore } from "@app/store-http";
 import { branding } from "@app/branding";
 import { FallbackScout } from "@app/ai";
+import { pooledFetch } from "./key-pool.js";
 import { ChatJudge, OpenRouterScout } from "@app/ai-providers";
 import { RepositoryWorker } from "@app/worker";
 import { parseScanWorkerConfiguration } from "./runtime-config.js";
@@ -42,6 +43,8 @@ const store = new HttpWorkerStore({
   keyGeneration: configuration.keyGeneration,
   workerSecret: configuration.workerSecret,
 });
+const openRouterFetch = pooledFetch(configuration.scout?.apiKeys ?? []);
+
 const repositoryWorker = new RepositoryWorker({
   store,
   archiveFetcher: new GithubArchiveClient({
@@ -70,7 +73,7 @@ const repositoryWorker = new RepositoryWorker({
               new OpenRouterScout({
                 apiKey: configuration.scout?.apiKey ?? "",
                 model,
-                fetch: (input, init) => fetch(input, init),
+                fetch: (input, init) => openRouterFetch(input, init),
                 dataPolicy: { allowTrainingProviders: true },
                 appTitle: branding.productDisplayName,
               }),
@@ -120,26 +123,26 @@ const repositoryWorker = new RepositoryWorker({
     : {
         judges: configuration.judges
           .filter((judge) => judge.family !== "openrouter")
-          .map(
-            (judge) =>
-              new ChatJudge({
-                apiKey: judge.apiKey,
-                model: judge.model,
-                family: judge.family,
-                endpoint: judge.endpoint,
-                fetch: (input, init) => fetch(input, init),
-              }),
-          ),
-        councilJudges: configuration.judges.map(
-          (judge) =>
-            new ChatJudge({
+          .map((judge) => {
+            const send = pooledFetch(judge.apiKeys);
+            return new ChatJudge({
               apiKey: judge.apiKey,
               model: judge.model,
               family: judge.family,
               endpoint: judge.endpoint,
-              fetch: (input, init) => fetch(input, init),
-            }),
-        ),
+              fetch: (input, init) => send(input, init),
+            });
+          }),
+        councilJudges: configuration.judges.map((judge) => {
+          const send = pooledFetch(judge.apiKeys);
+          return new ChatJudge({
+            apiKey: judge.apiKey,
+            model: judge.model,
+            family: judge.family,
+            endpoint: judge.endpoint,
+            fetch: (input, init) => send(input, init),
+          });
+        }),
       }),
   ...(configuration.zizmor === null
     ? {}

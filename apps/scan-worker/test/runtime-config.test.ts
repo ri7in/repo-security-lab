@@ -112,6 +112,19 @@ describe("scan worker configuration", () => {
     ]);
   });
 
+  it("accepts a comma-separated pool of OpenRouter keys, canonical first", () => {
+    // Contributed accounts, each with its own daily meter, on operator
+    // instruction. The first key is canonical; the rest rotate in on a rate
+    // limit. Judges on the same variable share the pool.
+    const input = environment();
+    input["OPENROUTER_API_KEY"] = " key-one , key-two ,key-three ";
+    input["GEMINI_API_KEY"] = "gm";
+    const parsed = parseScanWorkerConfiguration(input);
+    expect(parsed.scout?.apiKey).toBe("key-one");
+    expect(parsed.scout?.apiKeys).toEqual(["key-one", "key-two", "key-three"]);
+    expect(parsed.judges[0]?.apiKeys).toEqual(["key-one", "key-two", "key-three"]);
+  });
+
   it("rejects missing secrets, roots, and malformed identities", () => {
     for (const mutation of [
       (input: NodeJS.ProcessEnv) => delete input["WORKER_SECRET"],

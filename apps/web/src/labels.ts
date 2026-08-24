@@ -324,7 +324,7 @@ const AI_COVERAGE: Record<string, Label> = {
     text: "Reviewed",
     tone: "ok",
     detail:
-      "A model read this repository's code and a panel of judges from different model families confirmed anything it flagged.",
+      "A model read this repository's code and judges from separate companies confirmed anything it flagged. When a judge's provider is unreachable, whoever answered decides and the repository is marked partly reviewed instead.",
   },
   partial: {
     text: "Partly reviewed",

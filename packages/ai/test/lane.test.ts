@@ -343,7 +343,11 @@ describe("detection funnel", () => {
     expect(result.requestsSpent).toBe(3);
   });
 
-  it("degrades to ai_partial when a judge is unreachable", async () => {
+  it("publishes on the judges that answered, and says the panel was short", async () => {
+    // Operator decision 2026-08-24: availability over a hard two-family
+    // floor. One provider's day expiring used to silence the whole lane;
+    // now the surviving judge decides and the lane is marked partial, so
+    // the ledger says the confidence behind this review was thinner.
     const dead = new ChatJudge({
       apiKey: "k",
       model: "m",
@@ -356,6 +360,46 @@ describe("detection funnel", () => {
       judges: [judge("qwen", "real"), dead],
     }).run(pack);
     expect(result.state).toBe("ai_partial");
+    expect(result.published).toHaveLength(1);
+  });
+
+  it("publishes nothing a judge never confirmed", async () => {
+    // The degraded floor is one answering judge, never zero: a flag that no
+    // judge could examine does not reach a report.
+    const dead = new ChatJudge({
+      apiKey: "k",
+      model: "m",
+      family: "dead",
+      endpoint: "https://example.invalid",
+      fetch: () => Promise.reject(new ProviderError("down", "network")),
+    });
+    const deadToo = new ChatJudge({
+      apiKey: "k",
+      model: "m",
+      family: "also-dead",
+      endpoint: "https://example.invalid",
+      fetch: () => Promise.reject(new ProviderError("down", "network")),
+    });
+    const result = await new DetectionFunnel({
+      scout: scoutReturning([flag()]),
+      judges: [dead, deadToo],
+    }).run(pack);
+    expect(result.state).toBe("ai_partial");
+    expect(result.published).toHaveLength(0);
+  });
+
+  it("keeps the sole surviving judge's rejection decisive", async () => {
+    const dead = new ChatJudge({
+      apiKey: "k",
+      model: "m",
+      family: "dead",
+      endpoint: "https://example.invalid",
+      fetch: () => Promise.reject(new ProviderError("down", "network")),
+    });
+    const result = await new DetectionFunnel({
+      scout: scoutReturning([flag()]),
+      judges: [judge("qwen", "not_real"), dead],
+    }).run(pack);
     expect(result.published).toHaveLength(0);
   });
 
