@@ -20,7 +20,10 @@ To rename the product:
 1. Edit `productSlug`, `productDisplayName`, `tagline`, `description`, and
    `repoUrl` in `packages/branding/src/index.ts`; set
    `isPlaceholderName: false` once the final name is chosen.
-2. Update the name and placeholder note in `README.md`.
+2. Update the name and placeholder note in `README.md`, and the live URL in
+   `SECURITY.md` and `CONTRIBUTING.md`. Those three are the only files outside
+   `packages/branding` allowed to hold the name, and the rename guard's
+   allowlist is the list of them.
 3. Rename the local project directory to the new slug.
 4. Rename the GitHub repository (`gh repo rename <new-slug>`). The repository slug is the one
    unavoidable external use of the name.

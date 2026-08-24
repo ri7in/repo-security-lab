@@ -1,7 +1,10 @@
 # Contributing
 
-The project is not accepting public production use yet, but review-quality
-patches are welcome in the private development repository.
+The service is live and public at
+[repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev),
+and this repository is where it is built. Review-quality patches are welcome.
+This file said the project was not accepting public production use until
+2026-08-24, which had been untrue for as long as the service had been open.
 
 Requirements:
 
@@ -12,7 +15,11 @@ Requirements:
   packet. Never add a snippet, match, package string, upstream error body, or
   secret-bearing value.
 - Never execute target dependencies, scripts, tests, builds, hooks, or config.
-- Keep public third-party scans and model source submission disabled.
+- Public third-party scans and model source submission are on, and are what
+  the service does. Do not widen what leaves the sandbox: the evidence channel
+  carries numeric manifest tokens and count buckets, the location channel
+  carries a validated repository-relative path and a line number, and nothing
+  else crosses.
 - Preserve fixed non-echoing failures and explicit partial/unsupported
   coverage; do not turn a missing specialist into success.
 

@@ -32,7 +32,14 @@ const SKIP_DIRECTORIES = new Set([
 ]);
 
 const ALLOWED_FILES = new Set([
+  // GitHub's own metadata files. They are the first thing a visitor or a
+  // security researcher reads, and a policy that will not say where the live
+  // service is helps nobody. Every one of them is listed in the rename
+  // checklist in docs/maintenance.md, so the promise that a rename is
+  // mechanical still holds.
   "README.md",
+  "SECURITY.md",
+  "CONTRIBUTING.md",
   "pnpm-lock.yaml",
   path.join("packages", "branding", "src", "index.ts"),
   path.join("apps", "control-plane", "wrangler.jsonc"),
