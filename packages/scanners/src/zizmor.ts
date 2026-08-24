@@ -42,6 +42,34 @@ const MAX_STDERR_BYTES = 256 * 1_024;
 const STAGING_DIRECTORY = "/tmp";
 const outputDecoder = new TextDecoder("utf-8", { fatal: true });
 
+/**
+ * The slice of a json-v1 location this module is allowed to look at.
+ *
+ * Verified against the pinned source commit's own e2e snapshot: the file is
+ * `symbolic.key.Local.verbatim_path` and the line is the 0-based
+ * `concrete.location.start_point.row`. The same object also carries the raw
+ * source text of the finding (`concrete.feature`), which is exactly the kind
+ * of archive-derived string that must never leave the scanner, so this schema
+ * names only the two fields it extracts and `.loose()` ignores the rest.
+ */
+const locationSchema = z
+  .looseObject({
+    symbolic: z.looseObject({
+      key: z.looseObject({
+        Local: z.looseObject({
+          verbatim_path: z.string().max(4_096),
+        }),
+      }),
+    }),
+    concrete: z.looseObject({
+      location: z.looseObject({
+        start_point: z.looseObject({
+          row: z.number().int().nonnegative().max(1_000_000),
+        }),
+      }),
+    }),
+  });
+
 const findingSchema = z.strictObject({
   ident: z.string().min(1).max(128).regex(/^[a-z][a-z0-9-]*$/),
   desc: z.string().max(1_024),
@@ -75,6 +103,8 @@ const SEVERITY_RANK = new Map(
 interface WorkflowInput {
   readonly bytes: Uint8Array;
   readonly extension: ".yml" | ".yaml";
+  /** Repository-relative path, tarball wrapper stripped, for locations. */
+  readonly repoPath: string;
 }
 
 export interface ZizmorScannerOptions {
@@ -114,9 +144,29 @@ async function workflowRoots(source: string): Promise<readonly string[]> {
   return roots;
 }
 
+/**
+ * The single directory a source archive unpacks into, if there is one.
+ *
+ * Same rule as the secret scanner's: a GitHub tarball wraps everything in
+ * `owner-repo-shortsha/`, which is a fact about the download rather than the
+ * repository, and a published location must be a path a reader can open.
+ */
+async function archiveWrapper(source: string): Promise<string | null> {
+  try {
+    const entries = await readdir(source, { withFileTypes: true });
+    const [only] = entries;
+    return entries.length === 1 && only !== undefined && only.isDirectory()
+      ? only.name
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 async function collectWorkflowInputs(source: string): Promise<readonly WorkflowInput[]> {
   const inputs: WorkflowInput[] = [];
   let aggregateBytes = 0;
+  const wrapper = await archiveWrapper(source);
   for (const root of await workflowRoots(source)) {
     const directory = path.join(root, ".github", "workflows");
     let entries;
@@ -157,7 +207,14 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
       if (bytes.byteLength !== metadata.size) {
         throw new ScannerError("SCANNER_INPUT_FAILURE");
       }
-      inputs.push({ bytes, extension });
+      const relative = path
+        .relative(source, filename)
+        .replaceAll("\\", "/");
+      const repoPath =
+        wrapper !== null && relative.startsWith(`${wrapper}/`)
+          ? relative.slice(wrapper.length + 1)
+          : relative;
+      inputs.push({ bytes, extension, repoPath });
     }
   }
   return inputs;
@@ -165,7 +222,11 @@ async function collectWorkflowInputs(source: string): Promise<readonly WorkflowI
 
 async function stageWorkflowInputs(
   inputs: readonly WorkflowInput[],
-): Promise<string> {
+): Promise<{
+  readonly staging: string;
+  /** Staged basename to repository-relative path, for location mapping. */
+  readonly stagedToRepo: ReadonlyMap<string, string>;
+}> {
   const staging = await mkdtemp(
     path.join(STAGING_DIRECTORY, "repo-security-zizmor-input-"),
   );
@@ -173,21 +234,47 @@ async function stageWorkflowInputs(
     await chmod(staging, 0o700);
     const workflows = path.join(staging, ".github", "workflows");
     await mkdir(workflows, { recursive: true, mode: 0o700 });
+    const stagedToRepo = new Map<string, string>();
     for (const [index, input] of inputs.entries()) {
-      await writeFile(
-        path.join(
-          workflows,
-          `workflow-${String(index).padStart(3, "0")}${input.extension}`,
-        ),
-        input.bytes,
-        { flag: "wx", mode: 0o600 },
-      );
+      const stagedName = `workflow-${String(index).padStart(3, "0")}${input.extension}`;
+      stagedToRepo.set(stagedName, input.repoPath);
+      await writeFile(path.join(workflows, stagedName), input.bytes, {
+        flag: "wx",
+        mode: 0o600,
+      });
     }
-    return staging;
+    return { staging, stagedToRepo };
   } catch {
     await rm(staging, { recursive: true, force: true }).catch(() => undefined);
     throw new ScannerError("SCANNER_STAGE_FAILURE");
   }
+}
+
+/**
+ * The primary location of one finding, or null.
+ *
+ * Null on any surprise at all: a shape json-v1 does not document, a staged
+ * name the map does not hold, a path outside the review channel's bounds. A
+ * finding without a location is still reported; a location is never guessed.
+ */
+function primaryLocation(
+  raw: readonly unknown[],
+  stagedToRepo: ReadonlyMap<string, string>,
+): { readonly path: string; readonly startLine: number } | null {
+  for (const candidate of raw) {
+    const parsed = locationSchema.safeParse(candidate);
+    if (!parsed.success) continue;
+    const staged = parsed.data.symbolic.key.Local.verbatim_path;
+    const basename = staged.split("/").at(-1) ?? staged;
+    const repoPath = stagedToRepo.get(basename);
+    if (repoPath === undefined || repoPath.length > 256) continue;
+    // json-v1 rows are 0-based; the location channel is 1-based.
+    return {
+      path: repoPath,
+      startLine: parsed.data.concrete.location.start_point.row + 1,
+    };
+  }
+  return null;
 }
 
 export class ZizmorScanner {
@@ -258,7 +345,7 @@ export class ZizmorScanner {
     const inputs = await collectWorkflowInputs(source);
     if (inputs.length === 0) throw new ScannerError("SCANNER_INPUT_FAILURE");
 
-    const staging = await stageWorkflowInputs(inputs);
+    const { staging, stagedToRepo } = await stageWorkflowInputs(inputs);
     try {
       const result = await this.#runCommand(
         binary,
@@ -300,6 +387,12 @@ export class ZizmorScanner {
         }
         return { ident: finding.ident, severity, confidence };
       });
+      const locations = parsed.data.flatMap((finding) => {
+        const found = primaryLocation(finding.locations, stagedToRepo);
+        return found === null
+          ? []
+          : [{ engine: "zizmor" as const, ruleId: finding.ident, ...found }];
+      });
 
       if (result.exitCode === 0) {
         if (findings.length !== 0) {
@@ -325,6 +418,8 @@ export class ZizmorScanner {
         findings,
         rawFindingCount: findings.length,
         findingLimitExceeded: findings.length > ZIZMOR_INPUT_LIMITS.findings,
+        // Bounded here as well as by the channel: one per finding, 100 max.
+        locations: locations.slice(0, 100),
       };
     } finally {
       await rm(staging, { recursive: true, force: true }).catch(() => undefined);

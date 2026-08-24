@@ -194,18 +194,21 @@ async function scan(): Promise<void> {
   const zizmorSha256 = process.env["ZIZMOR_SHA256"];
   if (zizmorSha256 !== undefined && applicability.zizmor) {
     try {
-      const normalized = normalizeZizmor(
-        await new ZizmorScanner({
-          binaryPath: ZIZMOR_BINARY,
-          expectedBinarySha256: zizmorSha256,
-        }).scan(SOURCE_DIRECTORY),
-      );
+      const scanned = await new ZizmorScanner({
+        binaryPath: ZIZMOR_BINARY,
+        expectedBinarySha256: zizmorSha256,
+      }).scan(SOURCE_DIRECTORY);
+      const normalized = normalizeZizmor(scanned);
       engineResults.push({
         engine: "zizmor",
         coverage: normalized.coverage,
         reason: normalized.reason,
         packet: parseJsonPacket(normalized.packetBytes),
       });
+      // The channel holds 100 locations total across engines; the secret
+      // scanner's come first because a leaked credential outranks a workflow
+      // lint in what a reader needs to find.
+      locations = [...locations, ...scanned.locations].slice(0, 100);
     } catch (error) {
       engineFailures.zizmor = recordScannerFailure("zizmor", error);
     }

@@ -21,6 +21,7 @@ describe("hostile-domain zizmor normalizer", () => {
           confidence: "Medium",
         },
       ],
+      locations: [],
       rawFindingCount: 4,
       findingLimitExceeded: false,
     });
@@ -51,6 +52,7 @@ describe("hostile-domain zizmor normalizer", () => {
     }));
     const result = normalizeZizmor({
       findings,
+      locations: [],
       rawFindingCount: findings.length,
       findingLimitExceeded: true,
     });
@@ -65,17 +67,20 @@ describe("hostile-domain zizmor normalizer", () => {
     const inputs = [
       {
         findings: [{ ident: hostile, severity: "High", confidence: "High" }],
-        rawFindingCount: 1,
+        locations: [],
+      rawFindingCount: 1,
         findingLimitExceeded: false,
       },
       {
         findings: [],
-        rawFindingCount: 1,
+        locations: [],
+      rawFindingCount: 1,
         findingLimitExceeded: false,
       },
       {
         findings: [],
-        rawFindingCount: 1_001,
+        locations: [],
+      rawFindingCount: 1_001,
         findingLimitExceeded: true,
       },
     ] as unknown as readonly ZizmorScanResult[];

@@ -105,6 +105,18 @@ export interface ZizmorScanResult {
   readonly findings: readonly ZizmorRuleFinding[];
   readonly rawFindingCount: number;
   readonly findingLimitExceeded: boolean;
+  /**
+   * Repository-relative workflow file and line for each finding that has
+   * one, engine-tagged for the shared location channel. At most one per
+   * finding: the primary location answers "where do I look", and a finding
+   * whose location cannot be mapped is still reported, just without one.
+   */
+  readonly locations: readonly {
+    readonly engine: "zizmor";
+    readonly ruleId: string;
+    readonly path: string;
+    readonly startLine: number;
+  }[];
 }
 
 export interface FailClosedScannerStub {

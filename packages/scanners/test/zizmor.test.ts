@@ -194,6 +194,7 @@ describe("pinned Zizmor adapter", () => {
         },
       ],
       rawFindingCount: 1,
+      locations: [],
       findingLimitExceeded: false,
     });
     expect(JSON.stringify(result)).not.toContain(HOSTILE);
@@ -233,6 +234,68 @@ describe("pinned Zizmor adapter", () => {
       expect(result.findings).toHaveLength(expected);
       expect(JSON.stringify(result)).not.toContain("ignored");
     }
+  });
+
+  it("maps a finding's location back to the repository file and 1-based line", async () => {
+    // zizmor sees anonymised staged copies (workflow-000.yml), so the staged
+    // name has to be translated back to the path a reader can actually open.
+    // json-v1 rows are 0-based; the location channel is 1-based.
+    const setup = await fixture();
+    const located = {
+      ...rawFinding("unpinned-uses", "High", "High"),
+      locations: [
+        {
+          symbolic: {
+            key: { Local: { verbatim_path: "workflow-000.yml" } },
+            route: { route: [] },
+          },
+          concrete: {
+            location: {
+              start_point: { row: 14, column: 8 },
+              end_point: { row: 19, column: 0 },
+            },
+            // Raw source text rides along in json-v1 and must never leave.
+            feature: HOSTILE,
+          },
+        },
+      ],
+    };
+    const runCommand: ScannerCommandRunner = async (_executable, args) =>
+      args[0] === "--version"
+        ? versionResult()
+        : {
+            stdout: Buffer.from(JSON.stringify([located])),
+            stderr: Buffer.alloc(0),
+            exitCode: 14,
+          };
+    const result = await scanner(setup, runCommand).scan(setup.source);
+    expect(result.locations).toEqual([
+      {
+        engine: "zizmor",
+        ruleId: "unpinned-uses",
+        path: ".github/workflows/target.yml",
+        startLine: 15,
+      },
+    ]);
+    // The location object's raw source text stayed behind.
+    expect(JSON.stringify(result)).not.toContain(HOSTILE);
+  });
+
+  it("reports a finding whose location cannot be mapped, without one", async () => {
+    // rawFinding's locations are hostile garbage on purpose; the old code
+    // ignored them entirely and the new code must degrade to exactly that.
+    const setup = await fixture();
+    const runCommand: ScannerCommandRunner = async (_executable, args) =>
+      args[0] === "--version"
+        ? versionResult()
+        : {
+            stdout: Buffer.from(JSON.stringify([rawFinding()])),
+            stderr: Buffer.alloc(0),
+            exitCode: 14,
+          };
+    const result = await scanner(setup, runCommand).scan(setup.source);
+    expect(result.findings).toHaveLength(1);
+    expect(result.locations).toEqual([]);
   });
 
   it("fails closed on schema, vocabulary, encoding, and exit mismatches without echo", async () => {
