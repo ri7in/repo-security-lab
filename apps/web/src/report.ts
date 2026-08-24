@@ -6,6 +6,7 @@ import type {
 } from "@app/contracts";
 import { aiCoverageLabel, coverageLabel, repositoryLabel } from "./labels.js";
 import {
+  fullyScannedCount,
   nothingFoundText,
   secretScannedCount,
   uncheckedCount,
@@ -75,7 +76,7 @@ export function reportDocument(
         // one is false on paper too.
         emptyText: nothingFoundText(
           state.repositories.length,
-          secretScannedCount(state.repositories),
+          fullyScannedCount(state.repositories),
           uncheckedCount(state.repositories),
           "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
         ).text,

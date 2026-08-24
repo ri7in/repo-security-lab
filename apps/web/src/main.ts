@@ -57,6 +57,7 @@ import { installTooltips } from "./tooltip.js";
 import { normaliseUsername, usernameProblem } from "./username.js";
 import {
   emptyLedgerText,
+  fullyScannedCount,
   nothingFoundText,
   secretScannedCount,
   summarizeVerdict,
@@ -531,7 +532,7 @@ function renderFindings(
   // can produce.
   const box = nothingFoundText(
     repositories.length,
-    secretScannedCount(repositories),
+    fullyScannedCount(repositories),
     uncheckedCount(repositories),
     NOTHING_FOUND_TEXT,
   );

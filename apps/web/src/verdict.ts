@@ -43,6 +43,22 @@ export function uncheckedCount(
 }
 
 /**
+ * Repositories the secret scan finished, as opposed to started.
+ *
+ * The verdict and the findings panel sit a few inches apart and both name a
+ * count of scanned repositories. One took this and the other took
+ * secretScannedCount, so a report with one partly scanned repository said
+ * "the 2 the secret scan read in full" above "the 3 the secret scan read".
+ */
+export function fullyScannedCount(
+  repositories: readonly RepositoryRow[],
+): number {
+  return repositories.filter(
+    (repository) => repository.coverage.gitleaks === "complete",
+  ).length;
+}
+
+/**
  * Repositories the secret scan actually read.
  *
  * Read from that repository's own coverage, because the clear verdict names
@@ -81,9 +97,7 @@ export function summarizeVerdict(
   // scanned repositories, which are also counted in `skipped`, so the same
   // repository appeared on both sides of the sentence: three repositories
   // produced "the 2 that were scanned. 2 did not finish."
-  const checked = repositories.filter(
-    (repository) => repository.coverage.gitleaks === "complete",
-  ).length;
+  const checked = fullyScannedCount(repositories);
 
   const unexamined =
     skipped === 0
@@ -213,7 +227,7 @@ export function nothingFoundText(
   if (missed > 0) {
     return {
       text:
-        `No exposed credential in the ${String(scanned)} ${scanned === 1 ? "repository" : "repositories"} the secret scan read. ` +
+        `No exposed credential in the ${String(scanned)} ${scanned === 1 ? "repository" : "repositories"} the secret scan read in full. ` +
         `${String(missed)} did not finish, so this is not the whole picture.`,
       neutral: true,
     };

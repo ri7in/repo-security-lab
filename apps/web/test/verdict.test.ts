@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { PublicFinding, RepositoryRow } from "@app/contracts";
 import {
   emptyLedgerText,
+  fullyScannedCount,
   nothingFoundText,
   secretScannedCount,
   skippedOnPurposeCount,
@@ -232,6 +233,25 @@ describe("the lines that stand in for an absent result", () => {
     expect(allFailed.text).not.toContain("Gitleaks");
     expect(allFailed.text).not.toContain("commit");
     expect(allFailed.text).toContain("Nothing here was read");
+  });
+
+  it("uses the same number and the same words as the verdict above it", () => {
+    // The two sentences sit a few inches apart and both name a count of
+    // scanned repositories. One took the fully-read count and the other took
+    // complete-plus-partial, so a report with one partly scanned repository
+    // read "the 2 the secret scan read in full" above "the 3 the secret scan
+    // read". Two numbers for one idea, disagreeing.
+    const rows = [
+      { coverage: { gitleaks: "complete" }, state: "complete" },
+      { coverage: { gitleaks: "complete" }, state: "complete" },
+      { coverage: { gitleaks: "partial" }, state: "partial" },
+    ] as unknown as RepositoryRow[];
+    expect(fullyScannedCount(rows)).toBe(2);
+    expect(secretScannedCount(rows)).toBe(3);
+    const panel = nothingFoundText(3, fullyScannedCount(rows), uncheckedCount(rows), "standard");
+    expect(panel.text).toContain("the 2 repositories the secret scan read in full");
+    const verdict = summarizeVerdict("someone", rows, []).text;
+    expect(verdict).toContain("the 2 repositories the secret scan read in full");
   });
 
   it("qualifies the all-clear when some repositories did not finish", () => {
