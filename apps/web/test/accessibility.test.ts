@@ -62,6 +62,21 @@ describe("production accessibility invariants", () => {
     }
   });
 
+  it("makes the locations a cell only counted reachable", async () => {
+    // The cell fits three paths and the contract allows twenty. On a live
+    // seven location finding it read "and 4 more" and those four vulnerable
+    // files were reachable nowhere: no hover, no reader-only text, no printed
+    // line. The tooltip and the reader-only span are the two the rest of this
+    // table already uses, and the print rule prints any data-detail.
+    const script = await readFile(new URL("src/main.ts", root), "utf8");
+    expect(script).toContain("hiddenLocations(finding.locations)");
+    expect(script).toContain('cell.dataset["detail"] = rest');
+    expect(script).toContain("cell.append(document.createTextNode(value), explanation(rest))");
+    const css = await readFile(new URL("src/style.css", root), "utf8");
+    // Paper cannot hover, so the same text has to print.
+    expect(css).toContain('[data-detail]::after');
+  });
+
   it("lets a 39 character username wrap inside the verdict box", async () => {
     // The verdict prints the username, GitHub allows 39 characters, and one
     // with no hyphen is a single unbreakable run in a flex row. Measured in

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ScanRequestSummary } from "@app/contracts";
 import {
+  engineReadCount,
   explainFailure,
   printCoverText,
   providerNames,
@@ -18,10 +19,25 @@ import {
  * something a visitor would read as meaning something else.
  */
 
+/** An engine's coverage bucket, zeroed apart from what a test names. */
+function engine(counts: Record<string, number> = {}): Record<string, number> {
+  return {
+    waiting: 0,
+    complete: 0,
+    not_applicable: 0,
+    unsupported: 0,
+    partial: 0,
+    failed: 0,
+    ...counts,
+  };
+}
+
 function summary(
   state: ScanRequestSummary["state"],
   totals: Record<string, number> = {},
   reason?: string,
+  /** Per engine, since the cards read these rather than the ledger rows. */
+  coverage: Record<string, Record<string, number>> = {},
 ): ScanRequestSummary {
   return {
     schemaVersion: 1,
@@ -47,7 +63,11 @@ function summary(
       cancelled: 0,
       ...totals,
     },
-    coverageTotals: {},
+    coverageTotals: Object.fromEntries(
+      ["snapshot", "archive_guard", "gitleaks", "osv", "zizmor", "opengrep", "ai"].map(
+        (name) => [name, engine(coverage[name])],
+      ),
+    ),
     aiLane: "ai_not_run",
     retryAfterSeconds: 3,
     updatedAt: "2026-08-24T01:35:00.000Z",
@@ -59,13 +79,16 @@ describe("the summary cards", () => {
     // "Fully scanned" sat above a table where most rows read "Not reviewed".
     // The secret scan reaches every repository; the code review reaches three.
     const cards = summaryCards(
-      summary("complete", { complete: 18, partial: 1, cancelled: 4 }),
-      2,
+      summary(
+        "complete",
+        { complete: 18, partial: 1, cancelled: 4 },
+        undefined,
+        // From the request's own coverage: the partly scanned repository's
+        // secret scan did finish, and the card used to disagree with the
+        // ledger and the PDF about that.
+        { gitleaks: { complete: 18, partial: 1 }, ai: { complete: 2 } },
+      ),
       1,
-      // From the rows' own coverage: the partly scanned repository's secret
-      // scan did finish, and the card used to disagree with the ledger and the
-      // PDF about that.
-      19,
     );
     expect(cards.map((card) => [card.value, card.label])).toEqual([
       [23, "public repositories"],
@@ -76,8 +99,47 @@ describe("the summary cards", () => {
     ]);
   });
 
+  it("counts the whole request while it is still scanning", () => {
+    // The ledger is only paged through in full once the request is terminal,
+    // so the page holds the first 100 rows during a scan and these two cards
+    // were counted off those rows. A 250 repository account with 240 finished
+    // read "250 PUBLIC REPOSITORIES / 100 SECRET-SCANNED" directly under
+    // "240 of 250 repositories finished so far."
+    const cards = summaryCards(
+      summary("scanning", { complete: 240, waiting: 10 }, undefined, {
+        gitleaks: { complete: 240, waiting: 10 },
+        ai: { complete: 3, not_applicable: 237, waiting: 10 },
+      }),
+      0,
+    );
+    expect(cards[1]).toEqual({ value: 240, label: "secret-scanned" });
+    expect(cards[2]).toEqual({ value: 3, label: "code-reviewed" });
+  });
+
+  it("never counts a repository the engine has not reached", () => {
+    // `waiting` is a progress state, never an outcome.
+    expect(
+      engineReadCount(
+        summary("scanning", { waiting: 9 }, undefined, { gitleaks: { waiting: 9 } }),
+        "gitleaks",
+      ),
+    ).toBe(0);
+  });
+
+  it("counts a partly reviewed repository as reviewed", () => {
+    // The same pair the ledger chip and the secret-scanned card already count.
+    expect(
+      engineReadCount(
+        summary("complete", { complete: 8 }, undefined, {
+          ai: { complete: 2, partial: 3, not_applicable: 3 },
+        }),
+        "ai",
+      ),
+    ).toBe(5);
+  });
+
   it("uses no word from the state machine", () => {
-    const labels = summaryCards(summary("complete", { complete: 3 }), 0, 0, 3)
+    const labels = summaryCards(summary("complete", { complete: 3 }), 0)
       .map((card) => card.label)
       .join(" ");
     expect(labels).not.toContain("terminal");
@@ -92,18 +154,18 @@ describe("the summary cards", () => {
     // `partial`, so the state count left it out while the ledger row said
     // "Fully scanned" and the PDF said it had been examined.
     const cards = summaryCards(
-      summary("complete", { complete: 4, partial: 1 }),
+      summary("complete", { complete: 4, partial: 1 }, undefined, {
+        gitleaks: { complete: 4, partial: 1 },
+      }),
       0,
-      0,
-      5,
     );
     expect(cards[1]).toEqual({ value: 5, label: "secret-scanned" });
   });
 
   it("gets the singular right for one finding", () => {
-    expect(summaryCards(summary("complete"), 0, 1, 0).at(-1)?.label).toBe("finding");
-    expect(summaryCards(summary("complete"), 0, 0, 0).at(-1)?.label).toBe("findings");
-    expect(summaryCards(summary("complete"), 0, 2, 0).at(-1)?.label).toBe("findings");
+    expect(summaryCards(summary("complete"), 1).at(-1)?.label).toBe("finding");
+    expect(summaryCards(summary("complete"), 0).at(-1)?.label).toBe("findings");
+    expect(summaryCards(summary("complete"), 2).at(-1)?.label).toBe("findings");
   });
 
   it("counts a skipped and a failed repository as finished, because they are", () => {
@@ -297,10 +359,10 @@ describe("the count on a summary card", () => {
     // same change corrected to "0 of 1 repository finished.", and the findings
     // card in the same function has branched on its own count since it was
     // written.
-    expect(summaryCards(summary("complete", { complete: 1 }), 1, 0, 1)[0]?.label).toBe(
+    expect(summaryCards(summary("complete", { complete: 1 }), 0)[0]?.label).toBe(
       "public repository",
     );
-    expect(summaryCards(summary("complete", { complete: 2 }), 2, 0, 2)[0]?.label).toBe(
+    expect(summaryCards(summary("complete", { complete: 2 }), 0)[0]?.label).toBe(
       "public repositories",
     );
   });

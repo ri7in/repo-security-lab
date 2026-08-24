@@ -306,7 +306,13 @@ describe("colour never claims more than the words do", () => {
     // in nothingFoundText and is tested there; this only holds the wiring.
     const script = read("src/main.ts");
     expect(script).toContain('nothingFound.classList.toggle("is-neutral", box.neutral)');
-    expect(script).toContain("secretScannedCount(repositories)");
+    // The counters the box is actually wired to. This named
+    // secretScannedCount, which the box has never used: it counts a partly
+    // scanned repository, and the whole point of the box is that green must be
+    // earned by a scan that finished. The literal only happened to be in the
+    // file because a card derivation used it elsewhere, so the guard went
+    // green for a reason unrelated to what it claims to hold.
+    expect(script).toContain("fullyScannedCount(repositories)");
     expect(script).toContain("uncheckedCount(repositories)");
     expect(read("src/style.css")).toContain(".nothing-found.is-neutral");
   });

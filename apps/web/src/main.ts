@@ -31,6 +31,7 @@ import { buildPdf } from "./pdf.js";
 import {
   formatCount,
   formatLocations,
+  hiddenLocations,
   reportDocument,
   reportFileName,
   type ReportState,
@@ -61,7 +62,7 @@ import {
   emptyLedgerText,
   fullyScannedCount,
   nothingFoundText,
-  secretScannedCount,
+  showFindingsSection,
   summarizeVerdict,
   uncheckedCount,
 } from "./verdict.js";
@@ -339,15 +340,16 @@ function explanation(detail: string): HTMLElement {
   return hidden;
 }
 
-// Counted from the rows and the findings page, both of which arrive after
-// the summary does, so the cards are repainted once they are in.
+// Counted from the findings page, which arrives after the summary does, so the
+// cards are repainted once it is in. The two engine counts used to sit here as
+// well, counted from the loaded ledger rows, which is why they stopped at 100
+// on an account with more repositories than that. They come off the summary's
+// own coverage totals now.
 let findingsShown = 0;
-let reviewedShown = 0;
-let scannedShown = 0;
 
 function renderSummary(summary: ScanRequestSummary): void {
   summaryGrid.replaceChildren(
-    ...summaryCards(summary, reviewedShown, findingsShown, scannedShown).map((entry) => {
+    ...summaryCards(summary, findingsShown).map((entry) => {
       const card = document.createElement("div");
       card.className = "summary-card";
       const strong = document.createElement("strong");
@@ -394,15 +396,6 @@ function renderSummary(summary: ScanRequestSummary): void {
 const NAME_FITS = 74;
 
 function renderRepositories(repositories: readonly RepositoryRow[]): void {
-  // Counted from the rows rather than from the request's coverage totals: the
-  // stored totals predate the AI engine and never move for it.
-  // complete and partial, matching secretScannedCount. Counting only
-  // `complete` put a 0 on the code-reviewed card above five ledger rows
-  // reading "Partly reviewed".
-  reviewedShown = repositories.filter((repository) =>
-    ["complete", "partial"].includes(repository.coverage.ai),
-  ).length;
-  scannedShown = secretScannedCount(repositories);
   rows.replaceChildren(
     ...repositories.map((repository) => {
       const row = document.createElement("tr");
@@ -481,6 +474,9 @@ function renderFindings(
         "How many",
         "Location",
       ];
+      // The slot the locations live in, named so the tooltip below cannot
+      // wander onto a different column if a sixth value is ever appended.
+      const WHERE = 4;
       row.append(
         ...values.map((value, index) => {
           // The repository name is the row's header, exactly as in the ledger.
@@ -500,6 +496,25 @@ function renderFindings(
             const label = document.createElement("span");
             label.textContent = value;
             cell.append(label);
+            return cell;
+          }
+          // Where the finding actually is: the "Where" slot in the two arrays
+          // above, named rather than found as the last one, because a sixth
+          // column would move "the last one" onto a cell that has nothing to
+          // do with locations and the hover would follow it there still
+          // carrying paths.
+          //
+          // The column fits three paths and the contract allows twenty, so on
+          // a seven location finding the cell said "and 4 more" and those four
+          // vulnerable files were reachable nowhere: no hover, no reader-only
+          // text, no printed line, while the note above the table promises
+          // each finding names its file and its line. They ride the way the
+          // advice cell already carries its paragraph, and only when the cell
+          // really dropped some, so a one location finding gains no hover.
+          const rest = index === WHERE ? hiddenLocations(finding.locations) : "";
+          if (rest !== "") {
+            cell.dataset["detail"] = rest;
+            cell.append(document.createTextNode(value), explanation(rest));
             return cell;
           }
           cell.textContent = value;
@@ -522,10 +537,11 @@ function renderFindings(
       return row;
     }),
   );
-  // A stopped scan has nothing to report either way, and offering it a
-  // findings section at all invites the reader to conclude it came back clean.
-  findingsSection.hidden = stopped;
-  if (stopped) return;
+  // The section carries the only copy of every finding row and both report
+  // buttons, so whether it is on the page is a claim about coverage and the
+  // decision lives in verdict.ts with the rest of them.
+  findingsSection.hidden = !showFindingsSection(stopped, findings.length);
+  if (findingsSection.hidden) return;
   $("#finding-count").textContent =
     findings.length === 0
       ? "nothing found"
@@ -658,8 +674,6 @@ async function poll(requestId: string): Promise<void> {
     retryAfterSeconds = summary.retryAfterSeconds;
     renderSteps(summary);
     const terminal = summary.state === "complete" || summary.state === "failed";
-    // Before the cards, because one of them counts reviewed repositories and
-    // that count is derived here. Drawing first left it a poll behind.
     renderRepositories(repositories);
     renderSummary(summary);
     ledgerSection.hidden = false;
@@ -761,11 +775,10 @@ form.addEventListener("submit", (event) => {
   findingsSection.hidden = true;
   findingRows.replaceChildren();
   setScanState("scanning");
-  // Otherwise the previous account's numbers sit in the cards for the whole of
-  // this scan, attributed to this account.
+  // Otherwise the previous account's finding count sits in the cards for the
+  // whole of this scan, attributed to this account. The engine counts need no
+  // reset: they are read off each poll's own summary.
   findingsShown = 0;
-  reviewedShown = 0;
-  scannedShown = 0;
   statusSection.hidden = false;
   summaryGrid.hidden = false;
   progressBar.parentElement?.removeAttribute("hidden");

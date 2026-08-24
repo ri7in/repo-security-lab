@@ -5,6 +5,7 @@ import {
   fullyScannedCount,
   nothingFoundText,
   secretScannedCount,
+  showFindingsSection,
   skippedOnPurposeCount,
   summarizeVerdict,
   uncheckedCount,
@@ -360,5 +361,50 @@ describe("the headline promises only what the table delivers", () => {
     const text = summarizeVerdict("someone", [repo], [located, unlocated]).text;
     expect(text).toContain("wherever the scanner recorded one");
     expect(text).not.toContain("below with the file and the line.");
+  });
+});
+
+describe("a scan that stopped after something had already published", () => {
+  const repo = {
+    repositoryId: 1,
+    name: "one",
+    state: "complete",
+    coverage: { snapshot: "complete", archive_guard: "complete", gitleaks: "complete", osv: "not_applicable", zizmor: "not_applicable", opengrep: "not_applicable", ai: "not_applicable" },
+    aiLane: "ai_not_run",
+  } as unknown as RepositoryRow;
+  const finding = {
+    rule_id: "generic-api-key",
+    severity: "high",
+    locations: [{ path: "config/prod.env", startLine: 3 }],
+  } as unknown as PublicFinding;
+
+  it("keeps the findings section when it has something to list", () => {
+    // The section holds every finding row and both report buttons, and it was
+    // hidden on any failed request. A request that failed after a repository
+    // had published put a real exposed credential under display none, with the
+    // card above it reading "1 FINDING" and no route to it by any means.
+    expect(showFindingsSection(true, 1)).toBe(true);
+    expect(showFindingsSection(false, 0)).toBe(true);
+    // Still hidden when there is nothing to list. A stopped scan whose
+    // repositories did finish clean is a separate gap: it gets no report
+    // button either, and the honest sentence for it already exists in
+    // nothingFoundText. Widening this predicate without wiring that up would
+    // put an empty findings panel over a scan with no result, which reads as
+    // an all clear.
+    expect(showFindingsSection(true, 0)).toBe(false);
+  });
+
+  it("does not tell the reader to disregard a finding it is showing them", () => {
+    // "This scan stopped before it finished, so it has no result" stood
+    // directly above a table listing that credential.
+    const text = summarizeVerdict("someone", [repo], [finding], "The service ran out.").text;
+    expect(text).toContain("1 thing to fix");
+    expect(text).not.toContain("it has no result");
+    expect(text).toContain("stopped before it finished, so there may be more");
+  });
+
+  it("still says a stopped scan with nothing published has no result", () => {
+    const text = summarizeVerdict("someone", [repo], [], "The service ran out.").text;
+    expect(text).toContain("so it has no result");
   });
 });

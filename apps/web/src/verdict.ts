@@ -73,6 +73,26 @@ export function secretScannedCount(
   ).length;
 }
 
+/**
+ * Whether the findings section belongs on the page at all.
+ *
+ * A stopped scan hid it unconditionally, on the reasoning that a scan with no
+ * result must not be offered a findings panel that could read as an all clear.
+ * That is right only while there is nothing to list. A request can fail after
+ * repositories have already published, so this hid a real exposed credential:
+ * the row sat in the DOM under `display: none`, the card above it read "1
+ * FINDING", and the Download PDF and Print buttons live inside that same
+ * section, so there was no route to the finding by any means. The database
+ * write reserve running out mid-request and the stale-request sweep both fail
+ * a request whose repositories have already finished.
+ */
+export function showFindingsSection(
+  stopped: boolean,
+  findingCount: number,
+): boolean {
+  return !stopped || findingCount > 0;
+}
+
 export function summarizeVerdict(
   username: string,
   repositories: readonly RepositoryRow[],
@@ -85,6 +105,20 @@ export function summarizeVerdict(
   // reassuring sentence about a lookup that failed. On a security tool a false
   // all-clear is the worst output there is.
   if (stoppedBecause !== undefined) {
+    // "No result" holds only while a stopped scan published nothing. Once the
+    // findings section stopped being hidden on a failed request, this sentence
+    // stood directly above a table listing a real exposed credential and told
+    // the reader to disregard it. What was published is still true; what is
+    // missing is everything the scan did not reach.
+    if (findings.length > 0) {
+      return {
+        tone: "concern",
+        text:
+          `${String(findings.length)} thing${findings.length === 1 ? "" : "s"} to fix in ` +
+          `${username}'s public code, ${findings.length === 1 ? "listed" : "all listed"} below. ` +
+          `This scan then stopped before it finished, so there may be more. ${stoppedBecause}`,
+      };
+    }
     return {
       tone: "concern",
       text: `This scan stopped before it finished, so it has no result. ${stoppedBecause}`,

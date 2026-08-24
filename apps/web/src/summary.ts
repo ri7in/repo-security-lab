@@ -1,4 +1,4 @@
-import type { ScanRequestSummary } from "@app/contracts";
+import type { ScanEngine, ScanRequestSummary } from "@app/contracts";
 import { failureDetail } from "./labels.js";
 
 /**
@@ -33,12 +33,37 @@ export function totalCount(summary: ScanRequestSummary): number {
   );
 }
 
+/**
+ * Repositories one engine actually opened, across the whole request.
+ *
+ * Read from the request's own coverage totals, not from the ledger rows. The
+ * rows are only paged through in full once the request is terminal, so while a
+ * scan is running the page holds the first 100 of them. On a 250 repository
+ * account with 240 finished the cards read "250 PUBLIC REPOSITORIES / 100
+ * SECRET-SCANNED", directly under a line reading "240 of 250 repositories
+ * finished so far". The note under the ledger discloses that the table is the
+ * first 100. Nothing told anyone the counters were.
+ *
+ * The count this replaces was kept out of the totals because they predated the
+ * AI engine and never moved for it. Migration 0008_ai_coverage_totals.sql gave
+ * the request_totals trigger its six `ai` arms and recomputed every existing
+ * row, so the AI bucket tracks the ledger now.
+ *
+ * `complete` and `partial` both mean the engine read that repository, which is
+ * the pair the ledger chips and secretScannedCount already count. `waiting` is
+ * a progress state and never an outcome, so it is never counted here.
+ */
+export function engineReadCount(
+  summary: ScanRequestSummary,
+  engine: ScanEngine,
+): number {
+  const totals = summary.coverageTotals[engine];
+  return totals.complete + totals.partial;
+}
+
 export function summaryCards(
   summary: ScanRequestSummary,
-  reviewed: number,
   findings: number,
-  /** From the rows' own coverage, not from repository state. */
-  secretScanned: number,
 ): readonly SummaryCard[] {
   const totals = summary.repositoryTotals;
   return [
@@ -53,8 +78,11 @@ export function summaryCards(
     // missing from this card while the ledger row beside it said "Fully
     // scanned" and the PDF said it had been examined. Three numbers for one
     // idea, two of them disagreeing.
-    { value: secretScanned, label: "secret-scanned" },
-    { value: reviewed, label: "code-reviewed" },
+    //
+    // Both engine counts are derived here rather than handed in by the caller,
+    // which counted the loaded ledger rows and so stopped at 100 mid-scan.
+    { value: engineReadCount(summary, "gitleaks"), label: "secret-scanned" },
+    { value: engineReadCount(summary, "ai"), label: "code-reviewed" },
     // Only what went wrong. A skipped fork is a correct outcome and counting
     // it here implied the visitor had something to do about it.
     {
@@ -180,6 +208,17 @@ export function printCoverText(
   when: string,
 ): string {
   if (summary.state === "failed") {
+    // Not always "no result". A request can fail after repositories have
+    // already published, and the findings section is no longer hidden when it
+    // did, so the Print button became reachable on exactly that page. Saying
+    // "no result" over a table listing an exposed credential would be the same
+    // false statement as before, pointing the other way.
+    if (findings > 0) {
+      return (
+        `${String(findings)} finding${findings === 1 ? "" : "s"} published before this scan stopped, ` +
+        `so this is not the whole picture · ${when}`
+      );
+    }
     return `This scan stopped before it finished, so it has no result · ${when}`;
   }
   // Paper keeps whatever was true when the button was pressed, so a page

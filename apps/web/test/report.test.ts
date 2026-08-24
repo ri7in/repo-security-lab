@@ -5,7 +5,9 @@ import type {
   ScanRequestSummary,
 } from "@app/contracts";
 import {
+  allLocations,
   formatLocations,
+  hiddenLocations,
   reportDocument,
   reportFileName,
 } from "../src/report.js";
@@ -128,6 +130,85 @@ describe("the downloadable report", () => {
     expect(formatLocations(many)).toBe(
       "src/file-0.ts:1, src/file-1.ts:2, src/file-2.ts:3 and 4 more",
     );
+  });
+});
+
+describe("a finding names every location it has", () => {
+  // A live scan returned seven locations for one SQL-injection finding and the
+  // cell read "php/Job Insert.php:26, php/JobAppTable.php:10,
+  // php/ForgotPass.php:7 and 4 more". Four vulnerable files were named
+  // nowhere: not on hover, not in the reader-only text, not in the downloaded
+  // PDF, not on paper, under a verdict saying all of them are listed with the
+  // file and the line.
+  const seven = [
+    { path: "php/Job Insert.php", startLine: 26 },
+    { path: "php/JobAppTable.php", startLine: 10 },
+    { path: "php/ForgotPass.php", startLine: 7 },
+    { path: "php/Login.php", startLine: 31 },
+    { path: "php/Register.php", startLine: 9 },
+    { path: "php/Reset.php", startLine: 5 },
+    { path: "php/Search.php", startLine: 18 },
+  ];
+  const every = seven.map((entry) => `${entry.path}:${String(entry.startLine)}`);
+
+  it("names the four the cell only counted", () => {
+    const hidden = hiddenLocations(seven);
+    for (const one of every.slice(3)) {
+      expect(hidden, `${one} is reachable nowhere`).toContain(one);
+    }
+    // And does not repeat what the cell already shows.
+    expect(hidden).not.toContain(every[0]);
+  });
+
+  it("says one rather than a digit when a single location is left over", () => {
+    // Four locations is the smallest finding that drops anything, and this arm
+    // of the copy had no test: "The other 1: php/Login.php:31" reads as
+    // machine output beside a cell that already says "and 1 more".
+    expect(hiddenLocations(seven.slice(0, 4))).toBe(
+      "The other one: php/Login.php:31",
+    );
+  });
+
+  it("carries nothing when the cell already names them all", () => {
+    // A finding with two locations must not grow a hover repeating what is
+    // already in front of the reader.
+    expect(hiddenLocations(seven.slice(0, 3))).toBe("");
+    expect(hiddenLocations(seven.slice(0, 1))).toBe("");
+    expect(hiddenLocations([])).toBe("");
+    expect(hiddenLocations(undefined)).toBe("");
+  });
+
+  it("gives the PDF every location, because its list layout wraps", () => {
+    // The findings section is `layout: "list"`, which gives a value as many
+    // lines as it needs, so nothing there ever forced the cell's three on it.
+    const all = allLocations(seven);
+    for (const one of every) {
+      expect(all, `${one} is missing from the PDF`).toContain(one);
+    }
+    expect(all).not.toContain("more");
+    expect(allLocations([])).toBe("not located");
+  });
+
+  it("leaves the table cell alone, because the column is fixed width", () => {
+    expect(formatLocations(seven)).toBe(
+      "php/Job Insert.php:26, php/JobAppTable.php:10, php/ForgotPass.php:7 and 4 more",
+    );
+  });
+
+  it("puts every location in the downloaded report", () => {
+    const document_ = reportDocument(
+      {
+        summary: summary(),
+        repositories: [repository()],
+        findings: [finding({ locations: seven })],
+      },
+      "1 thing to fix.",
+      "https://example.test",
+    );
+    const where = String(document_.sections[0]?.rows[0]?.[4] ?? "");
+    for (const one of every) {
+      expect(where, `${one} is missing from the PDF row`).toContain(one);
+    }
   });
 });
 
