@@ -267,3 +267,42 @@ describe("the lines that stand in for an absent result", () => {
     expect(nothingFoundText(1, 1, 0, standard).text).toBe(standard);
   });
 });
+
+describe("the verdict does not count one repository twice", () => {
+  const row = (gitleaks: string, state: string): RepositoryRow =>
+    ({
+      repositoryId: Math.round(Math.abs(Math.sin(gitleaks.length + state.length)) * 1000),
+      name: `${state}-${gitleaks}`,
+      state,
+      coverage: { snapshot: "complete", archive_guard: "complete", gitleaks, osv: "not_applicable", zizmor: "not_applicable", opengrep: "not_applicable", ai: "not_applicable" },
+      aiLane: "ai_not_run",
+    }) as unknown as RepositoryRow;
+
+  it("does not put a partly scanned repository on both sides of the sentence", () => {
+    // Three repositories produced "Nothing exposed in the 2 repositories that
+    // were scanned. 2 did not finish." because the partial one counted as
+    // scanned and as unfinished at the same time.
+    const text = summarizeVerdict(
+      "someone",
+      [row("complete", "complete"), row("partial", "partial"), row("failed", "failed")],
+      [],
+    ).text;
+    expect(text).toContain("the 1 repository the secret scan read in full");
+    expect(text).toContain("2 did not finish");
+    expect(text).not.toContain("the 2 repositories");
+  });
+
+  it("does not lead with a reassurance when nothing was read", () => {
+    // "Nothing exposed in the 0 repositories that were scanned" opened a scan
+    // that read no code at all with the words "nothing exposed".
+    const verdict = summarizeVerdict(
+      "someone",
+      [row("not_applicable", "failed"), row("not_applicable", "failed")],
+      [],
+    );
+    expect(verdict.tone).toBe("concern");
+    expect(verdict.text).toContain("No repository here was read");
+    expect(verdict.text).not.toContain("Nothing exposed");
+    expect(verdict.text).not.toContain("the 0 repositories");
+  });
+});

@@ -77,7 +77,13 @@ export function summarizeVerdict(
   const total = repositories.length;
   const skipped = uncheckedCount(repositories);
   const onPurpose = skippedOnPurposeCount(repositories);
-  const checked = secretScannedCount(repositories);
+  // Read in full, not "read at all". secretScannedCount includes partly
+  // scanned repositories, which are also counted in `skipped`, so the same
+  // repository appeared on both sides of the sentence: three repositories
+  // produced "the 2 that were scanned. 2 did not finish."
+  const checked = repositories.filter(
+    (repository) => repository.coverage.gitleaks === "complete",
+  ).length;
 
   const unexamined =
     skipped === 0
@@ -105,14 +111,30 @@ export function summarizeVerdict(
     };
   }
   if (skipped > 0) {
+    // Nothing was read at all, so there is no result to lead with. This used
+    // to open "Nothing exposed in the 0 repositories that were scanned",
+    // which puts a reassuring clause and the word "nothing exposed" at the
+    // front of a scan that read no code whatsoever.
+    if (checked === 0) {
+      return {
+        tone: "concern",
+        text:
+          `No repository here was read, so this scan has no result. ` +
+          `${String(skipped)} did not finish, and the ledger below says why.${deliberate}`,
+      };
+    }
     return {
       tone: "partial",
       // "Could not be checked" told people something had broken when the
       // usual cause is a fork this tool deliberately does not scan, so the
       // two are counted and worded separately now.
+      //
+      // `checked` counts the repositories the scanner read in full. It used to
+      // include partly scanned ones, which are also in `skipped`, so three
+      // repositories produced "the 2 that were scanned. 2 did not finish."
       text:
-        `Nothing exposed in the ${String(checked)} ${checked === 1 ? "repository" : "repositories"} that were scanned. ` +
-        `${String(skipped)} ${skipped === 1 ? "did" : "did"} not finish, and the ledger below says why.${deliberate}`,
+        `Nothing exposed in the ${String(checked)} ${checked === 1 ? "repository" : "repositories"} the secret scan read in full. ` +
+        `${String(skipped)} did not finish, and the ledger below says why.${deliberate}`,
     };
   }
   if (onPurpose > 0) {
