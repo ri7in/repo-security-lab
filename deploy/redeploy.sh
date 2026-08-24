@@ -44,3 +44,20 @@ case "$caps" in
   *'"scanCreation":"public"'*) echo "    ok, public scanning is live" ;;
   *) echo "    PUBLIC SCANNING IS OFF. Check the deploy output above." >&2; exit 1 ;;
 esac
+
+# The bundle the browser is served has to be the bundle that was just built.
+# A deploy that uploads the worker but not the assets, or one that races the
+# asset upload, leaves the site running yesterday's JavaScript while every
+# other check here passes.
+local_bundle="$(ls apps/web/dist/assets/*.js | head -1)"
+remote_path="$(curl -s --max-time 20 "$ORIGIN/" | grep -o '/assets/[^"]*\.js' | head -1)"
+local_hash="$(shasum -a 256 "$local_bundle" | cut -d' ' -f1)"
+remote_hash="$(curl -s --max-time 30 "$ORIGIN$remote_path" | shasum -a 256 | cut -d' ' -f1)"
+if [ "$local_hash" = "$remote_hash" ]; then
+  echo "    ok, the served bundle matches the build ($(basename "$local_bundle"))"
+else
+  echo "    SERVED BUNDLE DOES NOT MATCH THE BUILD." >&2
+  echo "    built  $(basename "$local_bundle") $local_hash" >&2
+  echo "    served $remote_path $remote_hash" >&2
+  exit 1
+fi
