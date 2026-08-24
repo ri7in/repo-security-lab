@@ -168,6 +168,9 @@ async function seedQueue(options: {
   readonly requestState: string;
   readonly attempts: number;
   readonly leaseOwner: string | null;
+
+  /** Omitted means a live lease, far in the future. */
+  readonly leaseExpiresAtMs?: number;
 }): Promise<void> {
   await env.DB.prepare("DELETE FROM repositories").run();
   await env.DB.prepare("DELETE FROM request_totals").run();
@@ -194,7 +197,9 @@ async function seedQueue(options: {
       options.repositoryState,
       options.attempts,
       options.leaseOwner,
-      options.leaseOwner === null ? null : 9_999_999_999,
+      options.leaseOwner === null
+        ? null
+        : (options.leaseExpiresAtMs ?? 9_999_999_999),
     )
     .run();
 }
@@ -207,7 +212,7 @@ describe("dispatching for work already queued", () => {
       attempts: 0,
       leaseOwner: null,
     });
-    expect(await hasClaimableWork(env.DB, 3)).toBe(true);
+    expect(await hasClaimableWork(env.DB, 3, 1_000)).toBe(true);
   });
 
   it("does not see work that nothing could claim", async () => {
@@ -220,8 +225,50 @@ describe("dispatching for work already queued", () => {
       { repositoryState: "waiting", requestState: "scanning", attempts: 0, leaseOwner: "worker_1" },
     ]) {
       await seedQueue(seed);
-      expect(await hasClaimableWork(env.DB, 3), JSON.stringify(seed)).toBe(false);
+      expect(await hasClaimableWork(env.DB, 3, 1_000), JSON.stringify(seed)).toBe(false);
     }
+  });
+
+  it("sees work stranded behind a lease whose worker died", async () => {
+    // A run that hits its thirty minute timeout, or a runner that vanishes,
+    // leaves lease_owner set on whatever it held. Every run reaps expired
+    // leases before claiming, so the work is recoverable, but this used to
+    // answer "no work" because nothing was unleased, so no run was dispatched
+    // to do the reaping. The scan then sat at its half-finished count until an
+    // unrelated visitor started one of their own.
+    await resetLedger();
+    await seedQueue({
+      repositoryState: "scanning",
+      requestState: "scanning",
+      attempts: 1,
+      leaseOwner: "worker_that_died",
+      leaseExpiresAtMs: 500,
+    });
+    expect(await hasClaimableWork(env.DB, 3, 1_000)).toBe(true);
+  });
+
+  it("does not see a lease that is still alive", async () => {
+    await resetLedger();
+    await seedQueue({
+      repositoryState: "scanning",
+      requestState: "scanning",
+      attempts: 1,
+      leaseOwner: "worker_still_working",
+      leaseExpiresAtMs: 9_999,
+    });
+    expect(await hasClaimableWork(env.DB, 3, 1_000)).toBe(false);
+  });
+
+  it("does not see a stranded lease that has run out of attempts", async () => {
+    await resetLedger();
+    await seedQueue({
+      repositoryState: "scanning",
+      requestState: "scanning",
+      attempts: 3,
+      leaseOwner: "worker_that_died",
+      leaseExpiresAtMs: 500,
+    });
+    expect(await hasClaimableWork(env.DB, 3, 1_000)).toBe(false);
   });
 
   it("starts a run for queued work and none for an empty queue", async () => {

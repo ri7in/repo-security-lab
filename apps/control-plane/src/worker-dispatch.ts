@@ -1,4 +1,5 @@
 import { branding } from "@app/branding";
+import { LEASED_REPOSITORY_STATES } from "@app/core";
 import type { D1Database } from "@app/store-d1";
 
 /**
@@ -157,22 +158,40 @@ export async function dispatchScanWorker(
  *
  * Mirrors the claim query's own conditions, so a tick cannot spend a dispatch
  * on a queue that is empty, fully leased, or out of attempts.
+ *
+ * The second half exists because the first half alone stranded a scan whose
+ * worker died. A run that hits its thirty minute timeout, or a runner that
+ * disappears, leaves `lease_owner` set on whatever it held. Every run reaps
+ * expired leases before it claims anything, so the work is perfectly
+ * recoverable, but this said "no work" because none of it was unleased, so no
+ * run was ever dispatched to do the reaping. The scan then sat at its
+ * half-finished count until an unrelated visitor happened to start one of
+ * their own, and on a quiet service that is the 24 hour abandonment timeout.
  */
 export async function hasClaimableWork(
   database: D1Database,
   maxLeaseAttempts: number,
+  nowMs: number,
 ): Promise<boolean> {
+  const leased = LEASED_REPOSITORY_STATES.map(() => "?").join(", ");
   const row = await database
     .prepare(
       `SELECT 1 AS present FROM repositories
        JOIN scan_requests ON scan_requests.request_id = repositories.request_id
-       WHERE repositories.state = 'waiting'
-         AND repositories.lease_owner IS NULL
+       WHERE scan_requests.state = 'scanning'
          AND repositories.attempt_count < ?
-         AND scan_requests.state = 'scanning'
+         AND (
+           (repositories.state = 'waiting' AND repositories.lease_owner IS NULL)
+           OR (
+             repositories.lease_expires_at_ms IS NOT NULL
+             AND repositories.lease_expires_at_ms <= ?
+             AND repositories.published_lease_generation IS NULL
+             AND repositories.state IN (${leased})
+           )
+         )
        LIMIT 1`,
     )
-    .bind(maxLeaseAttempts)
+    .bind(maxLeaseAttempts, nowMs, ...LEASED_REPOSITORY_STATES)
     .first<{ present: number }>();
   return row !== null;
 }
@@ -186,6 +205,8 @@ export async function dispatchIfWorkWaiting(
   fetchImpl: typeof fetch = fetch,
 ): Promise<DispatchOutcome> {
   if (config === null) return "not_configured";
-  if (!(await hasClaimableWork(database, maxLeaseAttempts))) return "no_work";
+  if (!(await hasClaimableWork(database, maxLeaseAttempts, nowMs))) {
+    return "no_work";
+  }
   return dispatchScanWorker(database, nowMs, config, fetchImpl);
 }
