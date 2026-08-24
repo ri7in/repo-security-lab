@@ -12,6 +12,7 @@ import {
 } from "./verdict.js";
 import type { PdfReport } from "./pdf.js";
 import { remediationLabel } from "./remediation.js";
+import { ruleName } from "./rule-name.js";
 
 export interface ReportState {
   readonly summary: ScanRequestSummary;
@@ -91,7 +92,7 @@ export function reportDocument(
         rows: state.findings.map((finding) => [
           names.get(finding.repository_id) ??
             `repository ${String(finding.repository_id)}`,
-          finding.rule_id.replaceAll("-", " "),
+          ruleName(finding.rule_id),
           finding.severity,
           formatCount(finding.occurrence_bucket),
           formatLocations(finding.locations),

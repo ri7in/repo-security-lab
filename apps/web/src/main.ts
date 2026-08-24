@@ -36,6 +36,7 @@ import {
   type ReportState,
 } from "./report.js";
 import { remediationLabel } from "./remediation.js";
+import { ruleName } from "./rule-name.js";
 import { initialTheme, readStoredTheme, storeTheme } from "./theme.js";
 import {
   explainFailure,
@@ -459,7 +460,7 @@ function renderFindings(
       const values = [
         repositoryNames.get(finding.repository_id) ??
           `repository ${String(finding.repository_id)}`,
-        finding.rule_id.replaceAll("-", " "),
+        ruleName(finding.rule_id),
         finding.severity,
         formatCount(finding.occurrence_bucket),
         formatLocations(finding.locations),
@@ -473,9 +474,14 @@ function renderFindings(
       ];
       row.append(
         ...values.map((value, index) => {
-          const cell = document.createElement("td");
+          // The repository name is the row's header, exactly as in the ledger.
+          // Every cell here was a plain td, so navigating this table cell by
+          // cell never re-announced which repository you were in, and this is
+          // the six column one where that matters most.
+          const cell = document.createElement(index === 0 ? "th" : "td");
           cell.dataset["label"] = headings[index] ?? "";
           if (index === 0) {
+            cell.setAttribute("scope", "row");
             // Same truncation contract as the ledger: the ellipsis needs an
             // element of its own to act on, and the full name stays on the
             // cell so it is still recoverable.

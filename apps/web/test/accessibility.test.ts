@@ -62,6 +62,16 @@ describe("production accessibility invariants", () => {
     }
   });
 
+  it("gives the findings table a row header, as the ledger has", async () => {
+    // Every findings cell was a plain td, including the repository name, so
+    // navigating that table cell by cell never re-announced which repository
+    // you were in. It is the six column one, where that matters most, and the
+    // ledger beside it has had a row header all along.
+    const script = await readFile(new URL("src/main.ts", root), "utf8");
+    expect(script).toContain('document.createElement(index === 0 ? "th" : "td")');
+    expect(script).toContain('cell.setAttribute("scope", "row")');
+  });
+
   it("exposes and updates the theme toggle pressed state", async () => {
     const [html, script] = await Promise.all([
       readFile(new URL("index.html", root), "utf8"),
