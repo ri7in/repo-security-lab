@@ -57,7 +57,9 @@ function finding(overrides: Partial<PublicFinding> = {}): PublicFinding {
     rule_id: "generic-api-key",
     severity: "critical",
     occurrence_bucket: "one",
-    remediation_key: "rotate-credential",
+    // Was "rotate-credential", which is not one of the twelve keys, so every
+    // assertion built on this fixture was testing the unknown-key fallback.
+    remediation_key: "rotate-secret",
     locations: [{ path: "infrastructure/k8s/secrets.yaml", startLine: 14 }],
     ...overrides,
   } as PublicFinding;
@@ -126,5 +128,22 @@ describe("the downloadable report", () => {
     expect(formatLocations(many)).toBe(
       "src/file-0.ts:1, src/file-1.ts:2, src/file-2.ts:3 and 4 more",
     );
+  });
+});
+
+describe("the downloaded report says as much as the printed one", () => {
+  it("carries the whole remediation, not the two-word label", () => {
+    // report.ts wrote only remediationLabel(key).short, so the PDF's advice
+    // was "Rotate it" while the Print button beside it produced the whole
+    // paragraph. remediation.ts's own header says two words is not advice.
+    const document_ = reportDocument(
+      { summary: summary(), repositories: [repository()], findings: [finding()] },
+      "1 thing to fix.",
+      "https://example.test",
+    );
+    const advice = String(document_.sections[0]?.rows[0]?.at(-1) ?? "");
+    expect(advice).toContain("Rotate it");
+    expect(advice).toContain("anyone who cloned the repository has it");
+    expect(advice.length).toBeGreaterThan(60);
   });
 });

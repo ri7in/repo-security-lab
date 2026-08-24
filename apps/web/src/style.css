@@ -273,7 +273,12 @@ thead th { padding: 13px 14px; text-align: left; color: var(--muted); border-bot
 tbody th { text-align: left; font: inherit; }
 td, tbody th { padding: 15px 14px; border-bottom: 1px solid var(--line); font: 600 11px var(--mono); }
 tbody tr:last-child td, tbody tr:last-child th { border-bottom: 0; }
-tbody tr[data-active="true"] { background: var(--signal-soft); box-shadow: inset 3px 0 0 var(--signal); }
+/* Amber, not green. The legend two inches above says green means scanned
+   and amber means running, and a row still being downloaded was wearing
+   the green while the only finished row beside it stayed plain. Every
+   text colour that lands on this background clears 4.5:1 in both
+   themes; the amber chip inside it is 4.90 light and 7.03 dark. */
+tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 3px 0 0 var(--amber); }
 .repo-name { width: 34%; max-width: 520px; white-space: nowrap; }
 .state-chip { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 6px 8px; border: 1px solid currentColor; font-size: 9px; text-transform: uppercase; }
 /* Tone, not state name. A skipped fork and a checker with nothing to do are

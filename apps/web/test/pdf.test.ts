@@ -277,3 +277,39 @@ describe("keeping a section with its table", () => {
     }
   });
 });
+
+describe("the list layout stays inside its own text block", () => {
+  it("does not run a near-limit repository name past the right margin", () => {
+    // The title line is drawn half a point larger than the body but shared the
+    // body's character budget, so a 103 character name ended at 565pt against
+    // a 555pt margin: still on the page, outside the block every other line
+    // respects. The contract allows a hundred characters.
+    const longest = "l".repeat(100);
+    const bytes = buildPdf(
+      report({
+        sections: [
+          {
+            heading: "What was found",
+            layout: "list",
+            emptyText: "Nothing was found.",
+            columns: [
+              { title: "Repository", weight: 4 },
+              { title: "What to do", weight: 4 },
+            ],
+            rows: [[longest, "Rotate it"]],
+          },
+        ],
+      }),
+    );
+    const text = decode(bytes);
+    // Every drawn string, with the x it starts at, from the content stream.
+    const drawn = [...text.matchAll(/1 0 0 1 ([\d.]+) [\d.]+ Tm[\s\S]{0,40}?\((.*?)\) Tj/g)];
+    const head = drawn.find((m) => m[2]?.includes("lll"));
+    expect(head, "the title line was not written").toBeDefined();
+    const startX = Number(head?.[1]);
+    const chars = (head?.[2] ?? "").length;
+    // 8.5pt monospace advances 0.6 of its size per character.
+    const endX = startX + chars * (8.5 * 0.6);
+    expect(endX, `title ends at ${endX.toFixed(1)}pt`).toBeLessThanOrEqual(555);
+  });
+});

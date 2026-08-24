@@ -131,11 +131,13 @@ describe("the progress model", () => {
     const model = progressModel(
       summary("complete", { complete: 20, cancelled: 2, failed: 1 }),
     );
+    // Terminal is terminal: the bar is full because nothing is still moving.
     expect(model.livePercent).toBe(100);
-    // Not "all 23 have been checked": two were forks and were never opened,
-    // and that sentence sat in green directly above a red verdict saying so.
+    // But "checked" is a narrower word than "finished". This asserted
+    // "21 of 23 checked" against a fixture holding one failed repository,
+    // which counted the failure as a check that ran.
     expect(model.liveDetail).toBe(
-      "21 of 23 repositories checked, 2 skipped as forks or as empty.",
+      "20 of 23 repositories checked, 2 skipped as forks or as empty, 1 did not finish.",
     );
   });
 
@@ -238,5 +240,36 @@ describe("which step the agent is shown to be on", () => {
       summary("scanning", { acquiring: 1, scanning: 4, complete: 1 }),
     );
     expect(model.signText).toBe("Scanning for secrets");
+  });
+});
+
+describe("what a finished scan announces about its own coverage", () => {
+  it("does not count a failed repository among the checked ones", () => {
+    // "All 3 repositories have been checked." printed in green at 100 percent,
+    // and read out to a screen reader, directly above a verdict saying one did
+    // not finish and a card reading "1 did not finish".
+    const model = progressModel(summary("complete", { complete: 2, failed: 1 }));
+    expect(model.liveDetail).toBe(
+      "2 of 3 repositories checked, 1 did not finish.",
+    );
+    expect(model.liveDetail).not.toContain("All 3");
+  });
+
+  it("names forks and failures separately, because they are different news", () => {
+    const model = progressModel(
+      summary("complete", { complete: 18, partial: 1, cancelled: 4 }),
+    );
+    expect(model.liveDetail).toBe(
+      "18 of 23 repositories checked, 4 skipped as forks or as empty, 1 did not finish.",
+    );
+  });
+
+  it("still says all checked when nothing was skipped or missed", () => {
+    expect(progressModel(summary("complete", { complete: 6 })).liveDetail).toBe(
+      "All 6 repositories have been checked.",
+    );
+    expect(progressModel(summary("complete", { complete: 1 })).liveDetail).toBe(
+      "All 1 repository has been checked.",
+    );
   });
 });

@@ -89,7 +89,11 @@ export function reportDocument(
           finding.severity,
           formatCount(finding.occurrence_bucket),
           formatLocations(finding.locations),
-          remediationLabel(finding.remediation_key).short,
+          // Both halves. The printed page carries the whole paragraph, and a
+          // downloaded PDF that says only "Rotate it" is a worse document
+          // than the Print button beside it produces. This module's own
+          // header says two words is not advice.
+          `${remediationLabel(finding.remediation_key).short}. ${remediationLabel(finding.remediation_key).detail}`,
         ]),
       },
       {

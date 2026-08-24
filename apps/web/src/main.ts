@@ -373,6 +373,15 @@ function renderSummary(summary: ScanRequestSummary): void {
   );
 }
 
+/**
+ * The longest repository name the name column shows in full.
+ *
+ * Measured rather than guessed: the column is capped at 520px and the cell
+ * font is 11px monospace, so a name past this is ellipsised at every desktop
+ * width. The contract allows 100 characters.
+ */
+const NAME_FITS = 74;
+
 function renderRepositories(repositories: readonly RepositoryRow[]): void {
   // Counted from the rows rather than from the request's coverage totals: the
   // stored totals predate the AI engine and never move for it.
@@ -396,8 +405,15 @@ function renderRepositories(repositories: readonly RepositoryRow[]): void {
       label.textContent = repository.name;
       name.append(label);
       // The one value that identifies the row, so it must stay recoverable
-      // even where the column runs out of width.
+      // even where the column runs out of width. `title` alone was not
+      // recovery: it takes about a second of hovering, it does not exist on
+      // touch at all, and this codebase already rejected it for chips. The
+      // same tooltip the chips use carries it now, and only when the name is
+      // actually cut, so a short name does not grow a pointless hover.
       name.title = repository.name;
+      if (repository.name.length > NAME_FITS) {
+        name.dataset["detail"] = repository.name;
+      }
       // Three columns a visitor can act on. The pipeline stages that used to
       // sit here (snapshot, guard, normalize) are internal bookkeeping, and
       // the checkers that are not switched on yet only ever said "not
@@ -464,6 +480,7 @@ function renderFindings(
             // cell so it is still recoverable.
             cell.className = "repo-name";
             cell.title = value;
+            if (value.length > NAME_FITS) cell.dataset["detail"] = value;
             const label = document.createElement("span");
             label.textContent = value;
             cell.append(label);

@@ -68,13 +68,16 @@ export function lostContact(): PanelState {
 
 /** A scan that failed before it produced a single summary. */
 export function couldNotStart(why: string): PanelState {
+  // Not "stopped early": nothing started. A scan that was refused or never
+  // reached the service is a different event from one that ran and died, and
+  // the heading was telling people their scan had begun.
   return {
-    heading: "Scan stopped early",
-    status: `Scan stopped. ${why}`,
-    phase: "Stopped",
+    heading: "Scan could not start",
+    status: `The scan could not be started. ${why}`,
+    phase: "Not started",
     detail: why,
-    sign: "Stopped",
-    announcement: `Scan stopped. ${why}`,
+    sign: "Not started",
+    announcement: `The scan could not be started. ${why}`,
     verdict: `This scan could not start. ${why}`,
     blank: true,
   };

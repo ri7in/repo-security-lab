@@ -41,6 +41,29 @@ export interface ProgressModel {
   readonly finished: boolean;
 }
 
+/**
+ * How a finished scan describes its own coverage.
+ *
+ * Split out because there are three separate reasons a repository is not in
+ * the "checked" number and folding any of them in produces a false all-clear:
+ * a fork or an empty repository was never opened, and a failed or partial one
+ * was opened and did not finish.
+ */
+function checkedText(all: number, skipped: number, missed: number): string {
+  const checked = all - skipped - missed;
+  if (skipped === 0 && missed === 0) {
+    return `All ${String(all)} ${all === 1 ? "repository has" : "repositories have"} been checked.`;
+  }
+  const reasons: string[] = [];
+  if (skipped > 0) {
+    reasons.push(`${String(skipped)} skipped as forks or as empty`);
+  }
+  if (missed > 0) {
+    reasons.push(`${String(missed)} did not finish`);
+  }
+  return `${String(checked)} of ${String(all)} repositories checked, ${reasons.join(", ")}.`;
+}
+
 export function progressModel(summary: ScanRequestSummary): ProgressModel {
   const totals = summary.repositoryTotals;
   const count = (...states: readonly string[]): number =>
@@ -70,6 +93,11 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
 
   const finished = summary.state === "complete";
   const skippedOnPurpose = count("cancelled", "empty");
+  // Repositories that were meant to finish and did not. They were counted
+  // among the checked ones, so a completed scan with a failure announced "all
+  // 3 repositories have been checked" in green at 100 percent, directly above
+  // a verdict saying one did not finish and a card reading "1 did not finish".
+  const missed = count("failed", "partial");
   const stopped = summary.state === "failed";
 
   const progress: Record<Step, { done: number; total: number }> = {
@@ -165,10 +193,10 @@ export function progressModel(summary: ScanRequestSummary): ProgressModel {
           ? "This account has no public repositories to scan."
           : // Not "all N have been checked": a fork is in `all` and was never
             // opened, so that sentence sat in green directly above a red
-            // verdict saying four were skipped.
-            skippedOnPurpose === 0
-          ? `All ${String(all)} ${all === 1 ? "repository has" : "repositories have"} been checked.`
-          : `${String(all - skippedOnPurpose)} of ${String(all)} repositories checked, ${String(skippedOnPurpose)} skipped as forks or as empty.`
+            // verdict saying four were skipped. A failed repository is not a
+            // checked one either, and naming it is the whole point of a ledger
+            // that refuses to smooth a partial result over.
+            checkedText(all, skippedOnPurpose, missed)
         : all === 0
           ? "Looking up the account."
           : `${String(terminal)} of ${String(all)} repositories finished.`,

@@ -84,9 +84,13 @@ export function explainFailure(
   if (explained !== undefined) return explained;
   // The old single fallback told people to send in "the report id in the
   // address bar" over a request that was never created and had no id.
+  // Every caller already frames this: couldNotStart prefixes "This scan could
+  // not start." and got "This scan could not start. The scan could not be
+  // started. Check your connection..." out of it, which is what any offline,
+  // DNS or non-JSON 5xx failure printed in the banner.
   return hasReport
     ? "Something went wrong that this page cannot explain. Try again in a few minutes, and the report id in the address bar is what to send in if it keeps happening."
-    : "The scan could not be started. Check your connection and try again in a few minutes.";
+    : "Check your connection and try again in a few minutes.";
 }
 
 export function statusLine(summary: ScanRequestSummary): string {

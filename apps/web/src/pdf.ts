@@ -222,6 +222,15 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
     }
     if (section.layout === "list") {
       const budget = Math.max(1, Math.floor(CONTENT_WIDTH / MONO_ADVANCE) - 1);
+      // The title line is drawn half a point larger than the body, so it needs
+      // its own budget. Sharing the body's let a near-limit repository name
+      // (the contract allows a hundred characters) run ten points past the
+      // right margin: still on the page, but outside the text block every
+      // other line respects.
+      const headBudget = Math.max(
+        1,
+        Math.floor(CONTENT_WIDTH / ((MONO_SIZE + 0.5) * 0.6)) - 1,
+      );
       const labelWidth =
         Math.max(...section.columns.slice(1).map((column) => column.title.length)) + 2;
       for (const [index, row] of section.rows.entries()) {
@@ -231,7 +240,7 @@ export function buildPdf(report: PdfReport): Uint8Array<ArrayBuffer> {
           page.cursor,
           "F4",
           MONO_SIZE + 0.5,
-          fit(`${String(index + 1)}. ${row[0] ?? ""}`, budget, "head"),
+          fit(`${String(index + 1)}. ${row[0] ?? ""}`, headBudget, "head"),
         );
         advance(ROW_HEIGHT);
         for (const [column, heading] of section.columns.slice(1).entries()) {

@@ -221,7 +221,11 @@ describe("explaining why a scan stopped", () => {
     const withoutReport = explainFailure("SOMETHING_NEW", false);
     expect(withReport).toContain("report id in the address bar");
     expect(withoutReport).not.toContain("report id");
-    expect(withoutReport).toContain("could not be started");
+    // Not "could not be started": couldNotStart already prefixes "This scan
+    // could not start", and having both produced that sentence twice in one
+    // banner. This half carries only what the reader can act on.
+    expect(withoutReport).toContain("Check your connection");
+    expect(withoutReport).not.toMatch(/could not (start|be started)/);
   });
 
   it("still prefers a written explanation over either fallback", () => {

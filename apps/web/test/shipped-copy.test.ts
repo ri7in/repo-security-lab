@@ -218,6 +218,43 @@ describe("the two dark palettes", () => {
   });
 });
 
+describe("the parts of the interface a phone can reach", () => {
+  it("does not dismiss the tooltip on the same tap that opens it", () => {
+    // A tap emits pointerover then pointerdown. pointerover showed the
+    // explanation and pointerdown hid it, inside one gesture, so every state
+    // chip and the whole "What to do" detail were unreachable on touch. A
+    // shared report link is most often opened on a phone.
+    const tooltip = read("src/tooltip.ts");
+    expect(tooltip).toContain('event.pointerType === "touch"');
+    expect(tooltip).toContain('event.pointerType !== "touch"');
+    // The bare listener that caused it must be gone.
+    expect(tooltip).not.toContain('addEventListener("pointerdown", hide');
+  });
+
+  it("gives a truncated repository name the same tooltip a chip gets", () => {
+    // The ellipsised name's only recovery was the native title attribute,
+    // which takes about a second of hovering and does not exist on touch.
+    const main = read("src/main.ts");
+    expect(main).toContain("NAME_FITS");
+    expect(main).toContain('name.dataset["detail"] = repository.name');
+  });
+});
+
+describe("colour never claims more than the state does", () => {
+  it("does not paint a running row the colour its own legend calls scanned", () => {
+    // The legend two inches above says green means scanned and amber means
+    // running. A row still being downloaded wore the green while the only
+    // finished row beside it stayed plain white.
+    const css = read("src/style.css");
+    expect(css).toContain(
+      'tbody tr[data-active="true"] { background: var(--amber-soft); box-shadow: inset 3px 0 0 var(--amber); }',
+    );
+    expect(css).not.toContain(
+      'tbody tr[data-active="true"] { background: var(--signal-soft)',
+    );
+  });
+});
+
 describe("the privacy page lists what is actually stored", () => {
   it("discloses the country code, because a row carries one", () => {
     // apps/api/src/app.ts reads cf-ipcountry and writes it to the request row,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { couldNotStart, lostContact, reportNotFound } from "../src/panel-states.js";
+import { explainFailure } from "../src/summary.js";
 
 /**
  * Three situations reach the panel with no summary behind it, and all three
@@ -61,5 +62,24 @@ describe("the states with no summary behind them", () => {
     expect(state.status).toContain(why);
     expect(state.detail).toBe(why);
     expect(state.announcement).toContain(why);
+  });
+});
+
+describe("the banner for a scan that never started", () => {
+  it("does not print the same sentence twice", () => {
+    // Any offline, DNS or non-JSON 5xx failure produced "This scan could not
+    // start. The scan could not be started. Check your connection and try
+    // again in a few minutes." couldNotStart already frames it.
+    const state = couldNotStart(explainFailure(undefined, false));
+    expect(state.verdict).toBe(
+      "This scan could not start. Check your connection and try again in a few minutes.",
+    );
+    expect(state.verdict?.match(/could not (start|be started)/g)).toHaveLength(1);
+  });
+
+  it("does not say a scan stopped early when it never began", () => {
+    const state = couldNotStart("Check your connection and try again in a few minutes.");
+    expect(state.heading).toBe("Scan could not start");
+    expect(state.heading).not.toContain("stopped");
   });
 });

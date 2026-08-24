@@ -63,9 +63,13 @@ function element(): HTMLElement {
   return created;
 }
 
+/** What the tooltip is currently open against, so a tap can close it again. */
+let openFor: HTMLElement | null = null;
+
 function show(target: HTMLElement): void {
   const detail = target.dataset["detail"];
   if (detail === undefined || detail === "") return;
+  openFor = target;
   const node = element();
   node.textContent = detail;
   node.dataset["open"] = "1";
@@ -85,6 +89,7 @@ function show(target: HTMLElement): void {
 }
 
 function hide(): void {
+  openFor = null;
   if (tip !== null) delete tip.dataset["open"];
 }
 
@@ -101,6 +106,12 @@ export function installTooltips(): void {
   document.addEventListener(
     "pointerover",
     (event) => {
+      // A tap emits pointerover before pointerdown, so opening here and then
+      // dismissing on pointerdown made every chip flash its explanation and
+      // swallow it inside one gesture. Touch is driven from the tap below
+      // instead, which is the only reachable path on a phone: there is no
+      // hover, and a shared report link is most often opened on one.
+      if (event.pointerType === "touch") return;
       const target = find(event.target);
       if (target === null) {
         hide();
@@ -110,7 +121,26 @@ export function installTooltips(): void {
     },
     { passive: true },
   );
-  document.addEventListener("pointerdown", hide, { passive: true });
+  document.addEventListener(
+    "pointerdown",
+    (event) => {
+      // A mouse or pen press dismisses, as before: the pointer is about to do
+      // something else and the tooltip is in the way.
+      if (event.pointerType !== "touch") {
+        hide();
+        return;
+      }
+      const target = find(event.target);
+      // Tapping the open chip again closes it, and tapping anywhere else
+      // closes it too. Both are the gestures a reader will try.
+      if (target === null || target === openFor) {
+        hide();
+        return;
+      }
+      show(target);
+    },
+    { passive: true },
+  );
   document.addEventListener("focusin", (event) => {
     const target = find(event.target);
     if (target !== null) show(target);
