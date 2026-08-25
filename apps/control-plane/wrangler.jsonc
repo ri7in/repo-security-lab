@@ -47,11 +47,6 @@
   },
   "vars": {
     "PUBLIC_APP_ORIGIN": "https://repo-security-lab.rivinsand.workers.dev",
-    // In this file, not the dashboard, because `wrangler deploy` replaces the
-    // deployed vars with exactly this block: a dashboard-set value is wiped on
-    // every deploy, and losing this one silently disables worker dispatch (the
-    // queue then waits for a manual Actions run and nothing logs why).
-    "WORKER_DISPATCH_REPOSITORY": "ri7in/repo-security-lab",
     "PUBLIC_SCANNING_ENABLED": "false",
     "OPENROUTER_KEY_POOL_SIZE": "2",
     "PRIVATE_SLICE_LOGINS": "ri7in",
