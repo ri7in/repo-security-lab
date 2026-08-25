@@ -877,12 +877,16 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
   }
 
   const repos = budget.repoLimitPerRequest;
+  // Three different numbers, and running them together is what made this box
+  // read as though one scan could use the whole day. Per scan: every eligible
+  // repository is scanned, and `repos` of them get the DeepScan. Per day, for
+  // everyone together: `deepReadsPerDay` DeepScans.
   quotaLine.textContent =
-    `To keep this free, up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan, shared by everyone using it. ` +
-    "Every repository that is not a fork and can be downloaded gets scanned for exposed secrets and workflow problems; " +
-    `your ${String(repos)} most recently updated also get the DeepScan, where a model reads the code line by line and a council of separate models double-checks anything it flags.`;
+    "Every repository that is not a fork and can be downloaded gets scanned for exposed secrets and workflow problems, however many you have. " +
+    `The DeepScan is the expensive part, so each scan gives it to your ${String(repos)} most recently updated repositories, ` +
+    "where a model reads the code line by line and a council of separate models double-checks anything it flags.";
   quotaSub.textContent =
-    "Free and open source. The daily limit is small on purpose and resets overnight.";
+    `To keep this free, ${String(budget.deepReadsPerDay)} repositories a day get a DeepScan across everyone using the service. That resets overnight.`;
 }
 
 void requestJson("/api/capabilities")

@@ -109,11 +109,6 @@ unexpected exceptions collapse to one fixed 500 response.
 
 ## The AI pass, and which model does what
 
-This section described an inert lane that could not reach a provider. That has
-not been true since the reader was wired up, and a security tool whose own
-documentation is wrong about where code goes is not one anybody should trust.
-Here is what actually happens.
-
 The pass runs in the worker, not the sandbox, for one reason: the sandbox has
 no network and the whole point of this pass is a model call. The worker holds
 the extracted snapshot on disk until cleanup, so files are read there directly
@@ -229,16 +224,13 @@ the startup probe and synthetic job pass.
 The current deployment URL is published in `README.md` and is backed by the
 APAC D1 database recorded in `wrangler.jsonc`. Static assets run through the
 Worker before the Assets binding so the same CSP, HSTS, frame, referrer, and
-cross-origin policies cover the homepage and API. A live private-scope smoke
-test proved third-party admission returns `PRIVATE_SLICE_SCOPE`. The
-authenticated GraphQL path now discovers all 22 owned public repositories. The
+cross-origin policies cover the homepage and API. The
 initial production failure was traced to native Worker `fetch` being invoked
 with the wrong receiver; the fixed unbound call has a regression test and the
 deployed path is green.
 
-Vercel is authenticated as the owner's personal account and remains an
-isolated-compute candidate because Sandbox provides Firecracker microVMs and
-network policy. It is not wired into the release: exact $0 allowance, snapshot,
+Vercel remains an isolated-compute candidate because Sandbox provides
+Firecracker microVMs and network policy. It is not wired into the release: exact $0 allowance, snapshot,
 deny-all scan phase, source-blind output, and lifecycle proof remain required.
 
 ## Verification layers

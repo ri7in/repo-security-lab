@@ -1,14 +1,13 @@
 # Product decision records
 
-Product-level ADRs start here. Transfer-task decisions (D-xxx) remain in the
-task's `DECISIONS.md`; entries here cover implementation choices made inside
-this repository.
+Each entry records an implementation choice made in this repository: what was
+decided, and the reasoning a contributor would otherwise have to reconstruct.
 
 ## ADR-001: centralized placeholder branding with a walking rename guard
 
 **Status:** accepted (2026-08-16)
 
-The product name is a replaceable placeholder (task decision D-067). All name
+The product name is a replaceable placeholder. All name
 literals live in `packages/branding/src/index.ts`. A test walks the repository
 and fails on any literal outside the branding source, the README allowance,
 and the lockfile. Internal workspace package names use the name-free `@app/*`
@@ -19,9 +18,7 @@ renaming; published names are derived from branding at release time.
 
 **Status:** accepted (2026-08-16), pending independent review
 
-The 2026-08-16 implementation plan listed `zod ^3` and `vitest ^3` (current at
-planning time). At bootstrap these were stale majors; the workspace uses the
-current stable majors instead: `zod ^4`, `vitest ^4` (+ matching
+The workspace pins current stable majors: `zod ^4`, `vitest ^4` (+ matching
 `@vitest/coverage-v8`), `typescript ^5.9`, `eslint ^9` with
 `typescript-eslint ^8`, `@types/node ^24` (matching the Node 24 CI target).
 Schemas use the Zod 4 API (`z.strictObject`, exhaustive enum records,
@@ -30,16 +27,16 @@ Hono remains on 4 and its Node adapter on 2. The exact lock resolves Zod 4.4.3,
 Vite 7.3.6, better-sqlite3 13.0.3, Hono 4.13.2, and the Node adapter 2.1.1.
 External runtime dependencies remain limited to those three runtime families.
 
-## ADR-003: internal packages resolve TypeScript source; no build artifact yet
+## ADR-003: internal packages resolve TypeScript source
 
 **Status:** accepted (2026-08-16), revisit on measurable build/typecheck cost
 
 Workspace packages are private and never published; their `exports` point at
 `src/index.ts`. TypeScript typechecks everything through one strict root
 project (`tsc -p tsconfig.json`, `noEmit`) and Vitest transforms sources
-directly, so stage 1 needs no build step and no project-reference graph. The
-implementation plan's project-references layout is deferred until a deployable
-app or measurable typecheck cost exists; `tsconfig.base.json` already carries
+directly, so typechecking and testing need no build step and no
+project-reference graph. This holds for the packages; the deployable apps are
+bundled separately by the `build:*` scripts. `tsconfig.base.json` already carries
 the shared strict options so the migration is additive.
 
 ## ADR-004: account-level request-state vocabulary
@@ -80,14 +77,13 @@ injects it from trusted state.
 
 ## ADR-006: progressive durable requests and generation-derived publication
 
-**Status:** accepted (2026-08-16, Fable/Codex core review)
+**Status:** accepted (2026-08-16)
 
 The control plane persists `accepted` before discovery so the API can return a
 real request ID immediately. Discovery completion atomically creates the full
 repository ledger (`waiting` or `empty`) and is idempotent only for an exact
-ledger match. SQLite is the exercised local adapter; the Store port remains
-asynchronous for a future D1 adapter, whose deployed semantics are still an
-open proof gate.
+ledger match. SQLite is the local adapter and D1 is the deployed one; the Store port is
+asynchronous so that both satisfy it, and each is exercised by its own suite.
 
 Lease generation is a monotonically increasing repository field, not data
 hidden inside a nullable lease. It survives release/expiry and prevents ABA.
@@ -142,22 +138,21 @@ not presented as a complete hosted backend.
 
 **Status:** accepted (2026-08-16)
 
-The slice exercises two distinct fixture scouts, strict candidates, local
-grounding, and a fixture judge while the default state remains `ai_not_run`.
-The provider vocabulary contains only `fixture`; a real adapter cannot be
-registered. Provider access, source submission, and terms-dependent behavior
-remain outside this authorization.
+Fixture scouts and a fixture judge exercise the lane offline, and the default
+state is `ai_not_run` so that an unconfigured deployment claims nothing. Live
+adapters now exist alongside the fixtures: the provider vocabulary is
+`fixture`, `openrouter`, `groq` and `gemini`, and the mode is `disabled`,
+`fixture` or `live`. What leaves the machine in live mode, and to whom, is
+stated in `docs/privacy.md` and on the site itself.
 
 ## ADR-011: MIT license for the open-source project
 
-**Status:** accepted for the private slice (2026-08-16)
+**Status:** accepted (2026-08-16)
 
-The repository uses the MIT License, matching the owner's existing open-source
-project style and the standalone Gitleaks engine's permissive license. The root
-package records `MIT`; contribution/security guidance and third-party notices
-are committed with the source. This selection can be revisited before public
-release, but the repository is no longer left in the legally ambiguous
-"source visible but no permission granted" state.
+The repository uses the MIT License, which is compatible with the permissive
+license of the standalone Gitleaks engine it invokes. The root package records
+`MIT`; contribution and security guidance and third-party notices are committed
+with the source.
 
 ## ADR-012: loopback runtime rejects DNS rebinding
 
@@ -173,7 +168,7 @@ the legitimate local host and fixed 404 for an attacker Host.
 
 ## ADR-013: specialist failure is engine-scoped
 
-**Status:** accepted (2026-08-16, Fable/Codex review)
+**Status:** accepted (2026-08-16)
 
 A repository-level reason alone cannot represent mixed scanner outcomes. The
 worker therefore runs each applicable engine and its source-blind broker as an
@@ -243,8 +238,9 @@ until their offline database/rules, memory, provenance, and Linux gates pass.
 
 **Status:** accepted implementation, owner setup pending (2026-08-17)
 
-Scanning and report viewing never depend on email. During the private preview,
-four notification secrets bind the queue to one operator-controlled address.
+Scanning and report viewing never depend on email. In the operator-only
+configuration, four notification secrets bind the queue to one
+operator-controlled address.
 The address is encrypted with AES-GCM, one recipient and 80 total messages per
 rolling day are enforced in code and D1, and delivery starts only after a
 request is terminal. The fixed HMAC-signed relay carries one recipient and

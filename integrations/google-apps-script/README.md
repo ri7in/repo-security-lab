@@ -17,9 +17,9 @@ scan or view a report.
 4. Deploy as **Web app**, execute as the owner, and allow anyone to invoke it.
    The body-level HMAC is the authorization boundary; the script rejects every
    unsigned, stale, replayed, malformed, or wrong-origin packet.
-5. This adapter is restricted to one operator-controlled address during the
-   private preview. Public scanning disables it structurally until a separate
-   recipient-consent flow exists. Install four Cloudflare secrets without
+5. This adapter is restricted to one operator-controlled address. Public
+   scanning disables it structurally until a separate recipient-consent flow
+   exists. Install four Cloudflare secrets without
    printing them:
 
    ```sh

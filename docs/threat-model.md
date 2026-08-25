@@ -29,9 +29,9 @@ and string the scanner may emit. Scanner output is treated as compromised even
 when the executable itself matches the pinned release hash.
 
 Local machine administrators and a compromised trusted scanner binary are
-outside the private slice's containment guarantee. Public release therefore
-requires the separate Linux privilege/no-network/cgroup/tmpfs boundary and
-project-attested scanner provenance described below.
+outside the containment guarantee. The separate Linux
+privilege/no-network/cgroup/tmpfs boundary and project-attested scanner
+provenance described below are what would narrow that gap.
 
 ## Trust boundaries
 
@@ -91,7 +91,7 @@ group, so this is cleanup defense in depth and does not weaken the separate
 Linux cgroup/systemd public-release gate.
 
 A separate iterative walk reads only extracted entry names and types under
-independent entry/depth/path-byte ceilings. For the three unintegrated engines,
+independent entry/depth/path-byte ceilings. For an engine that is not enabled,
 `not_applicable` means a complete anomaly-free walk proved no relevant input;
 present input or a walk that cannot finish is `unsupported`. Dependency
 relevance deliberately includes manifests and lockfile families that are not
@@ -157,9 +157,7 @@ rate limits, switched-off encrypted email, 24-hour abandoned
 work expiry, and automatic 30-day terminal-report deletion. A public scan
 worker is attached: scanning runs on GitHub Actions under enforced Bubblewrap
 isolation, claimed against a lease and dispatched both on request creation and
-by the five-minute cron. This paragraph said no public worker was attached
-until 2026-08-24, which understated the deployed surface for as long as public
-scanning had been live. The application does not persist requester IPs. Email ciphertext is
+by the five-minute cron. The application does not persist requester IPs. Email ciphertext is
 erased after delivery or final failure; a keyed abuse-control hash disappears
 with the retained report. Forks are represented but refused before download because
 owned forks can contain third-party source. Logs carry fixed event/result codes
@@ -171,8 +169,8 @@ only.
   host: no network, hidden credentials, denied outside writes, clean environment,
   read-only pinned tools, private scratch, systemd memory/CPU/task ceilings, no
   swap, and crash/reboot cleanup.
-- Maintain the deployed Worker/D1 control plane under Rivin's Cloudflare
-  account and verify free-tier capacity alarms before third-party admission.
+- Verify free-tier capacity alarms on the deployed Worker and D1 control
+  plane as third-party scan volume grows.
 - Attach a non-root Linux or microVM scan-compute boundary with no target-code
   execution, default-deny egress after acquisition, resource ceilings, trusted
   read-only scanners, tuple cleanup, and crash/reboot proofs.
@@ -184,6 +182,6 @@ only.
   data, the pages say so, and that is the standing trade.
 - Add project-attested/reproducible scanner provenance. A release archive hash
   proves identity, not that the upstream build is trustworthy.
-- Integrate and test dependency and source-rule specialists. The workflow lane
-  is implemented but remains explicitly `unsupported` until its Linux proof and
-  runtime enablement pass.
+- Integrate and test the dependency and source-rule specialists. The workflow
+  lane (zizmor) is integrated and enabled; the dependency (OSV) and source-rule
+  (opengrep) lanes report `unsupported` until their pinned-binary proofs pass.

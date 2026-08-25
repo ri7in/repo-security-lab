@@ -3,13 +3,16 @@
 The service is live and public at
 [repo-security-lab.rivinsand.workers.dev](https://repo-security-lab.rivinsand.workers.dev),
 and this repository is where it is built. Review-quality patches are welcome.
-This file said the project was not accepting public production use until
-2026-08-24, which had been untrue for as long as the service had been open.
 
 Requirements:
 
 - Node 24 or newer and pnpm 10.33.0.
 - Treat every target archive and scanner field as hostile data.
+- A fixture for anything that touches a secret has to be shaped like the real
+  input. Flat fixtures have twice hidden credential-handling bugs here: once
+  where the redaction lookup matched on a path shape the real archive never
+  produces, and once where the fixture itself contained the word REDACTED, so
+  the promise held in the tests and nowhere else.
 - Only a validated repository-relative path and line number may cross the
   hosted boundary, and only through the location channel, never the broker
   packet. Never add a snippet, match, package string, upstream error body, or

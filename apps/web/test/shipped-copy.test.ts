@@ -179,14 +179,26 @@ describe("claims the code contradicts", () => {
     const script = read("src/main.ts");
     expect(script).not.toContain("full code reviews left today");
     expect(script).not.toContain("DeepScans left today");
-    expect(script).toContain("up to ${String(budget.deepReadsPerDay)} repositories a day get the full DeepScan");
+    expect(script).toContain("repositories a day get a DeepScan across everyone using the service");
+  });
+
+  it("does not let the daily DeepScan total read as a per-visitor allowance", () => {
+    // The box showed "100" under a label that scanned as scans-per-day, next
+    // to a sentence saying only three repositories are deep-read. Readers took
+    // the two numbers to be the same quantity. The daily figure counts
+    // repositories deep-read across every visitor; the per-scan figure is
+    // separate and must never be phrased as a share of it.
+    const script = read("src/main.ts");
+    expect(script).toContain("across everyone using the service");
+    expect(read("index.html")).toContain("SHARED DEEPSCANS PER DAY");
+    expect(read("index.html")).not.toContain("FREE DEEPSCANS PER DAY");
   });
 
   it("promises the DeepScan to the most recently updated repositories only", () => {
     // Discovery awards the deep-read slots by push recency, so the copy may
     // say "most recently updated" and must never fall back to the vague "a
     // few per scan" that hid the old oldest-first pick.
-    expect(read("src/main.ts")).toContain("most recently updated also get the DeepScan");
+    expect(read("src/main.ts")).toContain("most recently updated repositories");
     expect(read("index.html")).toContain("The three you pushed to most recently");
     expect(read("index.html")).not.toContain("A few per scan");
     expect(read("public/how-it-works.html")).toContain("pushed to most recently");

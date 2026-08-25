@@ -9,12 +9,6 @@ excerpt around each secret-scan finding to Groq and to Google. `docs/privacy.md`
 has the complete data boundary and `docs/threat-model.md` has the trust
 boundaries.
 
-Until 2026-08-24 this file said the opposite: that the repository was a private
-preview, that public scan compute and AI source processing were disabled, and
-that testing the public service was out of scope. All three had been untrue for
-as long as the service had been live, which meant this policy was telling
-researchers not to report the only thing that was actually deployed.
-
 ## Reporting
 
 Use GitHub's private vulnerability-reporting flow on this repository. Include

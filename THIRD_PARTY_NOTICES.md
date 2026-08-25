@@ -1,6 +1,6 @@
 # Third-party notices
 
-The private slice invokes, but does not commit, the standalone Gitleaks scanner
+The service invokes, but does not commit, the standalone Gitleaks scanner
 version 8.30.1. Gitleaks is distributed under the MIT License. Its executable,
 release archive, default rule configuration, and project-owned integration are
 kept distinct from the separately licensed commercial Gitleaks Action.

@@ -15,7 +15,7 @@ coverage and findings report. It does not require an account, set cookies, or ru
 - Reports contain fixed coverage states, manifest-derived finding metadata,
   and the file path and line number of each match. They cannot contain source
   code, snippets, raw matches, secret values, or scanner prose.
-- During the private preview, optional report email is restricted to one
+- Optional report email is an operator-only feature, restricted to one
   operator-controlled address and encrypted with AES-GCM at rest. Its
   ciphertext is erased after successful delivery or the final failed attempt.
   A keyed recipient hash remains only until the report is deleted, to enforce

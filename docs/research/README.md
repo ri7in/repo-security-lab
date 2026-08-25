@@ -1,6 +1,6 @@
 # Research record
 
-This directory keeps the durable conclusions that shaped the private slice.
+This directory keeps the durable conclusions that shaped this project.
 The detailed dated working notes remain in the project transfer archive while
 the product name is unsettled; the conclusions and release gates needed to
 understand or review this repository are recorded here and in the linked ADRs.
@@ -25,8 +25,8 @@ understand or review this repository are recorded here and in the linked ADRs.
 - zizmor's attested release archive can audit this project's own workflow,
   action, Dependabot, and pre-commit definitions fully offline. CI forces
   `--no-config`, `--no-ignores`, all-input collection, strict parsing, and the
-  versioned JSON-v1 format; this self-scan does not claim that the product's
-  hosted workflow specialist is integrated.
+  versioned JSON-v1 format. The hosted workflow specialist is a separate
+  integration and is now enabled in the deployed worker.
 - OSV-Scanner's release API digest and SLSA provenance identify the pinned
   binary used to check this project's own exact pnpm lockfile. CI disables
   dependency resolution and call analysis. This narrow self-scan may query the
@@ -44,8 +44,9 @@ understand or review this repository are recorded here and in the linked ADRs.
   crash/reboot cleanup evidence.
 - Small/free model accuracy requires orchestration rather than trust in one
   answer: two blind family-distinct scouts, deterministic byte/symbol/trace
-  grounding, and an adversarial family-distinct judge. This remains a designed
-  future lane; the current repository intentionally contains no model adapter.
+  grounding, and an adversarial family-distinct judge. This lane is now built:
+  `packages/ai-providers` holds the live scout and judge adapters, and
+  `packages/quota` records each provider's free-tier allowance.
 
 ## Primary references
 
@@ -75,4 +76,3 @@ before a public implementation or provider activation.
 - [Threat model](../threat-model.md)
 - [Decisions](../decisions.md)
 - [Maintenance and verification](../maintenance.md)
-- [Private-slice retrospective](../retrospective.md)

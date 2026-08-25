@@ -1,6 +1,6 @@
 # Maintenance
 
-## Product rename runbook (D-067 → D-020)
+## Product rename runbook
 
 The product currently uses a replaceable placeholder name. Every name literal
 is centralized in `packages/branding/src/index.ts` and enforced by the rename
@@ -73,21 +73,20 @@ pnpm exec wrangler d1 migrations apply DB --local \
 pnpm build:control-plane
 ```
 
-The private production preview URL is published in `README.md`. It runs under
-Rivin's Cloudflare account with D1 migrated and
-`PUBLIC_SCANNING_ENABLED=false`. Reports require no OAuth application or login;
+The deployment URL is published in `README.md`. D1 is migrated, and the
+deployed service runs with public scanning on, set by `deploy/redeploy.sh`
+rather than by the checked-in config, which stays fail-closed so that a clone
+cannot open a service by accident. Reports require no OAuth application or login;
 legacy auth and owner routes return fixed 404 responses. Install service
 credentials only through Wrangler secrets; never commit them. The trusted scan
 worker uses the signed internal protocol, and the current implementation is not
 a public multi-tenant sandbox.
 
 The dedicated public-data discovery token, worker-auth master secret, and
-generation-1 `worker_github_actions_01` identity are installed. Live request
-`req_9459e1e0850982b19ae14e2af03c2140` discovered all 22 repositories and a
-manual hosted validation drained the queue in 1 minute 46 seconds: 16 complete,
-four owner-excluded forks, two honest `ARCHIVE_LIMIT` failures, and three
-source-blind findings across three repositories. The manual workflow has no
-schedule and is development/test evidence only. GitHub's current Actions terms
+generation-1 `worker_github_actions_01` identity are installed as Wrangler
+secrets. The scan workflow has no schedule: it is dispatched on request
+creation and by the five-minute cron, and only when work is actually waiting.
+GitHub's current Actions terms
 warn against using hosted Actions as part of a serverless application, so it is
 not the continuous production compute boundary.
 

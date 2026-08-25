@@ -1,8 +1,7 @@
 # repo-security-lab
 
 > **Placeholder name.** `repo-security-lab` is a replaceable development
-> placeholder (decision D-067); the final product name is still owned by the
-> project owner. All branding lives in `packages/branding` and renaming is
+> placeholder. All branding lives in `packages/branding` and renaming is
 > mechanical. See `docs/maintenance.md`.
 
 Zero-cost, privacy-preserving security reports for all public
@@ -103,8 +102,8 @@ Current guarantees:
 - `deploy/oci`: ARM64 Always Free bootstrap, hardened systemd service, and
   local-to-host deployment runbook.
 - `integrations/google-apps-script`: optional no-domain report-email relay.
-- `docs/`: architecture, threat model, research record, maintenance,
-  decisions, and private-slice retrospective.
+- `docs/`: architecture, threat model, research record, maintenance, and
+  decisions.
 
 ## Development
 
@@ -121,7 +120,7 @@ The private local runtime requires an immutable GitHub account allowlist and
 the exact verified Gitleaks binary identity. It refuses non-loopback binding:
 
 ```sh
-PRIVATE_SLICE_ACCOUNT_IDS=121791882 \
+PRIVATE_SLICE_ACCOUNT_IDS=<your-github-numeric-account-id> \
 GITHUB_TOKEN="$(gh auth token)" \
 GITLEAKS_BINARY=/absolute/path/to/gitleaks \
 GITLEAKS_SHA256=<64-lowercase-hex-digest> \
@@ -134,16 +133,18 @@ pnpm dev:web
 
 The checked-in Cloudflare config is fail-closed on purpose
 (`PUBLIC_SCANNING_ENABLED=false`), so a fresh clone cannot open the service by
-accident; `deploy/redeploy.sh` passes the flags the live service runs with. D1 is provisioned and migrated in APAC, the
-preview is bound to GitHub account ID `121791882`, and static/API responses pass
-through the same security-header boundary. The dedicated discovery credential,
-signed worker identity, and first 22-repository live proof are installed. The
-finding report is public and requires no login. It names the file and line of
-each match so a finding can be acted on. It cannot express snippets, matches,
-secret values, or internal detail references. The
-remaining release gate is provisioning the prepared continuously available,
-terms-compatible OCI worker and passing its exact Linux proof, so third-party
-scan creation stays refused until that compute boundary passes. See
+accident. Deploy with `deploy/redeploy.sh`: it passes the flags the live
+service runs with, and it refuses to finish unless `/api/capabilities` reports
+public scanning and the served bundle hash matches the one just built. A bare
+`wrangler deploy` replaces the deployed variables with the fail-closed set and
+takes the service down to nobody.
+
+D1 is provisioned and migrated in APAC, and static and API responses pass
+through the same security-header boundary. The finding report is public and
+requires no login. It names the file and line of each match so a finding can be
+acted on. It cannot express snippets, matches, secret values, or internal
+detail references. Scan compute runs on GitHub Actions; a continuously
+available, terms-compatible OCI worker is prepared but not yet provisioned. See
 `docs/maintenance.md` and `deploy/oci/README.md` for the release runbook.
 `OPERATOR_MODE=true` additionally enables the full broker record on loopback;
 the public browser receives only the reduced public finding schema.
