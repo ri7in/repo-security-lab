@@ -2,3 +2,16 @@ title = "repository-security-worker trusted Gitleaks rules"
 
 [extend]
 useDefault = true
+
+# Stripe publishable keys are public by design. Stripe documents pk_test_ and
+# pk_live_ keys as safe to embed in client-side code and ship to browsers; the
+# secret half is sk_/rk_, which this never matches. The default generic-api-key
+# rule fires on a pk_ key when it sits behind a key-shaped name (publishableKey,
+# apiKey), producing a high-severity "leaked credential" for a value that is not
+# a credential. Matching is against the captured secret, so a real sk_ secret on
+# the same line as a pk_ key keeps its own finding; only the publishable value
+# is dropped. Verified against Gitleaks 8.30.1 with a live-binary test.
+[[allowlists]]
+description = "Stripe publishable keys are public by design and safe to commit"
+regexTarget = "secret"
+regexes = ['''pk_(test|live)_[0-9A-Za-z]{10,}''']
