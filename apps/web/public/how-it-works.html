@@ -53,7 +53,7 @@
       <p>Everything runs on free tiers: Cloudflare, GitHub Actions, and free model APIs. That is a deliberate constraint, and it is why the DeepScan is rationed. It also means the honest limits below are real:</p>
       <ul>
         <li>The best reader model is an anonymous preview that could vanish or start charging at any time. The tool falls back to weaker models rather than breaking when that happens.</li>
-        <li>The daily DeepScan number shown on the front page is a stated ceiling, not a live countdown.</li>
+        <li>The daily DeepScan number on the front page counts down as repositories are deep-read, charged at a modeled per-repository cost rather than metered from the providers, so it is honest about the day but approximate about the minute.</li>
         <li>Dependency vulnerabilities are not checked yet, so a report saying nothing was found is not a promise your code is secure.</li>
       </ul>
 

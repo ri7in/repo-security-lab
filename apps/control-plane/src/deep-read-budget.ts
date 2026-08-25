@@ -1,5 +1,7 @@
 import {
   COUNCIL,
+  MODELED_REQUESTS_PER_REPO,
+  MODELED_TOKENS_PER_REPO,
   councilBudget,
   toDeepReadBudget,
   type ModelSpend,
@@ -75,4 +77,28 @@ export async function recordDeepReadSpend(
     )
     .bind(day, modelId, tokens, requests)
     .run();
+}
+
+/**
+ * Charges one repository's deep read to today's budget, at modeled cost.
+ *
+ * The worker does not report what each provider call actually cost, and the
+ * displayed budget is computed from the same modeled per-repository costs used
+ * here, so charging the model keeps the meter and the maths in one currency:
+ * one deep-read repository moves the display by exactly one. Until this was
+ * called, the meter read whatever the untouched day was worth, every day; the
+ * front page had to describe its own number as "a stated ceiling, not a live
+ * countdown", which for a product about honest reporting was an embarrassing
+ * sentence to need.
+ */
+export async function recordModeledDeepRead(
+  database: D1Database,
+  nowMs: number,
+): Promise<void> {
+  for (const model of COUNCIL) {
+    await recordDeepReadSpend(database, nowMs, model.id, {
+      tokens: MODELED_TOKENS_PER_REPO[model.role],
+      requests: MODELED_REQUESTS_PER_REPO[model.role],
+    });
+  }
 }

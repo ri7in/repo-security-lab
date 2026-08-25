@@ -173,13 +173,14 @@ describe("claims the code contradicts", () => {
     expect(read("index.html").toLowerCase()).toContain("excerpt");
   });
 
-  it("does not present the daily ceiling as a live reading", () => {
-    // Nothing records what a scan spends, so "16 of 16 left today" was a
-    // constant dressed as a gauge.
+  it("presents the meter as a live remaining count, now that spend is recorded", () => {
+    // Publication charges the deep-read meter, so the big number is the
+    // remaining count and must be wired to deepReadsRemaining, not the
+    // ceiling. When nothing recorded spend this asserted the opposite.
     const script = read("src/main.ts");
-    expect(script).not.toContain("full code reviews left today");
-    expect(script).not.toContain("DeepScans left today");
+    expect(script).toContain("String(budget.deepReadsRemaining);");
     expect(script).toContain("repositories a day get a DeepScan across everyone using the service");
+    expect(script).toContain("still available today");
   });
 
   it("does not let the daily DeepScan total read as a per-visitor allowance", () => {

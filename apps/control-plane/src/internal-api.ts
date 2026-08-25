@@ -1,3 +1,4 @@
+import { recordModeledDeepRead } from "./deep-read-budget.js";
 import { opaqueIdSchema, type OpaqueId } from "@app/contracts";
 import {
   validatePublishInput,
@@ -247,7 +248,24 @@ export async function handleInternalRequest(
       } catch {
         return response({ reason: "INVALID_BODY" }, 400);
       }
-      return response({ result: await store.publish(input) });
+      const result = await store.publish(input);
+      // Charge the day's deep-read meter for a repository the AI actually
+      // read. Only a fresh publication pays: an idempotent replay of the same
+      // publication must not charge twice, and a stale lease charged nothing.
+      // The charge must never fail the publication that earned it, so a meter
+      // write failing is swallowed and the meter drifts optimistic, which is
+      // the direction the budget reader already treats as safe.
+      if (
+        result === "published" &&
+        (input.coverage.ai === "complete" || input.coverage.ai === "partial")
+      ) {
+        try {
+          await recordModeledDeepRead(environment.DB, nowMs);
+        } catch {
+          // The display meter is best-effort by design.
+        }
+      }
+      return response({ result });
     }
     return response({ reason: "NOT_FOUND" }, 404);
   } catch (error) {

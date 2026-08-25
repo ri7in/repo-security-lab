@@ -31,6 +31,7 @@ import {
   formatLocations,
   hiddenLocations,
   reportDocument,
+  reportMarkdown,
   reportFileName,
   type ReportState,
 } from "./report.js";
@@ -114,7 +115,7 @@ const seeResults = $<HTMLButtonElement>("#see-results");
 const statusTitle = $<HTMLElement>("#status-title");
 const verdict = $<HTMLElement>("#verdict");
 const verdictText = $<HTMLElement>("#verdict-text");
-const printReport = $<HTMLButtonElement>("#print-report");
+const copyReport = $<HTMLButtonElement>("#copy-report");
 const quotaMeter = $<HTMLElement>("#quota-meter");
 const quotaPercent = $<HTMLElement>("#quota-percent");
 const quotaBar = $<HTMLElement>("#quota-bar");
@@ -125,6 +126,7 @@ let notificationStatus: "not_requested" | "queued" | "unavailable" | "rate_limit
 
 $("#product-name").textContent = branding.productDisplayName;
 $("#tagline").textContent = branding.tagline;
+$<HTMLAnchorElement>("#repo-link").href = branding.repoUrl;
 $("#footer-name").textContent = `${branding.productDisplayName}. Free and open source.`;
 document.title = `${branding.productDisplayName}: public repository security`;
 
@@ -859,10 +861,11 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
         : "healthy";
 
   quotaMeter.dataset["level"] = level;
-  // The number, not a percentage of it. Nothing records what a scan spends, so
-  // the percentage was always 100 and the bar was always full: a gauge that
-  // cannot move is a worse lie than no gauge.
-  quotaPercent.textContent = String(budget.deepReadsPerDay);
+  // The remaining count, now that publication charges the meter: each
+  // repository the AI reads moves this number by one. For years of this
+  // project's short life nothing recorded spend and the number could not
+  // move, which is why older copy called it a stated ceiling.
+  quotaPercent.textContent = String(budget.deepReadsRemaining);
   quotaBar.style.width = `${String(percent)}%`;
 
   // Written for someone who does not know or care what a model is. The
@@ -886,7 +889,7 @@ function renderDeepReadBudget(budget: DeepReadBudget): void {
     `The DeepScan is the expensive part, so each scan gives it to your ${String(repos)} most recently updated repositories, ` +
     "where a model reads the code line by line and a council of separate models double-checks anything it flags.";
   quotaSub.textContent =
-    `To keep this free, ${String(budget.deepReadsPerDay)} repositories a day get a DeepScan across everyone using the service. That resets overnight.`;
+    `To keep this free, ${String(budget.deepReadsPerDay)} repositories a day get a DeepScan across everyone using the service; ${String(budget.deepReadsRemaining)} of them are still available today. That resets overnight.`;
 }
 
 void requestJson("/api/capabilities")
@@ -1110,9 +1113,33 @@ downloadReport.addEventListener("click", () => {
   }, 30_000);
 });
 
-printReport.addEventListener("click", () => {
-  window.print();
+copyReport.addEventListener("click", () => {
+  if (latest === null) return;
+  const markdown = reportMarkdown(
+    latest,
+    verdictText.textContent ?? "",
+    location.origin,
+  );
+  navigator.clipboard.writeText(markdown).then(
+    () => {
+      flashCopyButton("Copied");
+    },
+    () => {
+      // Clipboard access can be denied (permissions policy, an unfocused
+      // window). Saying so beats a button that appears to do nothing.
+      flashCopyButton("Copy blocked by the browser");
+    },
+  );
 });
+
+let copyReportTimer: ReturnType<typeof setTimeout> | undefined;
+function flashCopyButton(text: string): void {
+  copyReport.textContent = text;
+  clearTimeout(copyReportTimer);
+  copyReportTimer = setTimeout(() => {
+    copyReport.textContent = "Copy as Markdown";
+  }, 2_500);
+}
 
 function setPrintHeader(
   summary: ScanRequestSummary,

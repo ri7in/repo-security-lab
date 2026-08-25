@@ -164,7 +164,7 @@
           <p class="legend" id="finding-count"></p>
           <div class="report-actions">
             <button type="button" id="download-report" class="download-report">Download PDF</button>
-            <button type="button" id="print-report" class="print-report">Print</button>
+            <button type="button" id="copy-report" class="print-report">Copy as Markdown</button>
           </div>
         </div>
         <p class="findings-note">Findings are public. Each one names the file and the line wherever the scanner recorded one, so you can go straight to it; a finding without a recorded location still stands. Secret values, code snippets, and raw matches never enter this report. "How many" is a range rather than an exact count, and several matches can land on the same line, so one location can still cover more than one.</p>
@@ -189,7 +189,7 @@
     </main>
 
     <footer>
-      <p><strong>Public report:</strong> visible to anyone with the link, retained for 30 days. File paths and line numbers are shown; source code and secret values are not. <a href="/how-it-works.html">How it works</a> · <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a></p>
+      <p><strong>Public report:</strong> visible to anyone with the link, retained for 30 days. File paths and line numbers are shown; source code and secret values are not. <a href="/how-it-works.html">How it works</a> · <a href="/privacy.html">Privacy</a> · <a href="/acceptable-use.html">Acceptable use</a> · <a id="repo-link" rel="noopener">GitHub</a></p>
       <p id="footer-name"></p>
     </footer>
   </body>

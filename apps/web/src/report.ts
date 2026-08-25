@@ -201,6 +201,105 @@ export function reportDocument(
 }
 
 /**
+ * The report as Markdown, for the copy button.
+ *
+ * Made to be pasted into an issue, a pull request, or a chat. Every value that
+ * originates in a scanned repository is attacker-controlled text, and Markdown
+ * is markup: an unescaped pipe reshapes the table and an unescaped backtick
+ * swallows the row into a code span. Escaping here is the same guarantee the
+ * DOM renderer makes with text nodes, under Markdown's rules instead.
+ */
+function cell(value: string): string {
+  return value
+    .replaceAll("\\", "\\\\")
+    .replaceAll("|", "\\|")
+    .replaceAll("`", "\\`")
+    .replaceAll(/\r?\n/g, " ");
+}
+
+export function reportMarkdown(
+  state: ReportState,
+  verdict: string,
+  origin: string,
+): string {
+  const names = new Map(
+    state.repositories.map((repository) => [
+      repository.repositoryId,
+      repository.name,
+    ]),
+  );
+  const scanned = fullyScannedCount(state.repositories);
+  const lines: string[] = [
+    `# Security report for ${cell(state.summary.username)}`,
+    "",
+    verdict,
+    "",
+    `${String(scanned)} of ${String(state.repositories.length)} public ` +
+      `${state.repositories.length === 1 ? "repository" : "repositories"} examined · ` +
+      `scanned ${new Date(state.summary.updatedAt).toLocaleString()} · ${origin}`,
+    "",
+    "## What was found",
+    "",
+  ];
+  if (state.findings.length === 0) {
+    lines.push(
+      nothingFoundText(
+        state.repositories.length,
+        scanned,
+        uncheckedCount(state.repositories),
+        "Nothing was found. No exposed credential matched any of the rules Gitleaks 8.30.1 runs, at the commit that was read. That is not a guarantee the code is secure.",
+      ).text,
+    );
+  } else {
+    lines.push(
+      "File paths and line numbers only. No source code and no secret values.",
+      "",
+      "| Repository | What was found | Severity | How many | Where | What to do |",
+      "| --- | --- | --- | --- | --- | --- |",
+      ...state.findings.map((finding) =>
+        [
+          "",
+          cell(
+            names.get(finding.repository_id) ??
+              `repository ${String(finding.repository_id)}`,
+          ),
+          cell(ruleName(finding.rule_id)),
+          finding.severity,
+          formatCount(finding.occurrence_bucket),
+          cell(allLocations(finding.locations)),
+          cell(
+            `${remediationLabel(finding.remediation_key).short}. ${remediationLabel(finding.remediation_key).detail}`,
+          ),
+          "",
+        ].join(" | ").trim(),
+      ),
+    );
+  }
+  lines.push(
+    "",
+    "## What was covered",
+    "",
+    "| Repository | Status | DeepScan |",
+    "| --- | --- | --- |",
+    ...state.repositories.map((repository) =>
+      [
+        "",
+        cell(repository.name),
+        cell(repositoryLabel(repository.state, repository.reason).text),
+        repository.coverage.ai === "complete" ||
+        repository.coverage.ai === "partial"
+          ? "Deep scanned"
+          : "",
+        "",
+      ].join(" | ").trim(),
+    ),
+    "",
+    "Public report: anyone holding the link can read it, and it is deleted 30 days after its last update. Where the AI code review ran, public source files went to OpenRouter and excerpts around secret-scan findings went to OpenRouter, Google and Groq, which may retain or train on them.",
+  );
+  return lines.join("\n");
+}
+
+/**
  * Occurrence buckets as digits.
  *
  * The column asks how many, and "twenty one plus" was the enum name with its

@@ -10,6 +10,7 @@ import {
   hiddenLocations,
   reportDocument,
   reportFileName,
+  reportMarkdown,
 } from "../src/report.js";
 
 /**
@@ -262,5 +263,67 @@ describe("the report's meta line and its verdict count the same repositories", (
     );
     expect(document_.meta).toContain("1 of 2 public repositories examined");
     expect(document_.meta).not.toContain("2 of 2");
+  });
+});
+
+describe("the Markdown copy", () => {
+  it("carries the same facts as the page: verdict, findings, coverage", () => {
+    const markdown = reportMarkdown(
+      {
+        summary: summary(),
+        repositories: [
+          repository(),
+          repository({
+            repositoryId: 8,
+            name: "active-app",
+            coverage: { ...repository().coverage, ai: "complete" },
+          }),
+        ],
+        findings: [finding()],
+      },
+      "1 thing to fix.",
+      "https://example.test",
+    );
+    expect(markdown).toContain("# Security report for ri7in");
+    expect(markdown).toContain("1 thing to fix.");
+    expect(markdown).toContain("| infra-notes |");
+    expect(markdown).toContain("| active-app |");
+    expect(markdown).toContain("Deep scanned");
+    expect(markdown).toContain("https://example.test");
+  });
+
+  it("escapes attacker-controlled text so it cannot reshape the table", () => {
+    // A path is written by the scanned repository. In Markdown a pipe is a
+    // column boundary and a backtick opens a code span, so an unescaped path
+    // could hide the remediation column of its own row.
+    const markdown = reportMarkdown(
+      {
+        summary: summary(),
+        repositories: [repository({ name: "infra-notes" })],
+        findings: [
+          finding({
+            locations: [{ path: "src/a|b`c.ts", startLine: 3 }],
+          }),
+        ],
+      },
+      "verdict",
+      "https://example.test",
+    );
+    expect(markdown).toContain("src/a\\|b\\`c.ts:3");
+    expect(markdown).not.toContain("a|b");
+  });
+
+  it("says nothing was found rather than rendering an empty table", () => {
+    const markdown = reportMarkdown(
+      {
+        summary: summary(),
+        repositories: [repository()],
+        findings: [],
+      },
+      "verdict",
+      "https://example.test",
+    );
+    expect(markdown).toContain("Nothing was found");
+    expect(markdown).not.toContain("| Severity |");
   });
 });
