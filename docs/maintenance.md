@@ -18,9 +18,8 @@ and fails if the slug or display name literal appears anywhere except:
 To rename the product:
 
 1. Edit `productSlug`, `productDisplayName`, `tagline`, `description`, and
-   `repoUrl` in `packages/branding/src/index.ts`; set
-   `isPlaceholderName: false` once the final name is chosen.
-2. Update the name and placeholder note in `README.md`, and the live URL in
+   `repoUrl` in `packages/branding/src/index.ts`.
+2. Update the name in `README.md`, and the live URL in
    `SECURITY.md` and `CONTRIBUTING.md`. Those three are the only files outside
    `packages/branding` allowed to hold the name, and the rename guard's
    allowlist is the list of them.
@@ -76,7 +75,16 @@ pnpm build:control-plane
 The deployment URL is published in `README.md`. D1 is migrated, and the
 deployed service runs with public scanning on, set by `deploy/redeploy.sh`
 rather than by the checked-in config, which stays fail-closed so that a clone
-cannot open a service by accident. Reports require no OAuth application or login;
+cannot open a service by accident.
+
+Always deploy with `deploy/redeploy.sh`. It applies pending D1 migrations,
+passes the flags the live service runs with, and refuses to finish unless
+`/api/capabilities` reports public scanning and the served bundle hash matches
+the one just built. A bare `wrangler deploy` replaces the deployed variables
+with the fail-closed set and takes the service down to nobody: public scanning
+turns off and the worker dispatch unhooks, silently.
+
+Reports require no OAuth application or login;
 legacy auth and owner routes return fixed 404 responses. Install service
 credentials only through Wrangler secrets; never commit them. The trusted scan
 worker uses the signed internal protocol, and the current implementation is not

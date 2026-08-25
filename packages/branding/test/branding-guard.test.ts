@@ -112,10 +112,6 @@ describe("branding", () => {
     );
   });
 
-  it("declares placeholder status until D-020 is decided", () => {
-    expect(branding.isPlaceholderName).toBe(true);
-  });
-
   it("has no empty identity fields", () => {
     for (const value of Object.values(branding)) {
       if (typeof value === "string") {

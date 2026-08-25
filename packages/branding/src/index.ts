@@ -16,14 +16,13 @@ export const branding = {
   /** Human-readable product name. */
   productDisplayName: "Repo Security Lab",
   /** One-line product description for headers and metadata. */
-  tagline: "One clear security report for every public repository you own.",
+  tagline:
+    "Leaked credentials and insecure Actions workflows, per repository. Checks that did not run are named, not hidden.",
   /** Longer description for README/package metadata surfaces. */
   description:
-    "Zero-cost, privacy-preserving security reports covering all public repositories of a GitHub account. Deterministic findings are immutable evidence; target code is never executed.",
-  /** Canonical repository URL (private during development). */
+    "Zero-cost security reports covering every public repository a GitHub account owns. Target code is never executed, and each report states which checks ran and which did not.",
+  /** Canonical repository URL. */
   repoUrl: "https://github.com/ri7in/repo-security-lab",
-  /** True until Rivin selects the final name (D-020). */
-  isPlaceholderName: true,
 } as const;
 
 export type Branding = typeof branding;
