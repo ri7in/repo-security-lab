@@ -315,10 +315,10 @@ describe("explaining why a scan stopped", () => {
 
   it("explains a stopped request in request terms, not repository terms", () => {
     // GITHUB_NOT_FOUND against a repository means it disappeared mid-scan.
-    // Against a request it means the username does not exist, and the status
-    // line was reading the repository wording.
+    // Against a request it means the name is not a personal account, and the
+    // status line was reading the repository wording.
     const line = explainFailure("GITHUB_NOT_FOUND");
-    expect(line).toContain("no user account");
+    expect(line).toContain("personal account");
     expect(line).not.toContain("became private");
   });
 

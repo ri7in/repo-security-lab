@@ -224,7 +224,9 @@ const UNKNOWN: Label = {
  *
  * These are separate maps on purpose. GITHUB_NOT_FOUND against a repository
  * means it disappeared between being listed and being scanned; against a
- * request it means the account does not exist. The status line was reading the
+ * request it means the name is not a personal account, whether it does not
+ * exist or is a GitHub organisation (organisations are refused). The status
+ * line was reading the
  * repository wording, so a mistyped username was told a repository had gone
  * private.
  *
@@ -235,7 +237,7 @@ const UNKNOWN: Label = {
  */
 const REQUEST_REASONS: Record<string, string> = {
   GITHUB_NOT_FOUND:
-    "GitHub has no user account with that name. Check the spelling. This scans user accounts, so an organisation will not work here either.",
+    "No personal GitHub account with that name. This scans personal accounts, so a GitHub organisation will not work here, and neither will a mistyped name. Enter a personal account and try again.",
   GITHUB_RATE_LIMIT:
     "GitHub is rate limiting this service right now. It clears on its own, usually within the hour.",
   GITHUB_AUTH:

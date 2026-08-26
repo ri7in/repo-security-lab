@@ -278,3 +278,20 @@ describe("an error that leaves the reader somewhere to go", () => {
     expect(detail).not.toContain("above");
   });
 });
+
+
+describe("a scan submitted for an organisation", () => {
+  it("names the organisation case and points at a personal account", () => {
+    // opencorex-org, a real GitHub organisation, was refused with
+    // GITHUB_NOT_FOUND. The message must not read as a typo error ("no
+    // account with that name") when the account exists as an org; it must
+    // name the organisation case and tell the visitor to use a personal
+    // account.
+    const detail = (failureDetail("GITHUB_NOT_FOUND") ?? "").toLowerCase();
+    expect(detail).toContain("organisation");
+    expect(detail).toContain("personal account");
+    // The old lead claimed no account existed at all, which was false for an
+    // organisation. It must be gone.
+    expect(detail).not.toContain("has no user account with that name");
+  });
+});
