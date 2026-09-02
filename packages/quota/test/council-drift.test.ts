@@ -29,10 +29,17 @@ const CONFIG = path.join(
  */
 const EXCLUDED: ReadonlyMap<string, string> = new Map([
   [
-    "stealth/ox-alpha",
-    "An unbranded preview with no published limit. It is the preferred reader, " +
-      "and the budgeted fallback takes over the moment it disappears, so the " +
-      "reported allowance is the conservative one either way.",
+    "minimax/minimax-m3:free",
+    "Second link of the reader chain, a different lab for congestion " +
+      "diversity. On OpenRouter's account-wide :free request meter that the " +
+      "budgeted nemotron entry already counts, so it adds availability when " +
+      "nemotron is throttled, never additional allowance.",
+  ],
+  [
+    "google/gemma-4-31b-it:free",
+    "Fourth link of the reader chain, a different lab again. Same shared " +
+      "account-wide OpenRouter :free meter as the nemotron entry already " +
+      "budgets, so it is availability under congestion, not more allowance.",
   ],
   [
     GEMINI_FLASH_LITE.id,

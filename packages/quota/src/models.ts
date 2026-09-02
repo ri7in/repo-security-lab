@@ -62,13 +62,12 @@ export const GROQ_GPT_OSS: ModelAllowance = {
  * lifetime credit, and taking the lower row is the honest floor for a meter a
  * visitor reads before deciding to wait.
  *
- * The worker actually prefers `stealth/ox-alpha`, which is the sharper reader
- * and also free at a million tokens. It is deliberately NOT registered here:
- * it is an unbranded preview whose id does not end in `:free`, so the
- * documented free-variant caps do not describe it and its real limit is
- * published nowhere. Budgeting on the named fallback is the conservative
- * choice, and it is the model that carries the load the moment the preview
- * disappears.
+ * This is the head of the worker's reader chain since the unbranded preview
+ * stealth/ox-alpha was removed from OpenRouter. The chain now spreads across
+ * several labs for congestion diversity, but every link is a :free OpenRouter
+ * model sharing one account-wide request meter, so budgeting this single
+ * entry counts that shared meter once; the other links add availability, not
+ * allowance.
  */
 export const OPENROUTER_NEMOTRON: ModelAllowance = {
   id: "nvidia/nemotron-3-ultra-550b-a55b:free",

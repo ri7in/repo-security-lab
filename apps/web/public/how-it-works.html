@@ -47,7 +47,7 @@
         <li><strong>The scanning compute</strong> runs on free GitHub Actions minutes. A queue hands work out; a run picks it up, downloads each repository into the sealed sandbox, runs the scanners, and reports back over a signed channel.</li>
         <li><strong>The AI layer</strong> runs outside the sandbox, because that is the only side with a network. The reader and the council are wired in there, and can be switched off entirely with one setting.</li>
       </ul>
-      <p>The models, as configured today. The reader is an unbranded preview called <code>ox-alpha</code> on OpenRouter, with a chain of stable free models behind it in case it disappears. The council is drawn from separate companies: the same reader model, Google's Gemini, an open GPT model on Groq, and a Qwen model. Free model names change often, so these are overridable and the report always states what actually ran.</p>
+      <p>The models, as configured today. The reader is a chain of free models on OpenRouter from several labs (Nvidia, MiniMax, Zhipu, Google), tried in turn so a busy or withdrawn one falls through to the next rather than failing the review. The council is drawn from separate companies: Google's Gemini, an open GPT model on Groq, and a Qwen model. Free model names change often, so these are overridable and the report always states what actually ran.</p>
 
       <h2 id="free">Why it is free, and what that costs</h2>
       <p>Everything runs on free tiers: Cloudflare, GitHub Actions, and free model APIs. That is a deliberate constraint, and it is why the DeepScan is rationed. It also means the honest limits below are real:</p>

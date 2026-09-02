@@ -86,24 +86,27 @@ function scoutConfig(
   const apiKey = apiKeys[0];
   if (apiKey === undefined) return null;
   const preferred = environment["OPENROUTER_SCOUT_MODEL"];
-  // ox-alpha reads first: it is the sharper reader and cites the offending
-  // line rather than the surrounding block. It is also an unbranded preview
-  // that can be withdrawn without notice, so named, stable models sit behind
-  // it. Losing the preview then costs a little precision instead of costing
-  // the entire AI pass silently.
+  // The reader runs entirely on free OpenRouter models, so the real enemy is
+  // correlated congestion: on 2026-08-29 two live scans lost every read
+  // because all the links were rate-limited at the same moment. The preview
+  // model stealth/ox-alpha, which used to lead this chain, was removed from
+  // OpenRouter entirely (verified against the live model list that day), so
+  // it was a guaranteed wasted first attempt and is gone.
   //
-  // The chain deepened on 2026-08-24 after a live scan lost two of its three
-  // reads to free-tier congestion: one link behind the preview was not
-  // enough. All four ids verified against OpenRouter's live model list that
-  // day. The two nemotron-adjacent links hold a million tokens; glm-5.2 and
-  // nemotron-super hold 256K, which still carries most repositories whole.
-  // The free nemotron endpoints do not honour response_format, which is
-  // tolerable because the response parser already digs the first balanced
-  // JSON object out of prose.
+  // The chain is now five links across four labs, not one lab's family
+  // stacked, because a free tier tends to congest per provider: Nvidia,
+  // MiniMax, Zhipu and Google are unlikely to all be saturated together. All
+  // five hold at least 256K tokens (the two 1M links carry any repository
+  // whole; 256K still carries almost all). Every id was verified against
+  // OpenRouter's live model list on 2026-08-29. The free endpoints do not all
+  // honour response_format, which is tolerable because the response parser
+  // already digs the first balanced JSON object out of prose. A model that is
+  // withdrawn upstream simply falls through to the next link.
   const chain = [
-    preferred ?? "stealth/ox-alpha",
-    "nvidia/nemotron-3-ultra-550b-a55b:free",
+    preferred ?? "nvidia/nemotron-3-ultra-550b-a55b:free",
+    "minimax/minimax-m3:free",
     "z-ai/glm-5.2:free",
+    "google/gemma-4-31b-it:free",
     "nvidia/nemotron-3-super-120b-a12b:free",
   ];
   return {
@@ -141,12 +144,12 @@ function judgePanel(
   // returned the correct verdict on two genuine secrets and two documentation
   // placeholders. Free model ids churn fast, hence the env overrides.
   const candidates = [
-    {
-      keyName: "OPENROUTER_API_KEY",
-      family: "openrouter",
-      endpoint: "https://openrouter.ai/api/v1/chat/completions",
-      model: environment["OPENROUTER_JUDGE_MODEL"] ?? "stealth/ox-alpha",
-    },
+    // The OpenRouter judge was stealth/ox-alpha, which OpenRouter removed, so
+    // it answered on nothing and only added latency and a dead trust-rank-one
+    // slot. It is gone. The reader still uses the OpenRouter key; the council
+    // does not, which also keeps the reader's family cleanly out of the panel
+    // that judges the reader's own findings. Gemini leads now, on the same
+    // operator instruction that once put ox first.
     {
       keyName: "GEMINI_API_KEY",
       family: "google",

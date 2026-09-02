@@ -80,24 +80,23 @@ describe("scan worker configuration", () => {
 
   it("orders the judge panel by trust, strongest first", () => {
     // The council decides each finding by the two most senior judges that
-    // answer, so this order is policy: ox, then Gemini, then gpt-oss. The
-    // OpenRouter key alone is not a panel; all three keys give all three
-    // judges in that order.
+    // answer, so this order is policy: Gemini, then gpt-oss, then Qwen. The
+    // OpenRouter preview judge (stealth/ox-alpha) was removed upstream and
+    // dropped, so the reader's OpenRouter key no longer adds a judge.
     const input = environment();
     input["OPENROUTER_API_KEY"] = "or-key";
     input["GEMINI_API_KEY"] = "gm-key";
     input["GROQ_API_KEY"] = "gq-key";
     const parsed = parseScanWorkerConfiguration(input);
     expect(parsed.judges.map((judge) => judge.family)).toEqual([
-      "openrouter",
       "google",
       "groq",
       "qwen",
     ]);
-    expect(parsed.judges[0]?.model).toBe("stealth/ox-alpha");
+    expect(parsed.judges[0]?.model).toBe("gemini-flash-lite-latest");
     // The only free Qwen API today, last in trust: it is a 27B preview on a
     // shared Groq quota, so it adds depth without ever outranking a senior.
-    expect(parsed.judges[3]?.model).toBe("qwen/qwen3.6-27b");
+    expect(parsed.judges[2]?.model).toBe("qwen/qwen3.6-27b");
   });
 
   it("still forms the stable pair when the preview model's key is absent", () => {
@@ -119,10 +118,14 @@ describe("scan worker configuration", () => {
     const input = environment();
     input["OPENROUTER_API_KEY"] = " key-one , key-two ,key-three ";
     input["GEMINI_API_KEY"] = "gm";
+    input["GROQ_API_KEY"] = "gq";
     const parsed = parseScanWorkerConfiguration(input);
     expect(parsed.scout?.apiKey).toBe("key-one");
     expect(parsed.scout?.apiKeys).toEqual(["key-one", "key-two", "key-three"]);
-    expect(parsed.judges[0]?.apiKeys).toEqual(["key-one", "key-two", "key-three"]);
+    // The OpenRouter pool feeds the reader; the council runs on other
+    // providers, so a Gemini judge carries only its own single key.
+    expect(parsed.judges[0]?.family).toBe("google");
+    expect(parsed.judges[0]?.apiKeys).toEqual(["gm"]);
   });
 
   it("rejects missing secrets, roots, and malformed identities", () => {
